@@ -1,0 +1,54 @@
+html, body, #content, #query-panel {
+	height: 100%;
+}
+
+/* annotate panel */
+#a-d-container {
+	display: inline-block;
+	margin: 0;
+	position: relative;
+}
+
+#a-d-container img {
+	position: absolute;
+}
+
+#a-d-container canvas {
+	position: absolute;
+
+}
+
+/* query panel */
+#q-top, #q-results {
+	height: 50%;
+}
+
+#q-top {
+	display: grid;
+	grid-template-columns: 200px auto;
+}
+
+#q-organizer {
+	height: 100%;
+	float: left;
+}
+
+#q-query-list, #q-model-list {
+	height: 50%;
+	border: 1px solid;
+}
+
+#q-run-div {
+	height: 100%;
+	display: flex;
+	flex-flow: column;
+}
+
+#q-run-text-div {
+	flex-grow: 1;
+}
+
+#q-run-text {
+	height: 100%;
+	width: 100%;
+}
