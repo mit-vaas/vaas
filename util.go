@@ -56,7 +56,7 @@ func jsonRequest(w http.ResponseWriter, r *http.Request, x interface{}) error {
 	return nil
 }
 
-func printStderr(prefix string, stderr io.ReadCloser) {
+func printStderr(prefix string, stderr io.ReadCloser, onlyDebug bool) {
 	rd := bufio.NewReader(stderr)
 	for {
 		line, err := rd.ReadString('\n')
@@ -65,8 +65,8 @@ func printStderr(prefix string, stderr io.ReadCloser) {
 		} else if err != nil {
 			panic(err)
 		}
-		if Debug {
-			log.Printf("[" + prefix + "] " + strings.TrimSpace(line))
+		if !onlyDebug || Debug {
+			log.Printf("[%s] %s", prefix, strings.TrimSpace(line))
 		}
 	}
 }

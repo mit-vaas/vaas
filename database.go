@@ -38,8 +38,7 @@ func init() {
 		type TEXT NOT NULL,
 		ext TEXT,
 		code TEXT NOT NULL,
-		sel_type TEXT NOT NULL,
-		sel_frames INTEGER NOT NULL
+		unit INTEGER NOT NULL
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS nodes (
 		id INTEGER PRIMARY KEY ASC,
@@ -51,7 +50,7 @@ func init() {
 	db.Exec(`CREATE TABLE IF NOT EXISTS label_sets (
 		id INTEGER PRIMARY KEY ASC,
 		name TEXT NOT NULL,
-		sel_frames INTEGER NOT NULL,
+		unit INTEGER NOT NULL,
 		src_video INTEGER REFERENCES videos(id),
 		video_id INTEGER REFERENCES videos(id),
 		label_type TEXT
@@ -63,6 +62,18 @@ func init() {
 		start INTEGER NOT NULL,
 		end INTEGER NOT NULL
 	)`)
+/*
+INSERT INTO videos VALUES (1, 'tokyo', 'jpeg');
+INSERT INTO clips VALUES (1, 1, 30000, 960, 540);
+INSERT INTO ops VALUES (1, 'tracker', 'v', 'track', 'python', 'TODO', 750);
+INSERT INTO ops VALUES (2, 'left-to-right', 'o1', 'track', 'python', 'TODO', 750);
+INSERT INTO label_sets VALUES (1, 'tokyo', 750, 1, 1, 'detection');
+INSERT INTO label_sets VALUES (2, 'tracker', 750, 1, 1, 'track');
+INSERT INTO labels VALUES (1, 1, 1, 0, 30000);
+INSERT INTO labels VALUES (2, 2, 1, 0, 30000);
+INSERT INTO nodes VALUES (1, 'o1', 1, 2, 'track');
+INSERT INTO nodes VALUES (2, 'o2', 1, NULL, 'track');
+*/
 }
 
 func (this *Database) Query(q string, args ...interface{}) Rows {

@@ -1,10 +1,12 @@
 package main
 
 import (
+	"log"
 	"net/http"
 )
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	fileServer := http.FileServer(http.Dir("static/"))
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -32,6 +31,14 @@ type ClipSlice struct {
 	Clip Clip
 	Start int
 	End int
+}
+
+func (slice ClipSlice) String() string {
+	return fmt.Sprintf("%d[%d:%d]", slice.Clip.ID, slice.Start, slice.End)
+}
+
+func (slice ClipSlice) Length() int {
+	return slice.End - slice.Start
 }
 
 const VideoQuery = "SELECT id, name, ext FROM videos"
@@ -98,18 +105,18 @@ func (video Video) AddClip(frames int, width int, height int) *Clip {
 	return GetClip(res.LastInsertId())
 }
 
-func (video Video) Uniform(nframes int) []Image {
+func (video Video) Uniform(unit int) ClipSlice {
 	clips := video.ListClips()
 
 	// select a clip
 	clip := func() Clip {
-		if nframes == 0 {
+		if unit == 0 {
 			return clips[rand.Intn(len(clips))]
 		}
 		weights := make([]int, len(clips))
 		sum := 0
 		for i, clip := range clips {
-			weights[i] = clip.Frames - nframes + 1
+			weights[i] = (clip.Frames+unit-1) / unit
 			if weights[i] < 0 {
 				weights[i] = 0
 			}
@@ -129,16 +136,19 @@ func (video Video) Uniform(nframes int) []Image {
 
 	// select frame
 	var start, end int
-	if nframes == 0 {
+	if unit == 0 {
 		start = 0
-		end = clip.Frames-1
+		end = clip.Frames
 	} else {
-		start = rand.Intn(clip.Frames - nframes + 1)
-		end = start+nframes-1
+		idx := rand.Intn((clip.Frames+unit-1)/unit)
+		start = idx*unit
+		end = (idx+1)*unit
+		if end > clip.Frames {
+			end = clip.Frames
+		}
 	}
-	images := GetFrames(clip, start, end, clip.Width, clip.Height)
-	log.Printf("[video] uniform: got %d frames from video %d", len(images), video.ID)
-	return images
+
+	return ClipSlice{clip, start, end}
 }
 
 func pad6(x int) string {
@@ -158,7 +168,7 @@ func (clip Clip) Fname(index int) string {
 }
 
 func (clip Clip) ToSlice() ClipSlice {
-	return ClipSlice{clip, 0, clip.Frames-1}
+	return ClipSlice{clip, 0, clip.Frames}
 }
 
 func init() {

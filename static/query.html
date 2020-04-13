@@ -1,17 +1,24 @@
 <div id="q-top">
 	<div id="q-organizer">
-		<div id="q-query-list">
-			x
-		</div>
-		<div id="q-model-list">
-			y
+		<div id="q-op-list">
 		</div>
 	</div>
 	<div id="q-run-div">
-		<div id="q-run-text-div">
-			<textarea id="q-run-text" placeholder="Your Query Here"></textarea>
+		<div id="q-op-code-div">
+			<textarea id="q-op-code" placeholder="Your Code Here"></textarea>
 		</div>
-		<button type="button" class="btn btn-primary" id="q-run-btn">Run</button>
+		<button type="button" class="btn btn-primary btn-sm" id="q-op-save-btn">Save</button>
+		<div id="q-op-exec-div" class="row">
+			<div class="col-8">
+				<input type="text" class="form-control" id="q-op-query" placeholder="Your Query Here" />
+			</div>
+			<div class="col-2">
+				<button type="button" class="btn btn-primary" id="q-op-test-btn">Test</button>
+			</div>
+			<div class="col-2">
+				<button type="button" class="btn btn-primary" id="q-op-run-btn">Run</button>
+			</div>
+		</div>
 	</div>
 </div>
 <div id="q-results">

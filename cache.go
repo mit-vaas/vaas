@@ -3,6 +3,8 @@ package main
 import (
 	"github.com/google/uuid"
 
+	"io"
+	"log"
 	"net/http"
 	"sync"
 )
@@ -66,8 +68,14 @@ func init() {
 			w.Header().Set("Content-Type", "image/jpeg")
 			w.Write(v[0].AsJPG())
 		case *PreviewClip:
+			im, err := v.GetPreview()
+			if err != nil {
+				log.Printf("[cache] preview: GetPreview: %v", err)
+				w.WriteHeader(400)
+				return
+			}
 			w.Header().Set("Content-Type", "image/jpeg")
-			w.Write(v.Images[0].AsJPG())
+			w.Write(im.AsJPG())
 		}
 	})
 
@@ -86,12 +94,21 @@ func init() {
 				w.Header().Set("Content-Type", "image/jpeg")
 				w.Write(v[0].AsJPG())
 			} else if contentType == "mp4" {
+				imReader := &sliceReader{v, 0}
+				rd, cmd := MakeVideo(imReader, v[0].Width, v[0].Height)
 				w.Header().Set("Content-Type", "video/mp4")
-				w.Write(MakeVideo(v))
+				io.Copy(w, rd)
+				cmd.Wait()
 			}
 		case *PreviewClip:
+			rd, err := v.GetVideo()
+			if err != nil {
+				log.Printf("[cache] view: GetVideo: %v", err)
+				w.WriteHeader(400)
+				return
+			}
 			w.Header().Set("Content-Type", "video/mp4")
-			w.Write(v.GetVideo())
+			io.Copy(w, rd)
 		}
 	})
 }

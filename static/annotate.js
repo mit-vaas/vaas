@@ -14,15 +14,22 @@ function loadAnnotate() {
 
 		$('#a-add-form').submit(function(e) {
 			e.preventDefault();
+			var type = $('#a-add-type').val();
 			var req = {
 				name: $('#a-add-name').val(),
-				type: $('#a-add-type').val(),
+				type: type,
 				src: $('#a-add-src').val(),
 			};
 			$.post('/labelsets', req, function(ls) {
-				myLoad('#annotate-panel', 'annotate-detection.html', function() {
-					loadDetectionLabeler(ls.ID);
-				});
+				if(type == 'detection') {
+					myLoad('#annotate-panel', 'annotate-detection.html', function() {
+						loadDetectionLabeler(ls.ID);
+					});
+				} else if(type == 'class') {
+					myLoad('#annotate-panel', 'annotate-class.html', function() {
+						loadClassLabeler(ls.ID);
+					});
+				}
 			}, 'json');
 		});
 	};
@@ -52,9 +59,15 @@ function loadAnnotate() {
 			$('#a-index-tbody').append(row);
 
 			annotateBtn.click(function(e) {
-				myLoad('#annotate-panel', 'annotate-detection.html', function() {
-					loadDetectionLabeler(el.ID);
-				});
+				if(el.Type == "detection") {
+					myLoad('#annotate-panel', 'annotate-detection.html', function() {
+						loadDetectionLabeler(el.ID);
+					});
+				} else if(el.Type == "class") {
+					myLoad('#annotate-panel', 'annotate-class.html', function() {
+						loadClassLabeler(el.ID);
+					});
+				}
 			});
 			visualizeBtn.click(function(e) {
 				myLoad('#annotate-panel', 'annotate-visualize.html', function() {

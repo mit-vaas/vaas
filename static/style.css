@@ -33,9 +33,13 @@ html, body, #content, #query-panel {
 	float: left;
 }
 
-#q-query-list, #q-model-list {
-	height: 50%;
+#q-op-list {
+	height: 100%;
 	border: 1px solid;
+}
+
+.q-btn-op {
+	width: 100%;
 }
 
 #q-run-div {
@@ -44,11 +48,30 @@ html, body, #content, #query-panel {
 	flex-flow: column;
 }
 
-#q-run-text-div {
+#q-op-code-div {
 	flex-grow: 1;
 }
 
-#q-run-text {
+#q-op-code {
 	height: 100%;
 	width: 100%;
+}
+
+#q-op-test-btn, #q-op-run-btn {
+	width: 100%;
+}
+
+.q-results-row {
+	display: flex;
+	flex-direction: row;
+}
+
+.q-results-col {
+	flex-grow: 1;
+	flex-shrink: 1;
+	padding: 5px;
+}
+
+.q-result-img {
+	max-width: 100%;
 }

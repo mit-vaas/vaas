@@ -6,7 +6,7 @@ $(document).ready(function() {
 		if(target == '#annotate-panel') {
 			myLoad('#annotate-panel', 'annotate-index.html', loadAnnotate);
 		} else if(target == '#query-panel') {
-			$('#query-panel').load('/query.html');
+			myLoad('#query-panel', 'query.html', loadQuery);
 		}
 	});
 
