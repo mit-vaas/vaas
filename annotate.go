@@ -115,27 +115,14 @@ func (ls LabelSet) Next() []Image {
 type LabeledClip struct {
 	Slice ClipSlice
 	Type DataType
-	Label interface{}
+	Label Data
 	L *Label
 }
 
 func (clipLabel *LabeledClip) GetSlice(start int, end int) *LabeledClip {
 	prevSlice := clipLabel.Slice
 	slice := ClipSlice{prevSlice.Clip, prevSlice.Start+start, prevSlice.Start+end}
-	var label interface{}
-	if clipLabel.Type == DetectionType || clipLabel.Type == TrackType {
-		detections := clipLabel.Label.([][]Detection)
-		detections = detections[start:end]
-		for _, dlist := range detections {
-			for i := range dlist {
-				dlist[i].FrameIdx -= start
-			}
-		}
-		label = detections
-	} else if clipLabel.Type == ClassType {
-		classes := clipLabel.Label.([]int)
-		label = classes[start:end]
-	}
+	label := clipLabel.Label.Slice(start, end)
 	return &LabeledClip{
 		Slice: slice,
 		Type: clipLabel.Type,
@@ -178,6 +165,7 @@ func (l Label) Load() *LabeledClip {
 		log.Printf("[annotate] error loading %d/%d: %v", l.LabelSet.ID, l.ID, err)
 		return clipLabel
 	}
+	clipLabel.Label = Data{Type: t}
 	if t == DetectionType || t == TrackType {
 		/*if clip.Frames == 1 {
 			var label [][][2]int
@@ -192,17 +180,13 @@ func (l Label) Load() *LabeledClip {
 			}
 			return &LabeledClip{clip, ls.Type, label}
 		}*/
-		var label [][]Detection
-		if err := json.Unmarshal(bytes, &label); err != nil {
+		if err := json.Unmarshal(bytes, &clipLabel.Label.Detections); err != nil {
 			panic(err)
 		}
-		clipLabel.Label = label
 	} else if t == ClassType {
-		var label []int
-		if err := json.Unmarshal(bytes, &label); err != nil {
+		if err := json.Unmarshal(bytes, &clipLabel.Label.Classes); err != nil {
 			panic(err)
 		}
-		clipLabel.Label = label
 	}
 	return clipLabel
 }
@@ -213,7 +197,7 @@ func (ls LabelSet) Length() int {
 	return len(ls.Video.ListClips())
 }
 
-func (ls LabelSet) AddClip(images []Image, label interface{}) Label {
+func (ls LabelSet) AddClip(images []Image, label Data) Label {
 	clip := ls.Video.AddClip(len(images), images[0].Width, images[0].Height)
 	os.Mkdir(fmt.Sprintf("clips/%d", ls.Video.ID), 0755)
 	os.Mkdir(fmt.Sprintf("labels/%d", ls.Video.ID), 0755)
@@ -236,8 +220,8 @@ func (ls LabelSet) AddClip(images []Image, label interface{}) Label {
 	return l
 }
 
-func (ls LabelSet) UpdateLabel(l Label, label interface{}) {
-	bytes, err := json.Marshal(label)
+func (ls LabelSet) UpdateLabel(l Label, label Data) {
+	bytes, err := json.Marshal(label.Get())
 	if err != nil {
 		panic(err)
 	}
@@ -320,7 +304,7 @@ func init() {
 				Width: clipLabel.Slice.Clip.Width,
 				Height: clipLabel.Slice.Clip.Height,
 				Index: index,
-				Labels: clipLabel.Label,
+				Labels: clipLabel.Label.Get(),
 			})
 			return
 		}
@@ -358,7 +342,10 @@ func init() {
 			}
 			images := item.([]Image)
 			log.Printf("[annotate] add labels for new clip to ls %d", ls.ID)
-			ls.AddClip(images, request.Labels)
+			ls.AddClip(images, Data{
+				Type: DetectionType,
+// TODO				Detections: request.Labels,
+			})
 			w.WriteHeader(200)
 			return
 		}
@@ -370,7 +357,10 @@ func init() {
 			return
 		}
 		log.Printf("[annotate] update labels for clip %d in ls %d", clipLabel.Slice.Clip.ID, ls.ID)
-		ls.UpdateLabel(*clipLabel.L, request.Labels)
+		ls.UpdateLabel(*clipLabel.L, Data{
+			Type: DetectionType,
+// TODO			Detections: request.Labels,
+		})
 	})
 
 	http.HandleFunc("/labelsets/class-label", func(w http.ResponseWriter, r *http.Request) {
@@ -395,7 +385,10 @@ func init() {
 			}
 			images := item.([]Image)
 			log.Printf("[annotate] add labels for new clip to ls %d", ls.ID)
-			ls.AddClip(images, request.Labels)
+			ls.AddClip(images, Data{
+				Type: ClassType,
+				Classes: request.Labels,
+			})
 			w.WriteHeader(200)
 			return
 		}
@@ -407,7 +400,10 @@ func init() {
 			return
 		}
 		log.Printf("[annotate] update labels for clip %d in ls %d", clipLabel.Slice.Clip.ID, ls.ID)
-		ls.UpdateLabel(*clipLabel.L, request.Labels)
+		ls.UpdateLabel(*clipLabel.L, Data{
+			Type: ClassType,
+			Classes: request.Labels,
+		})
 	})
 
 	http.HandleFunc("/labelsets/visualize", func(w http.ResponseWriter, r *http.Request) {

@@ -57,9 +57,9 @@ type PreviewClip struct {
 	ready int
 }
 
-func DrawLabels(t DataType, labels interface{}, labelOffset int, images []Image) {
+func DrawLabels(t DataType, data Data, labelOffset int, images []Image) {
 	if t == DetectionType || t == TrackType {
-		detections := labels.([][]Detection)
+		detections := data.Detections
 		for i := range images {
 			for _, detection := range detections[labelOffset+i] {
 				var color [3]uint8
@@ -93,7 +93,9 @@ func (pc *PreviewClip) setErr(err error) {
 }
 
 func (clipLabel *LabeledClip) LoadPreview() *PreviewClip {
-	return CreatePreview(clipLabel.Slice, clipLabel.Type, FilledLabelBuffer(clipLabel.Slice.Length(), clipLabel.Label))
+	filledBuffer := NewLabelBuffer(clipLabel.Label.Type)
+	filledBuffer.Write(clipLabel.Label)
+	return CreatePreview(clipLabel.Slice, clipLabel.Type, filledBuffer)
 }
 
 func (pc *PreviewClip) GetPreview() (Image, error) {
@@ -115,14 +117,14 @@ func (pc *PreviewClip) GetPreview() (Image, error) {
 				pc.mu.Unlock()
 			}
 
-			_, labels, err := pc.labelBuf.Peek(1, pc.Type)
+			data, err := pc.labelBuf.Peek(1)
 			if err != nil {
 				pc.setErr(err)
 				return
 			}
 
 			if pc.Type == VideoType {
-				images := labels.([]Image)
+				images := data.Images
 				setPreview(images[0])
 				return
 			}
@@ -139,7 +141,7 @@ func (pc *PreviewClip) GetPreview() (Image, error) {
 				pc.setErr(err)
 				return
 			}
-			DrawLabels(pc.Type, labels, 0, []Image{im})
+			DrawLabels(pc.Type, data, 0, []Image{im})
 			setPreview(im)
 		}()
 	}
@@ -257,7 +259,8 @@ func (pc *PreviewClip) loadLabels() {
 	}
 
 	for myReady < pc.Slice.Length() {
-		n, labels, err := pc.labelBuf.Read()
+		data, err := pc.labelBuf.Read(0)
+		n := data.Length()
 		if err != nil {
 			pc.setErr(err)
 			return
@@ -266,7 +269,7 @@ func (pc *PreviewClip) loadLabels() {
 		}
 
 		if pc.Type == VideoType {
-			images := labels.([]Image)
+			images := data.Images
 			pc.mu.Lock()
 			pc.images = append(pc.images, images...)
 			myReady += n
@@ -281,7 +284,7 @@ func (pc *PreviewClip) loadLabels() {
 					pc.setErr(err)
 					return
 				}
-				DrawLabels(pc.Type, labels, myReady-oldReady, images)
+				DrawLabels(pc.Type, data, myReady-oldReady, images)
 				myReady += len(images)
 				updateReady()
 			}

@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -115,7 +114,7 @@ func (op *Op) Test(slices []ClipSlice) []*LabelBuffer {
 	for parentIdx, parent := range op.Parents {
 		if parent.Type == OpParent {
 			node := parent.Op.getNode(slices[0].Clip.Video)
-			for sliceIdx, labelBuf := range node.Test(slices) {
+			for _, labelBuf := range node.Test(slices) {
 				/*clipLabel, err := labelBuf.ReadAll(slices[sliceIdx], parent.Op.Type)
 				if err != nil {
 					log.Printf("[exec op-%v %v] error getting parent %s on slice %v", op.Name, slices, parent.Op.Name, slices[sliceIdx])
@@ -125,15 +124,10 @@ func (op *Op) Test(slices []ClipSlice) []*LabelBuffer {
 			}
 		} else if parent.Type == VideoParent {
 			for _, slice := range slices {
-				images, err := GetFrames(slice, slice.Clip.Width, slice.Clip.Height)
-				if err != nil {
-					log.Printf("[exec op-%v %v] error reading video on slice %v", op.Name, slices, slice)
-				}
-				parents[parentIdx] = append(parents[parentIdx], &LabeledClip{
-					Slice: slice,
-					Type: VideoType,
-					Label: images,
-				})
+				rd := ReadVideo(slice, slice.Clip.Width, slice.Clip.Height)
+				buf := NewLabelBuffer(VideoType)
+				go buf.FromVideoReader(rd)
+				parents[parentIdx] = append(parents[parentIdx], buf)
 			}
 		}
 	}
@@ -144,14 +138,7 @@ func (op *Op) Test(slices []ClipSlice) []*LabelBuffer {
 	return nil
 }
 
-type pyMeta struct {
-	Type DataType
-	Lengths []int
-	Count int
-	Parents int
-}
-
-func (op *Op) testPython(parents [][]*LabeledClip, slices []ClipSlice) []*LabelBuffer {
+func (op *Op) testPython(parents [][]*LabelBuffer, slices []ClipSlice) []*LabelBuffer {
 	log.Printf("[exec op-%v %v] launching python script", op.Name, slices)
 	template, err := ioutil.ReadFile("tmpl.py")
 	if err != nil {
@@ -168,24 +155,10 @@ func (op *Op) testPython(parents [][]*LabeledClip, slices []ClipSlice) []*LabelB
 	if err := tempFile.Close(); err != nil {
 		panic(err)
 	}
-	cmd := exec.Command("/usr/bin/python3", tempFile.Name())
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		panic(err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		panic(err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		panic(err)
-	}
-	if err := cmd.Start(); err != nil {
-		panic(err)
-	}
-
-	go printStderr(fmt.Sprintf("exec-pyop-%d", op.Name), stderr, false)
+	cmd, stdin, stdout := command(
+		fmt.Sprintf("exec-pyop-%s", op.Name), false,
+		"/usr/bin/python3", tempFile.Name(),
+	)
 
 	go func() {
 		writeJSONPacket := func(x interface{}) {
@@ -216,7 +189,12 @@ func (op *Op) testPython(parents [][]*LabeledClip, slices []ClipSlice) []*LabelB
 		}
 
 		// prepare meta
-		var meta pyMeta
+		var meta struct {
+			Type DataType
+			Lengths []int
+			Count int
+			Parents int
+		}
 		meta.Type = op.Type
 		for _, slice := range slices {
 			meta.Lengths = append(meta.Lengths, slice.Length())
@@ -225,15 +203,64 @@ func (op *Op) testPython(parents [][]*LabeledClip, slices []ClipSlice) []*LabelB
 		meta.Parents = len(parents)
 		writeJSONPacket(meta)
 
+		var mu sync.Mutex
+		donech := make(chan error, len(slices))
 		for sliceIdx := range slices {
-			for parentIdx := range parents {
-				clipLabel := parents[parentIdx][sliceIdx]
-				if clipLabel.Type == VideoType {
-					images := clipLabel.Label.([]Image)
-					writeVideoPacket(images)
-				} else {
-					writeJSONPacket(clipLabel.Label)
+			go func(sliceIdx int) {
+				completed := 0
+				for completed < slices[sliceIdx].Length() {
+					// peek each parent to see how much we can read
+					length := -1
+					for parentIdx := range parents {
+						data, err := parents[parentIdx][sliceIdx].Peek(1)
+						if err != nil {
+							donech <- err
+							return
+						}
+						if length == -1 || data.Length() < length {
+							length = data.Length()
+						}
+					}
+
+					datas := make([]Data, len(parents))
+					for parentIdx := range parents {
+						data, err := parents[parentIdx][sliceIdx].Read(length)
+						if err != nil {
+							donech <- err
+							return
+						}
+						datas[parentIdx] = data
+					}
+
+					mu.Lock()
+					var job struct {
+						SliceIdx int
+						Range [2]int
+						IsLast bool
+					}
+					job.SliceIdx = sliceIdx
+					job.Range = [2]int{completed, completed+length}
+					job.IsLast = job.Range[1] == slices[sliceIdx].Length()
+					writeJSONPacket(job)
+					for _, data := range datas {
+						if data.Type == VideoType {
+							writeVideoPacket(data.Images)
+						} else {
+							writeJSONPacket(data.Get())
+						}
+					}
+					mu.Unlock()
+					completed += length
 				}
+
+				donech <- nil
+			}(sliceIdx)
+		}
+		for _ = range slices {
+			err := <- donech
+			if err != nil {
+				log.Printf("[exec op-%v %v] error reading from parent: %v", op.Name, slices, err)
+				break
 			}
 		}
 		stdin.Close()
@@ -241,15 +268,14 @@ func (op *Op) testPython(parents [][]*LabeledClip, slices []ClipSlice) []*LabelB
 
 	buffers := make([]*LabelBuffer, len(slices))
 	for i := range buffers {
-		buffers[i] = &LabelBuffer{}
-		buffers[i].mu = new(sync.Mutex)
-		buffers[i].cond = sync.NewCond(buffers[i].mu)
+		buffers[i] = NewLabelBuffer(op.Type)
 	}
 
 	go func() {
 		defer os.Remove(tempFile.Name())
-		defer stdout.Close()
+		defer cmd.Wait()
 		defer stdin.Close()
+		defer stdout.Close()
 
 		dones := make([]bool, len(slices))
 		isDone := func() bool {
@@ -278,20 +304,22 @@ func (op *Op) testPython(parents [][]*LabeledClip, slices []ClipSlice) []*LabelB
 			sliceIdx := int(binary.BigEndian.Uint32(header[0:4]))
 			start := int(binary.BigEndian.Uint32(header[4:8]))
 			end := int(binary.BigEndian.Uint32(header[8:12]))
-			l := int(binary.BigEndian.Uint32(header[12:16]))
-			buf := make([]byte, l)
+			size := int(binary.BigEndian.Uint32(header[12:16]))
+			buf := make([]byte, size)
 			_, err = io.ReadFull(stdout, buf)
 			if err != nil {
 				setErr(err)
 				return
 			}
-			var label interface{}
+			data := Data{Type: op.Type}
 			if op.Type == DetectionType || op.Type == TrackType {
-				var detections [][]Detection
-				if err := json.Unmarshal(buf, &detections); err != nil {
+				if err := json.Unmarshal(buf, &data.Detections); err != nil {
 					panic(err)
 				}
-				label = detections
+			} else if op.Type == ClassType {
+				if err := json.Unmarshal(buf, &data.Classes); err != nil {
+					panic(err)
+				}
 			} else if op.Type == VideoType {
 				nframes := int(binary.BigEndian.Uint32(buf[0:4]))
 				height := int(binary.BigEndian.Uint32(buf[4:8]))
@@ -299,20 +327,13 @@ func (op *Op) testPython(parents [][]*LabeledClip, slices []ClipSlice) []*LabelB
 				// TODO: channels buf[12:16]
 				chunkSize := width*height*3
 				buf = buf[16:]
-				var images []Image
 				for i := 0; i < nframes; i++ {
-					images = append(images, ImageFromBytes(width, height, buf[i*chunkSize:(i+1)*chunkSize]))
+					data.Images = append(data.Images, ImageFromBytes(width, height, buf[i*chunkSize:(i+1)*chunkSize]))
 				}
-				label = images
-				log.Printf("[exec op-%v %v] got the video output", op.Name, slices)
-			} else if op.Type == ClassType {
-				var classes []int
-				if err := json.Unmarshal(buf, &classes); err != nil {
-					panic(err)
-				}
-				label = classes
+				//log.Printf("[exec op-%v %v] got the video output", op.Name, slices)
 			}
-			buffers[sliceIdx].Write(start, end, label)
+			data = data.EnsureLength(end-start)
+			buffers[sliceIdx].Write(data)
 			if end >= slices[sliceIdx].Length() {
 				dones[sliceIdx] = true
 			}
@@ -416,12 +437,13 @@ func (node *Node) Test(slices []ClipSlice) []*LabelBuffer {
 			if node.LabelSet != nil {
 				clipLabel = node.LabelSet.GetBySlice(slices[idx])
 			}
-			if clipLabel == nil || clipLabel.Label == nil {
+			if clipLabel == nil || clipLabel.Label.Nil() {
 				missingSlices = append(missingSlices, slices[idx])
 				missingIndexes = append(missingIndexes, idx)
 				continue
 			}
-			outputs[idx] = FilledLabelBuffer(clipLabel.Slice.Length(), clipLabel.Label)
+			outputs[idx] = NewLabelBuffer(clipLabel.Label.Type)
+			outputs[idx].Write(clipLabel.Label)
 		}
 	}
 	log.Printf("[exec (%s) %v] missing slices = %v", node.Query, slices, missingSlices)
@@ -520,12 +542,12 @@ func init() {
 				w.WriteHeader(404)
 				return
 			}
-			clipLabel, err := labelBuf.ReadAll(slice, node.Type)
+			clipLabel, err := labelBuf.ReadAll(slice)
 			if err != nil {
 				log.Printf("[exec (%s) %v] error reading exec output: %v", query, slice, err)
 				w.WriteHeader(400)
 				return
-			} else if IsEmptyLabel(clipLabel.Label, node.Type) {
+			} else if clipLabel.Label.IsEmpty() {
 				continue
 			}
 			log.Printf("[exec (%s) %v] test: got labelBuf, loading preview", query, slice)

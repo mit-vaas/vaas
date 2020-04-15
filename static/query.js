@@ -107,7 +107,7 @@ function loadQuery() {
 			var col = $('<div>')
 				.addClass('q-results-col');
 			row = row.append(col);
-			if(true) {
+			if(false) {
 				$.post('/exec/test2', req, testOne(col), 'json');
 			} else {
 				$.post('/exec/test', req, testOne(col), 'json');

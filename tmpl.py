@@ -52,13 +52,29 @@ def tracks_to_detections(tracks, n):
 			detections[d['frame_idx']].append(d)
 	return detections
 
-# def f(track): ...
+def per_frame_decorate(f):
+	def wrap(*args):
+		job_desc = args[0]
+		args = args[1:]
+		outputs = []
+		for i in range(len(args[0])):
+			inputs = [arg[i] for arg in args]
+			output = f(*inputs)
+			outputs.append(output)
+		if meta['Type'] == 'video':
+			outputs = numpy.stack(outputs)
+		output_packet(job_desc['slice_idx'], job_desc['range'], outputs)
+	return wrap
+
+# def f(context, parent1, parent2, ...): ...
 [CODE]
 
 stdin = sys.stdin.detach()
 
 def input_packet():
 	buf = stdin.read(5)
+	if not buf:
+		return None
 	(l,) = struct.unpack('>I', buf[0:4])
 	encoded_data = stdin.read(l)
 	if buf[4:5] == b'j':
@@ -78,13 +94,18 @@ def output_packet(slice_idx, frame_range, data):
 	sys.stdout.buffer.write(encoded_data)
 
 meta = input_packet()
-
-for slice_idx in range(meta['Count']):
-	inputs = []
+states = [None for _ in range(meta['Count'])]
+while True:
+	job_desc = input_packet()
+	if job_desc is None:
+		break
+	slice_idx = job_desc['SliceIdx']
+	inputs = [{
+		'range': job_desc['Range'],
+		'is_last': job_desc['IsLast'],
+		'slice_idx': slice_idx,
+		'state': states[slice_idx],
+	}]
 	for _ in range(meta['Parents']):
 		inputs.append(input_packet())
-	result = f(*inputs)
-	if result is None:
-		# implies f handles the output_packet calls
-		continue
-	output_packet(slice_idx, (0, meta['Lengths'][slice_idx]), result)
+	states[slice_idx] = f(*inputs)

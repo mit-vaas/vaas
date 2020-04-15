@@ -3,7 +3,6 @@ package main
 import (
 	//"github.com/mitroadmaps/gomapinfer/image"
 
-	"bufio"
 	"bytes"
 	"fmt"
 	"image"
@@ -12,40 +11,23 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"strings"
 )
-
-const Debug bool = false
 
 type Image struct {
 	Width int
 	Height int
-	//Image [][][3]uint8
 	Bytes []byte
 }
 
 func ImageFromBytes(width int, height int, bytes []byte) Image {
-	/*pix := image.MakeImage(width, height, [3]uint8{0, 0, 0})
-	for i, b := range bytes {
-		pos := i/3
-		channel := i%3
-		pix[pos%width][pos/width][channel] = b
-	}*/
 	return Image{
 		Width: width,
 		Height: height,
-		//Image: pix,
 		Bytes: bytes,
 	}
 }
 
 func ImageFromFile(fname string) Image {
-	/*img := image.ReadImage(fname)
-	return Image{
-		Width: len(img),
-		Height: len(img[0]),
-		Image: img,
-	}*/
 	file, err := os.Open(fname)
 	if err != nil {
 		panic(err)
@@ -75,12 +57,6 @@ func ImageFromFile(fname string) Image {
 }
 
 func (im Image) AsJPG() []byte {
-	/*buf := new(bytes.Buffer)
-	if err := jpeg.Encode(buf, image.AsImage(im.Image), nil); err != nil {
-		panic(err)
-	}
-	return buf.Bytes()*/
-
 	pixbuf := make([]byte, im.Width*im.Height*4)
 	j := 0
 	channels := 0
@@ -108,15 +84,6 @@ func (im Image) AsJPG() []byte {
 
 func (im Image) ToBytes() []byte {
 	return im.Bytes
-	/*bytes := make([]byte, im.Width*im.Height*3)
-	for i := range im.Image {
-		for j := range im.Image[i] {
-			for channel := 0; channel < 3; channel++ {
-				bytes[(j*im.Width+i)*3+channel] = im.Image[i][j][channel]
-			}
-		}
-	}
-	return bytes*/
 }
 
 func (im Image) FillRectangle(left, top, right, bottom int, color [3]uint8) {
@@ -164,39 +131,14 @@ func ffmpegTime(index int) string {
 func ReadFfmpeg(fname string, start int, end int, width int, height int) ffmpegReader {
 	log.Printf("[ffmpeg] from %s extract frames [%d:%d) %dx%d", fname, start, end, width, height)
 
-	cmd := exec.Command(
+	cmd, _, stdout := command(
+		"ffmpeg", true,
 	 	"ffmpeg", "-i", fname,
 	 	"-ss", ffmpegTime(start), "-to", ffmpegTime(end),
 	 	"-c:v", "rawvideo", "-pix_fmt", "rgb24", "-f", "rawvideo",
 	 	"-vf", fmt.Sprintf("scale=%dx%d", width, height),
 	 	"-",
  	)
- 	stdout, err := cmd.StdoutPipe()
- 	if err != nil {
- 		panic(err)
- 	}
- 	stderr, err := cmd.StderrPipe()
- 	if err != nil {
- 		panic(err)
- 	}
- 	if err := cmd.Start(); err != nil {
- 		panic(err)
- 	}
-
- 	go func() {
- 		rd := bufio.NewReader(stderr)
- 		for {
- 			line, err := rd.ReadString('\n')
- 			if err == io.EOF {
- 				break
- 			} else if err != nil {
- 				panic(err)
- 			}
- 			if Debug {
- 				log.Printf("[ffmpeg] " + strings.TrimSpace(line))
- 			}
- 		}
- 	}()
 
  	return ffmpegReader{
  		cmd: cmd,
@@ -262,7 +204,8 @@ func GetFrames(slice ClipSlice, width int, height int) ([]Image, error) {
 func MakeVideo(rd VideoReader, width int, height int) (io.ReadCloser, *exec.Cmd) {
 	log.Printf("[ffmpeg] make video (%dx%d)", width, height)
 
-	cmd := exec.Command(
+	cmd, stdin, stdout := command(
+		"ffmpeg", true,
 		"ffmpeg", "-f", "rawvideo",
 		"-s", fmt.Sprintf("%dx%d", width, height),
 		"-pix_fmt", "rgb24", "-i", "-",
@@ -273,23 +216,6 @@ func MakeVideo(rd VideoReader, width int, height int) (io.ReadCloser, *exec.Cmd)
 		"-f", "mp4", "-pix_fmt", "yuv420p", "-movflags", "faststart+frag_keyframe+empty_moov",
 		"-",
 	)
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		panic(err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		panic(err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		panic(err)
-	}
-	if err := cmd.Start(); err != nil {
-		panic(err)
-	}
-
-	go printStderr("ffmpeg", stderr, true)
 
 	go func() {
 		for {
