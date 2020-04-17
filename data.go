@@ -256,3 +256,38 @@ func (buf *LabelBuffer) FromVideoReader(rd VideoReader) {
 		})
 	}
 }
+
+// Returns a new buffer that reads from this buffer without removing the read
+// content. This allows single-writer multi-reader mode, where all the readers
+// read from different splits of the original buffer.
+// This also optionally slices the buffer so that it only yields data in [start, end).
+func (buf *LabelBuffer) Slice(start int, end int) *LabelBuffer {
+	nbuf := NewLabelBuffer(buf.unread.Type)
+	go func() {
+		cur := start
+		iter := func() bool {
+			buf.mu.Lock()
+			defer buf.mu.Unlock()
+			for buf.unread.Length() <= cur && buf.err == nil && !buf.done {
+				buf.cond.Wait()
+			}
+			if buf.err != nil {
+				nbuf.Error(fmt.Errorf("passing error to downstream split buffer: %v", buf.err))
+				return true
+			} else if buf.unread.Length() <= cur && buf.done {
+				nbuf.mu.Lock()
+				nbuf.done = true
+				nbuf.mu.Unlock()
+				return true
+			}
+
+		}
+		for cur < end {
+			quit := iter()
+			if quit {
+				break
+			}
+		}
+	}()
+	return nbuf
+}

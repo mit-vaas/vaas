@@ -51,7 +51,12 @@ func init() {
 		id INTEGER PRIMARY KEY ASC,
 		name TEXT NOT NULL,
 		unit INTEGER NOT NULL,
+		-- annotation system should sample clips from src_video
 		src_video INTEGER REFERENCES videos(id),
+		-- labels.clip_id/start/end reference clips in video_id
+		-- for query outputs, video_id = src_video
+		-- but when annotating, we create a new video that just has the images/clips
+		--     that we asked the human to label
 		video_id INTEGER REFERENCES videos(id),
 		label_type TEXT
 	)`)
@@ -60,7 +65,10 @@ func init() {
 		set_id INTEGER REFERENCES label_sets(id),
 		clip_id INTEGER REFERENCES clips(id),
 		start INTEGER NOT NULL,
-		end INTEGER NOT NULL
+		end INTEGER NOT NULL,
+		-- out_clip_id is only set if label_sets.label_type=video
+		-- it refers to clip containing the output corresponding to input clip_id above
+		out_clip_id INTEGER REFERENCES clips(id)
 	)`)
 /*
 INSERT INTO videos VALUES (1, 'tokyo', 'jpeg');

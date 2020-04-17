@@ -64,16 +64,42 @@ func GetLabelSet(id int) *LabelSet {
 }
 
 func NewLabelSet(name string, srcVideoID int, labelType DataType) (*LabelSet, error) {
-	if labelType != DetectionType && labelType != TrackType && labelType != ClassType {
+	if labelType != DetectionType && labelType != TrackType && labelType != ClassType && labelType != VideoType {
 		return nil, fmt.Errorf("invalid label type %s", labelType)
 	}
-	res := db.Exec("INSERT INTO videos (name, ext) VALUES (?, 'jpeg')", "labels: " + name)
-	videoID := res.LastInsertId()
-	res = db.Exec(
-		"INSERT INTO label_sets (name, unit, src_video, video_id, label_type) VALUES (?, ?, ?, ?, ?)",
-		name, 1, srcVideoID, videoID, labelType,
-	)
-	lsID := res.LastInsertId()
+	var lsID int
+	if labelType != VideoType {
+		res := db.Exec("INSERT INTO videos (name, ext) VALUES (?, 'jpeg')", "labels: " + name)
+		videoID := videoRes.LastInsertId()
+		res = db.Exec(
+			"INSERT INTO label_sets (name, unit, src_video, video_id, label_type) VALUES (?, ?, ?, ?, ?)",
+			name, 1, srcVideoID, videoID, labelType,
+		)
+		lsID = res.LastInsertId()
+	} else {
+		// don't have a new video anymore since this label set will just be used for visualization
+		// we do set dst_video since that is what will be read for visualizing
+		res := db.Exec(
+			"INSERT INTO label_sets (name, unit, src_video, video_id, label_type) VALUES (?, ?, ?, ?, ?)",
+			name, 1, srcVideoID, srcVideoID, labelType,
+		)
+		lsID = res.LastInsertId()
+
+		// this is going to be used for visualization, not for annotation
+		// we actually pre-populate the annotations by creating labels that point back to the
+		// src video
+		// TODO: we should get rid of this and instead allow the user to use the query interface
+		//     to visualize the video dataset; creating a new label set doesn't really make sense
+		// (we'll still use labels.out_clip_id for the outputs of queries that produce video)
+		video := GetVideo(srcVideoID)
+		for _, clip := range video.ListClips() {
+			db.Exec(
+				"INSERT INTO labels (set_id, clip_id, start, end, out_clip_id) VALUES (?, ?, ?, ?, ?)",
+				lsID, clip.ID, 0, clip.Frames, clip.ID,
+			)
+		}
+	}
+
 	ls := GetLabelSet(lsID)
 	log.Printf("[annotate] created new label set %d", ls.ID)
 	return ls, nil
@@ -160,34 +186,28 @@ func (l Label) Load() *LabeledClip {
 		L: &l,
 		Type: t,
 	}
-	bytes, err := ioutil.ReadFile(fmt.Sprintf("labels/%d/%d.json", l.LabelSet.ID, l.ID))
-	if err != nil {
-		log.Printf("[annotate] error loading %d/%d: %v", l.LabelSet.ID, l.ID, err)
-		return clipLabel
-	}
-	clipLabel.Label = Data{Type: t}
-	if t == DetectionType || t == TrackType {
-		/*if clip.Frames == 1 {
-			var label [][][2]int
-			if err := json.Unmarshal(bytes, &label); err != nil {
+
+	if t == VideoType {
+		// ??? how to load it without loading whole thing
+
+	} else {
+		bytes, err := ioutil.ReadFile(fmt.Sprintf("labels/%d/%d.json", l.LabelSet.ID, l.ID))
+		if err != nil {
+			log.Printf("[annotate] error loading %d/%d: %v", l.LabelSet.ID, l.ID, err)
+			return clipLabel
+		}
+		clipLabel.Label = Data{Type: t}
+		if t == DetectionType || t == TrackType {
+			if err := json.Unmarshal(bytes, &clipLabel.Label.Detections); err != nil {
 				panic(err)
 			}
-			return &LabeledClip{clip, ls.Type, label}
-		} else {
-			var label [][][][2]int
-			if err := json.Unmarshal(bytes, &label); err != nil {
+		} else if t == ClassType {
+			if err := json.Unmarshal(bytes, &clipLabel.Label.Classes); err != nil {
 				panic(err)
 			}
-			return &LabeledClip{clip, ls.Type, label}
-		}*/
-		if err := json.Unmarshal(bytes, &clipLabel.Label.Detections); err != nil {
-			panic(err)
-		}
-	} else if t == ClassType {
-		if err := json.Unmarshal(bytes, &clipLabel.Label.Classes); err != nil {
-			panic(err)
 		}
 	}
+
 	return clipLabel
 }
 
