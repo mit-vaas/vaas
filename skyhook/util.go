@@ -1,4 +1,4 @@
-package main
+package skyhook
 
 import (
 	"bufio"
@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-func readTextFile(fname string) string {
+func ReadTextFile(fname string) string {
 	bytes, err := ioutil.ReadFile(fname)
 	if err != nil {
 		panic(err)
@@ -19,15 +19,12 @@ func readTextFile(fname string) string {
 	return string(bytes)
 }
 
-func readJSONFile(fname string, res interface{}) {
+func ReadJSONFile(fname string, res interface{}) {
 	bytes, err := ioutil.ReadFile(fname)
 	if err != nil {
 		panic(err)
 	}
-	if err := json.Unmarshal(bytes, res); err != nil {
-		panic(err)
-	}
-}
+	JsonUnmarshal(bytes, res)}
 
 func checkErr(err error) {
 	if err != nil {
@@ -35,16 +32,28 @@ func checkErr(err error) {
 	}
 }
 
-func jsonResponse(w http.ResponseWriter, x interface{}) {
+func JsonMarshal(x interface{}) []byte {
 	bytes, err := json.Marshal(x)
 	if err != nil {
 		panic(err)
 	}
+	return bytes
+}
+
+func JsonUnmarshal(bytes []byte, x interface{}) {
+	err := json.Unmarshal(bytes, x)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func JsonResponse(w http.ResponseWriter, x interface{}) {
+	bytes := JsonMarshal(x)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(bytes)
 }
 
-func jsonRequest(w http.ResponseWriter, r *http.Request, x interface{}) error {
+func JsonRequest(w http.ResponseWriter, r *http.Request, x interface{}) error {
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(400)
@@ -59,7 +68,7 @@ func jsonRequest(w http.ResponseWriter, r *http.Request, x interface{}) error {
 
 const Debug bool = false
 
-func printStderr(prefix string, stderr io.ReadCloser, onlyDebug bool) {
+func PrintStderr(prefix string, stderr io.ReadCloser, onlyDebug bool) {
 	rd := bufio.NewReader(stderr)
 	for {
 		line, err := rd.ReadString('\n')
@@ -79,7 +88,7 @@ func printStderr(prefix string, stderr io.ReadCloser, onlyDebug bool) {
 	}
 }
 
-func command(prefix string, onlyDebug bool, command string, args ...string) (*exec.Cmd, io.WriteCloser, io.ReadCloser) {
+func Command(prefix string, onlyDebug bool, command string, args ...string) (*exec.Cmd, io.WriteCloser, io.ReadCloser) {
 	cmd := exec.Command(command, args...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -96,11 +105,11 @@ func command(prefix string, onlyDebug bool, command string, args ...string) (*ex
 	if err := cmd.Start(); err != nil {
 		panic(err)
 	}
-	go printStderr(prefix, stderr, onlyDebug)
+	go PrintStderr(prefix, stderr, onlyDebug)
 	return cmd, stdin, stdout
 }
 
-func mod(a, b int) int {
+func Mod(a, b int) int {
 	x := a%b
 	if x < 0 {
 		x = x+b

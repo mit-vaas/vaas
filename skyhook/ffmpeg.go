@@ -1,4 +1,4 @@
-package main
+package skyhook
 
 import (
 	//"github.com/mitroadmaps/gomapinfer/image"
@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
+	"image/png"
 	"io"
 	"log"
 	"os"
@@ -56,7 +57,7 @@ func ImageFromFile(fname string) Image {
 	}
 }
 
-func (im Image) AsJPG() []byte {
+func (im Image) AsImage() image.Image {
 	pixbuf := make([]byte, im.Width*im.Height*4)
 	j := 0
 	channels := 0
@@ -75,8 +76,20 @@ func (im Image) AsJPG() []byte {
 		Stride: im.Width*4,
 		Rect: image.Rect(0, 0, im.Width, im.Height),
 	}
+	return img
+}
+
+func (im Image) AsJPG() []byte {
 	buf := new(bytes.Buffer)
-	if err := jpeg.Encode(buf, img, nil); err != nil {
+	if err := jpeg.Encode(buf, im.AsImage(), nil); err != nil {
+		panic(err)
+	}
+	return buf.Bytes()
+}
+
+func (im Image) AsPNG() []byte {
+	buf := new(bytes.Buffer)
+	if err := png.Encode(buf, im.AsImage()); err != nil {
 		panic(err)
 	}
 	return buf.Bytes()
@@ -131,7 +144,7 @@ func ffmpegTime(index int) string {
 func ReadFfmpeg(fname string, start int, end int, width int, height int) ffmpegReader {
 	log.Printf("[ffmpeg] from %s extract frames [%d:%d) %dx%d", fname, start, end, width, height)
 
-	cmd, _, stdout := command(
+	cmd, _, stdout := Command(
 		"ffmpeg", true,
 	 	"ffmpeg", "-i", fname,
 	 	"-ss", ffmpegTime(start), "-to", ffmpegTime(end),
@@ -204,7 +217,7 @@ func GetFrames(slice ClipSlice, width int, height int) ([]Image, error) {
 func MakeVideo(rd VideoReader, width int, height int) (io.ReadCloser, *exec.Cmd) {
 	log.Printf("[ffmpeg] make video (%dx%d)", width, height)
 
-	cmd, stdin, stdout := command(
+	cmd, stdin, stdout := Command(
 		"ffmpeg", true,
 		"ffmpeg", "-f", "rawvideo",
 		"-s", fmt.Sprintf("%dx%d", width, height),

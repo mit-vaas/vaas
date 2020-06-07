@@ -1,4 +1,4 @@
-package main
+package skyhook
 
 import (
 	//"github.com/mitroadmaps/gomapinfer/image"
@@ -35,7 +35,6 @@ var Colors = [][3]uint8{
 // TODO: we can simplify some things like maybe don't even need to store the images here
 type PreviewClip struct {
 	Slice ClipSlice
-	Type DataType
 
 	mu *sync.Mutex
 	cond *sync.Cond
@@ -57,16 +56,16 @@ type PreviewClip struct {
 	ready int
 }
 
-func DrawLabels(t DataType, data Data, labelOffset int, images []Image) {
-	if t == DetectionType || t == TrackType {
+func DrawLabels(data Data, labelOffset int, images []Image) {
+	if data.Type == DetectionType || data.Type == TrackType {
 		detections := data.Detections
 		for i := range images {
 			for _, detection := range detections[labelOffset+i] {
 				var color [3]uint8
-				if t == DetectionType {
+				if data.Type == DetectionType {
 					color = [3]uint8{255, 0, 0}
 				} else {
-					color = Colors[mod(detection.TrackID, len(Colors))]
+					color = Colors[Mod(detection.TrackID, len(Colors))]
 				}
 				images[i].DrawRectangle(detection.Left, detection.Top, detection.Right, detection.Bottom, 2, color)
 			}
@@ -74,10 +73,9 @@ func DrawLabels(t DataType, data Data, labelOffset int, images []Image) {
 	}
 }
 
-func CreatePreview(slice ClipSlice, t DataType, labelBuf *LabelBuffer) *PreviewClip {
+func CreatePreview(slice ClipSlice, labelBuf *LabelBuffer) *PreviewClip {
 	pc := &PreviewClip{
 		Slice: slice,
-		Type: t,
 		labelBuf: labelBuf,
 	}
 	pc.mu = new(sync.Mutex)
@@ -90,12 +88,6 @@ func (pc *PreviewClip) setErr(err error) {
 	pc.err = err
 	pc.cond.Broadcast()
 	pc.mu.Unlock()
-}
-
-func (clipLabel *LabeledClip) LoadPreview() *PreviewClip {
-	filledBuffer := NewLabelBuffer(clipLabel.Label.Type)
-	filledBuffer.Write(clipLabel.Label)
-	return CreatePreview(clipLabel.Slice, clipLabel.Type, filledBuffer)
 }
 
 func (pc *PreviewClip) GetPreview() (Image, error) {
@@ -117,13 +109,13 @@ func (pc *PreviewClip) GetPreview() (Image, error) {
 				pc.mu.Unlock()
 			}
 
-			data, err := pc.labelBuf.Peek(1)
+			data, err := pc.labelBuf.Peek(0, 1)
 			if err != nil {
 				pc.setErr(err)
 				return
 			}
 
-			if pc.Type == VideoType {
+			if data.Type == VideoType {
 				images := data.Images
 				setPreview(images[0])
 				return
@@ -141,7 +133,7 @@ func (pc *PreviewClip) GetPreview() (Image, error) {
 				pc.setErr(err)
 				return
 			}
-			DrawLabels(pc.Type, data, 0, []Image{im})
+			DrawLabels(data, 0, []Image{im})
 			setPreview(im)
 		}()
 	}
@@ -206,7 +198,7 @@ func (rd *PCVideoReader) Read(p []byte) (int, error) {
 // Helper background thread to load video frames.
 // Called by GetVideo.
 func (pc *PreviewClip) loadFrames() {
-	if pc.Type == VideoType {
+	if pc.labelBuf.Type() == VideoType {
 		return
 	}
 
@@ -259,16 +251,16 @@ func (pc *PreviewClip) loadLabels() {
 	}
 
 	for myReady < pc.Slice.Length() {
-		data, err := pc.labelBuf.Read(0)
+		data, err := pc.labelBuf.Read(myReady, 0)
 		n := data.Length()
 		if err != nil {
 			pc.setErr(err)
 			return
 		} else if n == 0 {
-			panic(fmt.Errorf("CreatePreview: got empty label type=%v slice=%v", pc.Type, pc.Slice))
+			panic(fmt.Errorf("CreatePreview: got empty label type=%v slice=%v", data.Type, pc.Slice))
 		}
 
-		if pc.Type == VideoType {
+		if data.Type == VideoType {
 			images := data.Images
 			pc.mu.Lock()
 			pc.images = append(pc.images, images...)
@@ -284,7 +276,7 @@ func (pc *PreviewClip) loadLabels() {
 					pc.setErr(err)
 					return
 				}
-				DrawLabels(pc.Type, data, myReady-oldReady, images)
+				DrawLabels(data, myReady-oldReady, images)
 				myReady += len(images)
 				updateReady()
 			}

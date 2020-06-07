@@ -1,4 +1,4 @@
-package main
+package skyhook
 
 import (
 	"fmt"
@@ -19,7 +19,8 @@ type Detection struct {
 	Top int `json:"top"`
 	Right int `json:"right"`
 	Bottom int `json:"bottom"`
-	Score float64 `json:"score"`
+	Score float64 `json:"score,omitempty"`
+	Class string `json:"class,omitempty"`
 	TrackID int `json:"track_id"`
 }
 
@@ -148,7 +149,7 @@ func (d Data) IsEmpty() bool {
 }
 
 type LabelBuffer struct {
-	unread Data
+	buf Data
 	mu sync.Mutex
 	cond *sync.Cond
 	err error
@@ -156,56 +157,55 @@ type LabelBuffer struct {
 }
 
 func NewLabelBuffer(t DataType) *LabelBuffer {
-	buf := &LabelBuffer{unread: Data{Type: t}}
+	buf := &LabelBuffer{buf: Data{Type: t}}
 	buf.cond = sync.NewCond(&buf.mu)
 	return buf
 }
 
 // Read exactly n frames, or any non-zero amount if n<=0
-func (buf *LabelBuffer) Read(n int) (Data, error) {
+func (buf *LabelBuffer) Read(start int, n int) (Data, error) {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
-	for (buf.unread.Length() == 0 || buf.unread.Length() < n) && buf.err == nil && !buf.done {
+	wait := n
+	if wait <= 0 {
+		wait = 1
+	}
+	for buf.buf.Length() < start+wait && buf.err == nil && !buf.done {
 		buf.cond.Wait()
 	}
 	if buf.err != nil {
 		return Data{}, buf.err
-	} else if buf.unread.Length() == 0 && buf.done {
+	} else if buf.buf.Length() == start && buf.done {
 		return Data{}, io.EOF
-	} else if buf.unread.Length() < n {
+	} else if buf.buf.Length() < start+n {
 		return Data{}, io.ErrUnexpectedEOF
 	}
 
-	var data Data
 	if n <= 0 {
-		data = buf.unread
-		l := buf.unread.Length()
-		buf.unread = buf.unread.Slice(l, l)
+		return buf.buf.Slice(start, buf.buf.Length()), nil
 	} else {
-		data = buf.unread.Slice(0, n)
-		buf.unread = buf.unread.Slice(n, buf.unread.Length())
+		return buf.buf.Slice(start, start+n), nil
 	}
-	return data, nil
 }
 
 // Wait for at least n to complete, and read them without removing from the buffer.
-func (buf *LabelBuffer) Peek(n int) (Data, error) {
+func (buf *LabelBuffer) Peek(start int, n int) (Data, error) {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
 	if n > 0 {
-		for buf.unread.Length() < n && buf.err == nil && !buf.done {
+		for buf.buf.Length() < start+n && buf.err == nil && !buf.done {
 			buf.cond.Wait()
 		}
 	}
 	if buf.err != nil {
 		return Data{}, buf.err
 	}
-	return buf.unread, nil
+	return buf.buf.Slice(start, buf.buf.Length()), nil
 }
 
 func (buf *LabelBuffer) Write(data Data) {
 	buf.mu.Lock()
-	buf.unread = buf.unread.Append(data)
+	buf.buf = buf.buf.Append(data)
 	buf.cond.Broadcast()
 	buf.mu.Unlock()
 }
@@ -224,22 +224,17 @@ func (buf *LabelBuffer) Error(err error) {
 	buf.mu.Unlock()
 }
 
-func (buf *LabelBuffer) ReadAll(slice ClipSlice) (*LabeledClip, error) {
-	data := Data{Type: buf.unread.Type}
-	for data.Length() < slice.Length() {
-		cur, err := buf.Read(0)
+func (buf *LabelBuffer) ReadFull(length int) (Data, error) {
+	return buf.Read(0, length)
+	/*data := Data{Type: buf.buf.Type}
+	for data.Length() < length {
+		cur, err := buf.Read(data.Length(), 0)
 		if err != nil {
-			return nil, err
+			return Data{}, err
 		}
 		data = data.Append(cur)
 	}
-
-	clipLabel := LabeledClip{
-		Slice: slice,
-		Type: data.Type,
-		Label: data,
-	}
-	return &clipLabel, nil
+	return data, nil*/
 }
 
 func (buf *LabelBuffer) FromVideoReader(rd VideoReader) {
@@ -257,11 +252,15 @@ func (buf *LabelBuffer) FromVideoReader(rd VideoReader) {
 	}
 }
 
+func (buf *LabelBuffer) Type() DataType {
+	return buf.buf.Type
+}
+
 // Returns a new buffer that reads from this buffer without removing the read
 // content. This allows single-writer multi-reader mode, where all the readers
 // read from different splits of the original buffer.
 // This also optionally slices the buffer so that it only yields data in [start, end).
-func (buf *LabelBuffer) Slice(start int, end int) *LabelBuffer {
+/*func (buf *LabelBuffer) Slice(start int, end int) *LabelBuffer {
 	nbuf := NewLabelBuffer(buf.unread.Type)
 	go func() {
 		cur := start
@@ -290,4 +289,4 @@ func (buf *LabelBuffer) Slice(start int, end int) *LabelBuffer {
 		}
 	}()
 	return nbuf
-}
+}*/

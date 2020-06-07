@@ -1,8 +1,7 @@
-package main
+package skyhook
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -37,7 +36,7 @@ func (parent Parent) DataType() DataType {
 type Op struct {
 	ID int
 	Name string
-	ParentStrs []string
+	ParentSpecs []Parent // parents without *Op filled in
 	Type DataType
 	Ext string
 	Code string
@@ -48,13 +47,20 @@ type Op struct {
 
 const OpQuery = "SELECT id, name, parents, type, ext, code, unit FROM ops"
 
-func opListHelper(rows Rows) []*Op {
+func opListHelper(rows *Rows) []*Op {
 	var ops []*Op
 	for rows.Next() {
 		var op Op
 		var parents string
 		rows.Scan(&op.ID, &op.Name, &parents, &op.Type, &op.Ext, &op.Code, &op.Unit)
-		op.ParentStrs = strings.Split(parents, ",")
+		for _, ps := range strings.Split(parents, ",") {
+			var parent Parent
+			parent.Type = ParentType(ps[0:1])
+			if parent.Type == OpParent {
+				parent.ID, _ = strconv.Atoi(ps[1:])
+			}
+			op.ParentSpecs = append(op.ParentSpecs, parent)
+		}
 		ops = append(ops, &op)
 	}
 	return ops
@@ -80,11 +86,8 @@ func (op *Op) Load() {
 	if len(op.Parents) > 0 {
 		return
 	}
-	for _, ps := range op.ParentStrs {
-		var parent Parent
-		parent.Type = ParentType(ps[0:1])
+	for _, parent := range op.ParentSpecs {
 		if parent.Type == OpParent {
-			parent.ID, _ = strconv.Atoi(ps[1:])
 			parent.Op = GetOp(parent.ID)
 			parent.Op.Load()
 		}
@@ -104,6 +107,10 @@ func (op *Op) getNode(video Video) *Node {
 			Type: op.Type,
 		}
 	}
+}
+
+func (op *Op) ListNodes() []*Node {
+	return ListNodesWithQuery(fmt.Sprintf("o%d", op.ID))
 }
 
 // Returns label for this op on the specified clip.
@@ -134,6 +141,8 @@ func (op *Op) Test(slices []ClipSlice) []*LabelBuffer {
 
 	if op.Ext == "python" {
 		return op.testPython(parents, slices)
+	} else if op.Ext == "model" {
+		return op.testModel(parents, slices)
 	}
 	return nil
 }
@@ -155,17 +164,14 @@ func (op *Op) testPython(parents [][]*LabelBuffer, slices []ClipSlice) []*LabelB
 	if err := tempFile.Close(); err != nil {
 		panic(err)
 	}
-	cmd, stdin, stdout := command(
+	cmd, stdin, stdout := Command(
 		fmt.Sprintf("exec-pyop-%s", op.Name), false,
 		"/usr/bin/python3", tempFile.Name(),
 	)
 
 	go func() {
 		writeJSONPacket := func(x interface{}) {
-			bytes, err := json.Marshal(x)
-			if err != nil {
-				panic(err)
-			}
+			bytes := JsonMarshal(x)
 			buf := make([]byte, 5)
 			binary.BigEndian.PutUint32(buf[0:4], uint32(len(bytes)))
 			buf[4] = 'j'
@@ -212,7 +218,7 @@ func (op *Op) testPython(parents [][]*LabelBuffer, slices []ClipSlice) []*LabelB
 					// peek each parent to see how much we can read
 					length := -1
 					for parentIdx := range parents {
-						data, err := parents[parentIdx][sliceIdx].Peek(1)
+						data, err := parents[parentIdx][sliceIdx].Peek(completed, 1)
 						if err != nil {
 							donech <- err
 							return
@@ -224,7 +230,7 @@ func (op *Op) testPython(parents [][]*LabelBuffer, slices []ClipSlice) []*LabelB
 
 					datas := make([]Data, len(parents))
 					for parentIdx := range parents {
-						data, err := parents[parentIdx][sliceIdx].Read(length)
+						data, err := parents[parentIdx][sliceIdx].Read(completed, length)
 						if err != nil {
 							donech <- err
 							return
@@ -313,13 +319,9 @@ func (op *Op) testPython(parents [][]*LabelBuffer, slices []ClipSlice) []*LabelB
 			}
 			data := Data{Type: op.Type}
 			if op.Type == DetectionType || op.Type == TrackType {
-				if err := json.Unmarshal(buf, &data.Detections); err != nil {
-					panic(err)
-				}
+				JsonUnmarshal(buf, &data.Detections)
 			} else if op.Type == ClassType {
-				if err := json.Unmarshal(buf, &data.Classes); err != nil {
-					panic(err)
-				}
+				JsonUnmarshal(buf, &data.Classes)
 			} else if op.Type == VideoType {
 				nframes := int(binary.BigEndian.Uint32(buf[0:4]))
 				height := int(binary.BigEndian.Uint32(buf[4:8]))
@@ -357,7 +359,7 @@ type Node struct {
 
 const NodeQuery = "SELECT n.id, n.query, v.id, v.name, v.ext, n.ls_id, n.type FROM nodes AS n, videos AS v WHERE v.id = n.video_id"
 
-func nodeListHelper(rows Rows) []*Node {
+func nodeListHelper(rows *Rows) []*Node {
 	var nodes []*Node
 	for rows.Next() {
 		var node Node
@@ -385,6 +387,11 @@ func GetNode(video Video, query string) *Node {
 	}
 }
 
+func ListNodesWithQuery(query string) []*Node {
+	rows := db.Query(NodeQuery + " AND n.query = ?", query)
+	return nodeListHelper(rows)
+}
+
 func (node *Node) Load() {
 	if len(node.Ops) > 0 || node.LabelSet != nil {
 		return
@@ -398,7 +405,6 @@ func (node *Node) Load() {
 	}
 }
 
-// TODO: this should return some kind of LabelWriter so that we can stream the labels back to caller
 func (node *Node) Test(slices []ClipSlice) []*LabelBuffer {
 	node.Load()
 	// (1) if we have the labels in our LabelSet, then just return that
@@ -413,54 +419,76 @@ func (node *Node) Test(slices []ClipSlice) []*LabelBuffer {
 	var missingSlices []ClipSlice
 	var missingIndexes []int // indexes in arg slices
 	for _, indexes := range uniqueClips {
-		/*ok := func() bool {
-			if node.LabelSet == nil {
-				return false
-			}
-			clipLabel := node.LabelSet.GetByClip(slices[indexes[0]].Clip)
-			if clipLabel.Label == nil {
-				return false
-			}
-			for _, idx := range indexes {
-				outputs[idx] = clipLabel.GetSlice(slices[idx].Start, slices[idx].End)
-			}
-			return true
-		}()
-		if !ok {
-			missingIndexes = append(missingIndexes, indexes...)
-			for _, idx := range indexes {
-				missingSlices = append(missingSlices, slices[idx])
-			}
-		}*/
 		for _, idx := range indexes {
-			var clipLabel *LabeledClip
 			if node.LabelSet != nil {
-				clipLabel = node.LabelSet.GetBySlice(slices[idx])
+				label := node.LabelSet.GetBySlice(slices[idx])
+				if label != nil {
+					outputs[idx] = label.Load(slices[idx])
+					continue
+				}
 			}
-			if clipLabel == nil || clipLabel.Label.Nil() {
-				missingSlices = append(missingSlices, slices[idx])
-				missingIndexes = append(missingIndexes, idx)
-				continue
-			}
-			outputs[idx] = NewLabelBuffer(clipLabel.Label.Type)
-			outputs[idx].Write(clipLabel.Label)
+			missingSlices = append(missingSlices, slices[idx])
+			missingIndexes = append(missingIndexes, idx)
 		}
 	}
 	log.Printf("[exec (%s) %v] missing slices = %v", node.Query, slices, missingSlices)
 	if len(missingSlices) == 0 {
 		return outputs
 	}
+
+	// if no label set, create one to store the exec outputs
+	if node.LabelSet == nil {
+		db.Transaction(func(tx Tx) {
+			var lsID *int
+			tx.QueryRow("SELECT ls_id FROM nodes WHERE id = ?", node.ID).Scan(&lsID)
+			if lsID != nil {
+				node.LabelSetID = lsID
+				return
+			}
+			name := fmt.Sprintf("exec-%v-%d", node.Query, node.ID)
+			res := tx.Exec(
+				"INSERT INTO label_sets (name, unit, src_video, video_id, label_type) VALUES (?, ?, ?, ?, ?)",
+				name, 1, node.Video.ID, node.Video.ID, node.Type,
+			)
+			node.LabelSetID = new(int)
+			*node.LabelSetID = res.LastInsertId()
+			tx.Exec("UPDATE nodes SET ls_id = ? WHERE id = ?", node.LabelSetID, node.ID)
+		})
+		node.LabelSet = GetLabelSet(*node.LabelSetID)
+	}
+
 	// for now we only handle single ops...
 	missingOutputs := node.Ops[0].Test(missingSlices)
 	for i := range missingOutputs {
 		outputs[missingIndexes[i]] = missingOutputs[i]
 	}
+
+	// write the outputs
+	go func() {
+		for i := range missingOutputs {
+			data, err := missingOutputs[i].ReadFull(missingSlices[i].Length())
+			if err != nil {
+				continue
+			}
+			node.LabelSet.AddLabel(missingSlices[i], data)
+		}
+	}()
+
 	return outputs
+}
+
+// clear saved labels at a node
+func (node *Node) Clear() {
+	node.Load()
+	if node.LabelSet != nil {
+		log.Printf("[exec (%s)] clearing label set %d", node.Query, node.LabelSet.ID)
+		node.LabelSet.Clear()
+	}
 }
 
 func init() {
 	http.HandleFunc("/ops", func(w http.ResponseWriter, r *http.Request) {
-		jsonResponse(w, ListOps())
+		JsonResponse(w, ListOps())
 	})
 	http.HandleFunc("/op", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
@@ -471,7 +499,7 @@ func init() {
 			return
 		}
 		if r.Method == "GET" {
-			jsonResponse(w, op)
+			JsonResponse(w, op)
 			return
 		} else if r.Method != "POST" {
 			w.WriteHeader(404)
@@ -480,6 +508,45 @@ func init() {
 
 		code := r.PostForm.Get("code")
 		db.Exec("UPDATE ops SET code = ? WHERE id = ?", code, op.ID)
+
+		// delete all saved labels at the node for this op
+		// and recursively delete for nodes that depend on that node
+		affectedOps := map[int]*Op{op.ID: op}
+		queue := []*Op{op}
+		allOps := ListOps()
+		for len(queue) > 0 {
+			head := queue[0]
+			queue = queue[1:]
+			// find all children of head
+			for _, op := range allOps {
+				if affectedOps[op.ID] != nil {
+					continue
+				}
+				isChild := false
+				for _, parent := range op.ParentSpecs {
+					if parent.Type != OpParent {
+						continue
+					}
+					if parent.ID != head.ID {
+						continue
+					}
+					isChild = true
+				}
+				if !isChild {
+					continue
+				}
+
+				affectedOps[op.ID] = op
+				queue = append(queue, op)
+			}
+		}
+
+		for _, op := range affectedOps {
+			nodes := op.ListNodes()
+			for _, node := range nodes {
+				node.Clear()
+			}
+		}
 	})
 
 	http.HandleFunc("/exec/test", func(w http.ResponseWriter, r *http.Request) {
@@ -506,10 +573,10 @@ func init() {
 			return
 		}
 		log.Printf("[exec (%s) %v] test: got labelBuf, loading preview", query, slice)
-		pc := CreatePreview(slice, node.Type, labelBuf)
+		pc := CreatePreview(slice, labelBuf)
 		uuid := cache.Add(pc)
 		log.Printf("[exec (%s) %v] test: cached preview with %d frames, uuid=%s", query, slice, pc.Slice.Length(), uuid)
-		jsonResponse(w, VisualizeResponse{
+		JsonResponse(w, VisualizeResponse{
 			PreviewURL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", uuid),
 			URL: fmt.Sprintf("/cache/view?id=%s&type=mp4", uuid),
 			Width: slice.Clip.Width,
@@ -542,19 +609,21 @@ func init() {
 				w.WriteHeader(404)
 				return
 			}
-			clipLabel, err := labelBuf.ReadAll(slice)
+			data, err := labelBuf.ReadFull(slice.Length())
 			if err != nil {
 				log.Printf("[exec (%s) %v] error reading exec output: %v", query, slice, err)
 				w.WriteHeader(400)
 				return
-			} else if clipLabel.Label.IsEmpty() {
+			} else if data.IsEmpty() {
 				continue
 			}
 			log.Printf("[exec (%s) %v] test: got labelBuf, loading preview", query, slice)
-			pc := clipLabel.LoadPreview()
+			nbuf := NewLabelBuffer(data.Type)
+			nbuf.Write(data)
+			pc := CreatePreview(slice, nbuf)
 			uuid := cache.Add(pc)
 			log.Printf("[exec (%s) %v] test: cached preview with %d frames, uuid=%s", query, slice, pc.Slice.Length(), uuid)
-			jsonResponse(w, VisualizeResponse{
+			JsonResponse(w, VisualizeResponse{
 				PreviewURL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", uuid),
 				URL: fmt.Sprintf("/cache/view?id=%s&type=mp4", uuid),
 				Width: slice.Clip.Width,

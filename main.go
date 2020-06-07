@@ -1,6 +1,9 @@
 package main
 
 import (
+	_ "./skyhook"
+	_ "./models"
+
 	"log"
 	"net/http"
 )

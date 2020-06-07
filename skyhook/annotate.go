@@ -1,7 +1,6 @@
-package main
+package skyhook
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -23,6 +22,7 @@ type Label struct {
 	ID int
 	LabelSet LabelSet
 	Slice ClipSlice
+	OutClipID *int
 }
 
 const LabelSetQuery = `
@@ -33,7 +33,7 @@ const LabelSetQuery = `
 	WHERE sv.id = ls.src_video AND v.id = ls.video_id
 `
 
-func labelSetListHelper(rows Rows) []LabelSet {
+func labelSetListHelper(rows *Rows) []LabelSet {
 	var sets []LabelSet
 	for rows.Next() {
 		var ls LabelSet
@@ -70,7 +70,7 @@ func NewLabelSet(name string, srcVideoID int, labelType DataType) (*LabelSet, er
 	var lsID int
 	if labelType != VideoType {
 		res := db.Exec("INSERT INTO videos (name, ext) VALUES (?, 'jpeg')", "labels: " + name)
-		videoID := videoRes.LastInsertId()
+		videoID := res.LastInsertId()
 		res = db.Exec(
 			"INSERT INTO label_sets (name, unit, src_video, video_id, label_type) VALUES (?, ?, ?, ?, ?)",
 			name, 1, srcVideoID, videoID, labelType,
@@ -107,7 +107,7 @@ func NewLabelSet(name string, srcVideoID int, labelType DataType) (*LabelSet, er
 
 func (ls LabelSet) ListLabels() []Label {
 	rows := db.Query(
-		`SELECT l.id, c.id, c.nframes, c.width, c.height, v.id, v.name, v.ext, l.start, l.end
+		`SELECT l.id, c.id, c.nframes, c.width, c.height, v.id, v.name, v.ext, l.start, l.end, l.out_clip_id
 		FROM labels AS l, clips AS c, videos AS v
 		WHERE c.id = l.clip_id AND v.id = c.video_id
 		AND l.set_id = ?
@@ -120,7 +120,7 @@ func (ls LabelSet) ListLabels() []Label {
 		rows.Scan(
 			&label.ID, &label.Slice.Clip.ID, &label.Slice.Clip.Frames, &label.Slice.Clip.Width, &label.Slice.Clip.Height,
 			&label.Slice.Clip.Video.ID, &label.Slice.Clip.Video.Name, &label.Slice.Clip.Video.Ext,
-			&label.Slice.Start, &label.Slice.End,
+			&label.Slice.Start, &label.Slice.End, &label.OutClipID,
 		)
 		label.LabelSet = ls
 		labels = append(labels, label)
@@ -138,33 +138,16 @@ func (ls LabelSet) Next() []Image {
 	return images
 }
 
-type LabeledClip struct {
-	Slice ClipSlice
-	Type DataType
-	Label Data
-	L *Label
-}
-
-func (clipLabel *LabeledClip) GetSlice(start int, end int) *LabeledClip {
-	prevSlice := clipLabel.Slice
-	slice := ClipSlice{prevSlice.Clip, prevSlice.Start+start, prevSlice.Start+end}
-	label := clipLabel.Label.Slice(start, end)
-	return &LabeledClip{
-		Slice: slice,
-		Type: clipLabel.Type,
-		Label: label,
-	}
-}
-
-func (ls LabelSet) Get(index int) *LabeledClip {
+func (ls LabelSet) Get(index int) *Label {
 	labels := ls.ListLabels()
 	if index < 0 || index >= len(labels) {
 		return nil
 	}
-	return labels[index].Load()
+	label := labels[index]
+	return &label
 }
 
-func (ls LabelSet) GetBySlice(slice ClipSlice) *LabeledClip {
+func (ls LabelSet) GetBySlice(slice ClipSlice) *Label {
 	labels := ls.ListLabels()
 	for _, label := range labels {
 		if label.Slice.Clip.ID != slice.Clip.ID {
@@ -173,54 +156,57 @@ func (ls LabelSet) GetBySlice(slice ClipSlice) *LabeledClip {
 		if label.Slice.Start > slice.Start || label.Slice.End < slice.End {
 			continue
 		}
-		clipLabel := label.Load()
-		return clipLabel.GetSlice(slice.Start-label.Slice.Start, slice.End-label.Slice.Start)
+		return &label
+		/*clipLabel := label.Load()
+		return clipLabel.GetSlice(slice.Start-label.Slice.Start, slice.End-label.Slice.Start)*/
 	}
 	return nil
 }
 
-func (l Label) Load() *LabeledClip {
-	t := l.LabelSet.Type
-	clipLabel := &LabeledClip{
-		Slice: l.Slice,
-		L: &l,
-		Type: t,
+func (l Label) Load(slice ClipSlice) *LabelBuffer {
+	if slice.Clip.ID != l.Slice.Clip.ID || slice.Start < l.Slice.Start || slice.End > l.Slice.End {
+		return nil
 	}
-
-	if t == VideoType {
-		// ??? how to load it without loading whole thing
-
-	} else {
-		bytes, err := ioutil.ReadFile(fmt.Sprintf("labels/%d/%d.json", l.LabelSet.ID, l.ID))
-		if err != nil {
-			log.Printf("[annotate] error loading %d/%d: %v", l.LabelSet.ID, l.ID, err)
-			return clipLabel
-		}
-		clipLabel.Label = Data{Type: t}
-		if t == DetectionType || t == TrackType {
-			if err := json.Unmarshal(bytes, &clipLabel.Label.Detections); err != nil {
-				panic(err)
+	buf := NewLabelBuffer(l.LabelSet.Type)
+	go func() {
+		if buf.Type() == VideoType {
+			// need to get a slice of the out clip
+			outClip := GetClip(*l.OutClipID)
+			outSlice := ClipSlice{
+				Clip: *outClip,
+				Start: slice.Start - l.Slice.Start,
+				End: slice.End - l.Slice.Start,
 			}
-		} else if t == ClassType {
-			if err := json.Unmarshal(bytes, &clipLabel.Label.Classes); err != nil {
-				panic(err)
+			rd := ReadVideo(outSlice, outSlice.Clip.Width, outSlice.Clip.Height)
+			buf.FromVideoReader(rd)
+		} else {
+			bytes, err := ioutil.ReadFile(fmt.Sprintf("labels/%d/%d.json", l.LabelSet.ID, l.ID))
+			if err != nil {
+				log.Printf("[annotate] error loading %d/%d: %v", l.LabelSet.ID, l.ID, err)
+				buf.Error(err)
+				return
 			}
+			data := Data{Type: buf.Type()}
+			if buf.Type() == DetectionType || buf.Type() == TrackType {
+				JsonUnmarshal(bytes, &data.Detections)
+			} else if buf.Type() == ClassType {
+				JsonUnmarshal(bytes, &data.Classes)
+			}
+			data = data.Slice(slice.Start - l.Slice.Start, slice.End - l.Slice.Start)
+			buf.Write(data)
 		}
-	}
-
-	return clipLabel
+	}()
+	return buf
 }
 
 func (ls LabelSet) Length() int {
-	// TODO: what we really need is a function that checks which labels
-	//       are available on the filesystem
-	return len(ls.Video.ListClips())
+	return len(ls.ListLabels())
 }
 
-func (ls LabelSet) AddClip(images []Image, label Data) Label {
+func (ls LabelSet) AddClip(images []Image, data Data) Label {
 	clip := ls.Video.AddClip(len(images), images[0].Width, images[0].Height)
 	os.Mkdir(fmt.Sprintf("clips/%d", ls.Video.ID), 0755)
-	os.Mkdir(fmt.Sprintf("labels/%d", ls.Video.ID), 0755)
+	os.Mkdir(fmt.Sprintf("labels/%d", ls.ID), 0755)
 	if ls.Video.Ext == "jpeg" {
 		os.Mkdir(fmt.Sprintf("clips/%d/%d", ls.Video.ID, clip.ID), 0755)
 		for i, im := range images {
@@ -236,18 +222,47 @@ func (ls LabelSet) AddClip(images []Image, label Data) Label {
 		Slice: clip.ToSlice(),
 		LabelSet: ls,
 	}
-	ls.UpdateLabel(l, label)
+	ls.UpdateLabel(l, data)
 	return l
 }
 
-func (ls LabelSet) UpdateLabel(l Label, label Data) {
-	bytes, err := json.Marshal(label.Get())
-	if err != nil {
-		panic(err)
+// Add label without adding a new clip.
+// Currently used by exec to store query outputs.
+func (ls LabelSet) AddLabel(slice ClipSlice, data Data) Label {
+	os.Mkdir(fmt.Sprintf("labels/%d", ls.ID), 0755)
+	res := db.Exec("INSERT INTO labels (set_id, clip_id, start, end) VALUES (?, ?, ?, ?)", ls.ID, slice.Clip.ID, slice.Start, slice.End)
+	l := Label{
+		ID: res.LastInsertId(),
+		Slice: slice,
+		LabelSet: ls,
 	}
-	fname := fmt.Sprintf("labels/%d/%d.json", ls.Video.ID, l.ID)
+	log.Printf("[annotate ls %d] add label for slice %v", ls.ID, slice)
+	ls.UpdateLabel(l, data)
+	return l
+}
+
+func (ls LabelSet) UpdateLabel(l Label, data Data) {
+	bytes := JsonMarshal(data.Get())
+	fname := fmt.Sprintf("labels/%d/%d.json", l.LabelSet.ID, l.ID)
 	if err := ioutil.WriteFile(fname, bytes, 0644); err != nil {
 		panic(err)
+	}
+}
+
+// delete all labels in this set
+func (ls LabelSet) Clear() {
+	for _, label := range ls.ListLabels() {
+		label.Delete()
+	}
+}
+
+func (l Label) Delete() {
+	if l.LabelSet.Type == VideoType {
+		// TODO
+	} else {
+		fname := fmt.Sprintf("labels/%d/%d.json", l.LabelSet.ID, l.ID)
+		os.Remove(fname)
+		db.Exec("DELETE FROM labels WHERE id = ?", l.ID)
 	}
 }
 
@@ -287,7 +302,7 @@ type VisualizeResponse struct {
 func init() {
 	http.HandleFunc("/labelsets", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
-			jsonResponse(w, ListLabelSets())
+			JsonResponse(w, ListLabelSets())
 			return
 		} else if r.Method != "POST" {
 			w.WriteHeader(404)
@@ -303,7 +318,7 @@ func init() {
 			w.WriteHeader(400)
 			return
 		}
-		jsonResponse(w, ls)
+		JsonResponse(w, ls)
 	})
 
 	http.HandleFunc("/labelsets/labels", func(w http.ResponseWriter, r *http.Request) {
@@ -317,21 +332,25 @@ func init() {
 			return
 		}
 
-		clipLabel := ls.Get(index)
-		if clipLabel != nil {
-			jsonResponse(w, LabelsResponse{
-				URL: fmt.Sprintf("/clips/get?id=%d", clipLabel.Slice.Clip.ID),
-				Width: clipLabel.Slice.Clip.Width,
-				Height: clipLabel.Slice.Clip.Height,
+		label := ls.Get(index)
+		if label != nil {
+			data, err := label.Load(label.Slice).ReadFull(label.Slice.Length())
+			if err != nil {
+				panic(err)
+			}
+			JsonResponse(w, LabelsResponse{
+				URL: fmt.Sprintf("/clips/get?id=%d", label.Slice.Clip.ID),
+				Width: label.Slice.Clip.Width,
+				Height: label.Slice.Clip.Height,
 				Index: index,
-				Labels: clipLabel.Label.Get(),
+				Labels: data.Get(),
 			})
 			return
 		}
 
 		images := ls.Next()
 		uuid := cache.Add(images)
-		jsonResponse(w, LabelsResponse{
+		JsonResponse(w, LabelsResponse{
 			URL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", uuid),
 			Width: images[0].Width,
 			Height: images[0].Height,
@@ -342,7 +361,7 @@ func init() {
 
 	http.HandleFunc("/labelsets/detection-label", func(w http.ResponseWriter, r *http.Request) {
 		var request DetectionLabelRequest
-		if err := jsonRequest(w, r, &request); err != nil {
+		if err := JsonRequest(w, r, &request); err != nil {
 			return
 		}
 
@@ -370,14 +389,14 @@ func init() {
 			return
 		}
 
-		clipLabel := ls.Get(request.Index)
-		if clipLabel == nil {
-			log.Printf("[annotate] detection-label: no clip at index %d", request.Index)
+		label := ls.Get(request.Index)
+		if label == nil {
+			log.Printf("[annotate] detection-label: no label at index %d", request.Index)
 			w.WriteHeader(400)
 			return
 		}
-		log.Printf("[annotate] update labels for clip %d in ls %d", clipLabel.Slice.Clip.ID, ls.ID)
-		ls.UpdateLabel(*clipLabel.L, Data{
+		log.Printf("[annotate] update labels for clip %d in ls %d", label.Slice.Clip.ID, ls.ID)
+		ls.UpdateLabel(*label, Data{
 			Type: DetectionType,
 // TODO			Detections: request.Labels,
 		})
@@ -385,7 +404,7 @@ func init() {
 
 	http.HandleFunc("/labelsets/class-label", func(w http.ResponseWriter, r *http.Request) {
 		var request ClassLabelRequest
-		if err := jsonRequest(w, r, &request); err != nil {
+		if err := JsonRequest(w, r, &request); err != nil {
 			return
 		}
 
@@ -413,14 +432,14 @@ func init() {
 			return
 		}
 
-		clipLabel := ls.Get(request.Index)
-		if clipLabel == nil {
-			log.Printf("[annotate] class-label: no clip at index %d", request.Index)
+		label := ls.Get(request.Index)
+		if label == nil {
+			log.Printf("[annotate] class-label: no label at index %d", request.Index)
 			w.WriteHeader(400)
 			return
 		}
-		log.Printf("[annotate] update labels for clip %d in ls %d", clipLabel.Slice.Clip.ID, ls.ID)
-		ls.UpdateLabel(*clipLabel.L, Data{
+		log.Printf("[annotate] update labels for clip %d in ls %d", label.Slice.Clip.ID, ls.ID)
+		ls.UpdateLabel(*label, Data{
 			Type: ClassType,
 			Classes: request.Labels,
 		})
@@ -439,25 +458,26 @@ func init() {
 		//       additional clips via visualize-more; currently they will only be
 		//       able to see the first 30 sec in the first clip
 		log.Printf("[annotate] visualize: loading labeled clip %d/%d", lsID, 0)
-		clipLabel := ls.Get(0)
-		if clipLabel == nil {
-			log.Printf("[annotate] visualize: no clips in label set %d", lsID)
+		label := ls.Get(0)
+		if label == nil {
+			log.Printf("[annotate] visualize: no labels in label set %d", lsID)
 			w.WriteHeader(400)
 			return
 		}
-		end := clipLabel.Slice.Clip.Frames
-		if end > VisualizeMaxFrames {
-			end = VisualizeMaxFrames
+		slice := label.Slice
+		if slice.Length() > VisualizeMaxFrames {
+			slice.End = slice.Start + VisualizeMaxFrames
 		}
-		log.Printf("[annotate] visualize: loading preview for clip %d (frames %d to %d)", clipLabel.Slice.Clip.ID, 0, end)
-		pc := clipLabel.GetSlice(0, end).LoadPreview()
+		log.Printf("[annotate] visualize: loading preview for slice %v", slice)
+		buf := label.Load(slice)
+		pc := CreatePreview(slice, buf)
 		uuid := cache.Add(pc)
 		log.Printf("[annotate] visualize: cached preview with %d frames, uuid=%s", pc.Slice.Length(), uuid)
-		jsonResponse(w, VisualizeResponse{
+		JsonResponse(w, VisualizeResponse{
 			PreviewURL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", uuid),
 			URL: fmt.Sprintf("/cache/view?id=%s&type=mp4", uuid),
-			Width: clipLabel.Slice.Clip.Width,
-			Height: clipLabel.Slice.Clip.Height,
+			Width: slice.Clip.Width,
+			Height: slice.Clip.Height,
 			UUID: uuid,
 		})
 	})

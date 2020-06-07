@@ -1,4 +1,4 @@
-package main
+package skyhook
 
 import (
 	"fmt"
@@ -43,7 +43,7 @@ func (slice ClipSlice) Length() int {
 
 const VideoQuery = "SELECT id, name, ext FROM videos"
 
-func videoListHelper(rows Rows) []Video {
+func videoListHelper(rows *Rows) []Video {
 	var videos []Video
 	for rows.Next() {
 		var video Video
@@ -71,7 +71,7 @@ func GetVideo(id int) *Video {
 
 const ClipQuery = "SELECT c.id, v.id, v.name, v.ext, c.nframes, c.width, c.height FROM clips AS c, videos AS v WHERE v.id = c.video_id"
 
-func clipListHelper(rows Rows) []Clip {
+func clipListHelper(rows *Rows) []Clip {
 	var clips []Clip
 	for rows.Next() {
 		var clip Clip
@@ -173,7 +173,7 @@ func (clip Clip) ToSlice() ClipSlice {
 
 func init() {
 	http.HandleFunc("/videos", func(w http.ResponseWriter, r *http.Request) {
-		jsonResponse(w, ListVideos())
+		JsonResponse(w, ListVideos())
 	})
 
 	http.HandleFunc("/clips/get", func(w http.ResponseWriter, r *http.Request) {

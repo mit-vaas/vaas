@@ -1,15 +1,20 @@
-package main
+package skyhook
 
 import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"database/sql"
+	"log"
+	"sync"
 )
+
+const DbDebug bool = false
 
 var db *Database
 
 type Database struct {
 	db *sql.DB
+	mu sync.Mutex
 }
 
 func init() {
@@ -84,48 +89,84 @@ INSERT INTO nodes VALUES (2, 'o2', 1, NULL, 'track');
 */
 }
 
-func (this *Database) Query(q string, args ...interface{}) Rows {
+func (this *Database) Query(q string, args ...interface{}) *Rows {
+	this.mu.Lock()
+	if DbDebug {
+		log.Printf("[db] Query: %v", q)
+	}
 	rows, err := this.db.Query(q, args...)
 	checkErr(err)
-	return Rows{rows}
+	return &Rows{this, true, rows}
 }
 
-func (this *Database) QueryRow(q string, args ...interface{}) Row {
+func (this *Database) QueryRow(q string, args ...interface{}) *Row {
+	this.mu.Lock()
+	if DbDebug {
+		log.Printf("[db] QueryRow: %v", q)
+	}
 	row := this.db.QueryRow(q, args...)
-	return Row{row}
+	return &Row{this, true, row}
 }
 
 func (this *Database) Exec(q string, args ...interface{}) Result {
+	this.mu.Lock()
+	defer this.mu.Unlock()
+	if DbDebug {
+		log.Printf("[db] Exec: %v", q)
+	}
 	result, err := this.db.Exec(q, args...)
 	checkErr(err)
 	return Result{result}
 }
 
-type Rows struct {
-	rows *sql.Rows
+func (this *Database) Transaction(f func(tx Tx)) {
+	this.mu.Lock()
+	f(Tx{this})
+	this.mu.Unlock()
 }
 
-func (r Rows) Close() {
+type Rows struct {
+	db     *Database
+	locked bool
+	rows   *sql.Rows
+}
+
+func (r *Rows) Close() {
 	err := r.rows.Close()
 	checkErr(err)
+	if r.locked {
+		r.db.mu.Unlock()
+		r.locked = false
+	}
 }
 
-func (r Rows) Next() bool {
-	return r.rows.Next()
+func (r *Rows) Next() bool {
+	hasNext := r.rows.Next()
+	if !hasNext && r.locked {
+		r.db.mu.Unlock()
+		r.locked = false
+	}
+	return hasNext
 }
 
-func (r Rows) Scan(dest ...interface{}) {
+func (r *Rows) Scan(dest ...interface{}) {
 	err := r.rows.Scan(dest...)
 	checkErr(err)
 }
 
 type Row struct {
-	row *sql.Row
+	db     *Database
+	locked bool
+	row    *sql.Row
 }
 
 func (r Row) Scan(dest ...interface{}) {
 	err := r.row.Scan(dest...)
 	checkErr(err)
+	if r.locked {
+		r.db.mu.Unlock()
+		r.locked = false
+	}
 }
 
 type Result struct {
@@ -142,4 +183,25 @@ func (r Result) RowsAffected() int {
 	count, err := r.result.RowsAffected()
 	checkErr(err)
 	return int(count)
+}
+
+type Tx struct {
+	db *Database
+}
+
+func (tx Tx) Query(q string, args ...interface{}) Rows {
+	rows, err := tx.db.db.Query(q, args...)
+	checkErr(err)
+	return Rows{tx.db, false, rows}
+}
+
+func (tx Tx) QueryRow(q string, args ...interface{}) Row {
+	row := tx.db.db.QueryRow(q, args...)
+	return Row{tx.db, false, row}
+}
+
+func (tx Tx) Exec(q string, args ...interface{}) Result {
+	result, err := tx.db.db.Exec(q, args...)
+	checkErr(err)
+	return Result{result}
 }

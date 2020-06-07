@@ -39,6 +39,7 @@ def get_tracks(detections):
 		if detections[frame_idx] is None:
 			continue
 		for detection in detections[frame_idx]:
+			detection['frame_idx'] = frame_idx
 			track_id = detection['track_id']
 			if track_id not in track_dict:
 				track_dict[track_id] = []
@@ -64,6 +65,27 @@ def per_frame_decorate(f):
 		if meta['Type'] == 'video':
 			outputs = numpy.stack(outputs)
 		output_packet(job_desc['slice_idx'], job_desc['range'], outputs)
+	return wrap
+
+def all_decorate(f):
+	def wrap(*args):
+		job_desc = args[0]
+		all_inputs = job_desc['state']
+		args = args[1:]
+		if all_inputs is None:
+			all_inputs = [[arg] for arg in args]
+		else:
+			for i, arg in enumerate(args):
+				all_inputs[i].append(arg)
+		if not job_desc['is_last']:
+			return all_inputs
+		for i, l in enumerate(all_inputs):
+			if isinstance(l[0], list):
+				all_inputs[i] = [x for arg in l for x in arg]
+			else:
+				all_inputs[i] = numpy.concatenate(l, axis=0)
+		outputs = f(*all_inputs)
+		output_packet(job_desc['slice_idx'], (0, job_desc['range'][1]), outputs)
 	return wrap
 
 # def f(context, parent1, parent2, ...): ...
