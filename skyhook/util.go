@@ -88,11 +88,21 @@ func PrintStderr(prefix string, stderr io.ReadCloser, onlyDebug bool) {
 	}
 }
 
-func Command(prefix string, onlyDebug bool, command string, args ...string) (*exec.Cmd, io.WriteCloser, io.ReadCloser) {
+type CommandOptions struct {
+	NoStdin bool
+	OnlyDebug bool
+	Stderr *io.ReadCloser
+}
+
+func Command(prefix string, opts CommandOptions, command string, args ...string) (*exec.Cmd, io.WriteCloser, io.ReadCloser) {
 	cmd := exec.Command(command, args...)
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		panic(err)
+	var stdin io.WriteCloser
+	if !opts.NoStdin {
+		var err error
+		stdin, err = cmd.StdinPipe()
+		if err != nil {
+			panic(err)
+		}
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -105,7 +115,11 @@ func Command(prefix string, onlyDebug bool, command string, args ...string) (*ex
 	if err := cmd.Start(); err != nil {
 		panic(err)
 	}
-	go PrintStderr(prefix, stderr, onlyDebug)
+	if opts.Stderr == nil {
+		go PrintStderr(prefix, stderr, opts.OnlyDebug)
+	} else {
+		*opts.Stderr = stderr
+	}
 	return cmd, stdin, stdout
 }
 

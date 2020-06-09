@@ -3,6 +3,7 @@ package skyhook
 import (
 	//"github.com/mitroadmaps/gomapinfer/image"
 
+	"bufio"
 	"bytes"
 	"fmt"
 	"image"
@@ -12,6 +13,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 )
 
 type Image struct {
@@ -145,7 +148,7 @@ func ReadFfmpeg(fname string, start int, end int, width int, height int) ffmpegR
 	log.Printf("[ffmpeg] from %s extract frames [%d:%d) %dx%d", fname, start, end, width, height)
 
 	cmd, _, stdout := Command(
-		"ffmpeg", true,
+		"ffmpeg", CommandOptions{NoStdin: true, OnlyDebug: true},
 	 	"ffmpeg", "-i", fname,
 	 	"-ss", ffmpegTime(start), "-to", ffmpegTime(end),
 	 	"-c:v", "rawvideo", "-pix_fmt", "rgb24", "-f", "rawvideo",
@@ -168,7 +171,9 @@ func (rd ffmpegReader) Read() (Image, error) {
 		rd.Close()
 		return Image{}, err
 	}
-	return ImageFromBytes(rd.width, rd.height, rd.buf), nil
+	buf := make([]byte, len(rd.buf))
+	copy(buf, rd.buf)
+	return ImageFromBytes(rd.width, rd.height, buf), nil
 }
 
 func (rd ffmpegReader) Close() {
@@ -218,9 +223,10 @@ func MakeVideo(rd VideoReader, width int, height int) (io.ReadCloser, *exec.Cmd)
 	log.Printf("[ffmpeg] make video (%dx%d)", width, height)
 
 	cmd, stdin, stdout := Command(
-		"ffmpeg", true,
+		"ffmpeg", CommandOptions{OnlyDebug: true},
 		"ffmpeg", "-f", "rawvideo",
 		"-s", fmt.Sprintf("%dx%d", width, height),
+		//"-r", fmt.Sprintf("%v", FPS),
 		"-pix_fmt", "rgb24", "-i", "-",
 		"-vcodec", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-g", fmt.Sprintf("%v", FPS),
 		//"-vcodec", "mpeg4",
@@ -249,4 +255,27 @@ func MakeVideo(rd VideoReader, width int, height int) (io.ReadCloser, *exec.Cmd)
 	}()
 
 	return stdout, cmd
+}
+
+func Ffprobe(fname string) (width int, height int, duration float64, err error) {
+	cmd, _, stdout := Command(
+		"ffprobe", CommandOptions{NoStdin: true},
+		"ffprobe",
+		"-v", "error", "-select_streams", "v:0",
+		"-show_entries", "stream=width,height,duration",
+		"-of", "csv=s=,:p=0",
+		fname,
+	)
+	rd := bufio.NewReader(stdout)
+	var line string
+	line, err = rd.ReadString('\n')
+	if err != nil {
+		return
+	}
+	parts := strings.Split(strings.TrimSpace(line), ",")
+	width, _ = strconv.Atoi(parts[0])
+	height, _ = strconv.Atoi(parts[1])
+	duration, _ = strconv.ParseFloat(parts[2], 64)
+	cmd.Wait()
+	return
 }

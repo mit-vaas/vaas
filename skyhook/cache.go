@@ -97,7 +97,10 @@ func init() {
 				imReader := &sliceReader{v, 0}
 				rd, cmd := MakeVideo(imReader, v[0].Width, v[0].Height)
 				w.Header().Set("Content-Type", "video/mp4")
-				io.Copy(w, rd)
+				_, err := io.Copy(w, rd)
+				if err != nil {
+					log.Printf("[cache] view: read from MakeVideo: %v", err)
+				}
 				cmd.Wait()
 			}
 		case *PreviewClip:
@@ -108,7 +111,10 @@ func init() {
 				return
 			}
 			w.Header().Set("Content-Type", "video/mp4")
-			io.Copy(w, rd)
+			_, err = io.Copy(w, rd)
+			if err != nil {
+				log.Printf("[cache] view: read from GetVideo: %v", err)
+			}
 		}
 	})
 }

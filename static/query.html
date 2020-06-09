@@ -1,26 +1,88 @@
 <div id="q-top">
 	<div id="q-organizer">
-		<div id="q-op-list">
+		<div id="q-node-list">
+		</div>
+		<div>
+			<button type="button" class="btn btn-primary" id="q-new-node-btn">New Node</button>
 		</div>
 	</div>
 	<div id="q-run-div">
-		<div id="q-op-code-div">
-			<textarea id="q-op-code" placeholder="Your Code Here"></textarea>
+		<div id="q-node-code-div">
+			<textarea id="q-node-code" placeholder="Your Code Here"></textarea>
 		</div>
-		<button type="button" class="btn btn-primary btn-sm" id="q-op-save-btn">Save</button>
-		<div id="q-op-exec-div" class="row">
-			<div class="col-8">
-				<input type="text" class="form-control" id="q-op-query" placeholder="Your Query Here" />
+		<button type="button" class="btn btn-primary btn-sm" id="q-node-save-btn">Save</button>
+		<div id="q-exec-div" class="row">
+			<div class="col-4">
+				<input type="text" class="form-control" id="q-exec-query" placeholder="Your Query Here" />
+			</div>
+			<div class="col-4">
+				<select class="form-control" id="q-exec-video">
+				</select>
 			</div>
 			<div class="col-2">
-				<button type="button" class="btn btn-primary" id="q-op-test-btn">Test</button>
+				<button type="button" class="btn btn-primary" id="q-exec-test-btn">Test</button>
 			</div>
 			<div class="col-2">
-				<button type="button" class="btn btn-primary" id="q-op-run-btn">Run</button>
+				<button type="button" class="btn btn-primary" id="q-exec-run-btn">Run</button>
 			</div>
 		</div>
 	</div>
 </div>
 <div id="q-results">
+</div>
 
+<div class="modal" id="q-new-node-modal" tabindex="-1" role="dialog">
+	<div class="modal-dialog" role="document">
+		<div class="modal-content">
+			<div class="modal-body">
+				<form id="q-new-node-form">
+					<div class="form-group row">
+						<label class="col-sm-2 col-form-label">Name</label>
+						<div class="col-sm-10">
+							<input class="form-control q-modal-input" type="text" id="q-new-node-name" />
+						</div>
+					</div>
+					<div class="form-group row">
+						<label class="col-sm-2 col-form-label">Parents</label>
+						<div class="col-sm-10">
+							<input class="form-control q-modal-input" type="text" id="q-new-node-parents" />
+						</div>
+					</div>
+					<div class="form-group row">
+						<label class="col-sm-2 col-form-label">Unit</label>
+						<div class="col-sm-10">
+							<input class="form-control q-modal-input" type="text" id="q-new-node-unit" value="750" />
+						</div>
+					</div>
+					<div class="form-group row">
+						<label class="col-sm-2 col-form-label">Output Type</label>
+						<div class="col-sm-10">
+							<select class="form-control q-modal-input" id="q-new-node-type">
+								<option value=""></option>
+								<option value="detection">Detection</option>
+								<option value="track">Track</option>
+								<option value="class">Class</option>
+								<option value="video">Video</option>
+							</select>
+						</div>
+					</div>
+					<div class="form-group row">
+						<label class="col-sm-2 col-form-label">Language</label>
+						<div class="col-sm-10">
+							<select class="form-control q-modal-input" id="q-new-node-ext">
+								<option value=""></option>
+								<option value="python">Python</option>
+								<option value="model">Model</option>
+							</select>
+						</div>
+					</div>
+					<div class="form-group row">
+						<div class="col-sm-10">
+							<button type="submit" class="btn btn-primary">Create Node</button>
+						</div>
+					</div>
+				</form>
+			</div>
+		</div>
+	</div>
 </div>

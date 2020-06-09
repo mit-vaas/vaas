@@ -31,14 +31,16 @@ html, body, #content, #query-panel {
 #q-organizer {
 	height: 100%;
 	float: left;
+	display: flex;
+	flex-flow: column;
 }
 
-#q-op-list {
+#q-node-list {
 	height: 100%;
 	border: 1px solid;
 }
 
-.q-btn-op {
+.q-btn-node {
 	width: 100%;
 }
 
@@ -48,16 +50,16 @@ html, body, #content, #query-panel {
 	flex-flow: column;
 }
 
-#q-op-code-div {
+#q-node-code-div {
 	flex-grow: 1;
 }
 
-#q-op-code {
+#q-node-code {
 	height: 100%;
 	width: 100%;
 }
 
-#q-op-test-btn, #q-op-run-btn {
+#q-exec-test-btn, #q-exec-run-btn {
 	width: 100%;
 }
 

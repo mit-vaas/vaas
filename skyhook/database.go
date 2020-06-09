@@ -27,7 +27,8 @@ func init() {
 	db.Exec(`CREATE TABLE IF NOT EXISTS videos (
 		id INTEGER PRIMARY KEY ASC,
 		name TEXT NOT NULL,
-		ext TEXT
+		ext TEXT,
+		percent INTEGER NOT NULL DEFAULT 100
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS clips (
 		id INTEGER PRIMARY KEY ASC,
@@ -36,21 +37,19 @@ func init() {
 		width INTEGER,
 		height INTEGER
 	)`)
-	db.Exec(`CREATE TABLE IF NOT EXISTS ops (
+	db.Exec(`CREATE TABLE IF NOT EXISTS nodes (
 		id INTEGER PRIMARY KEY ASC,
 		name TEXT NOT NULL,
 		parents TEXT NOT NULL,
 		type TEXT NOT NULL,
 		ext TEXT,
-		code TEXT NOT NULL,
-		unit INTEGER NOT NULL
+		code TEXT NOT NULL
 	)`)
-	db.Exec(`CREATE TABLE IF NOT EXISTS nodes (
+	db.Exec(`CREATE TABLE IF NOT EXISTS vnodes (
 		id INTEGER PRIMARY KEY ASC,
-		query TEXT NOT NULL,
+		node_id INTEGER REFERENCES nodes(id),
 		video_id INTEGER REFERENCES videos(id),
-		ls_id INTEGER REFERENCES label_sets(id),
-		type TEXT
+		ls_id INTEGER REFERENCES label_sets(id)
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS label_sets (
 		id INTEGER PRIMARY KEY ASC,

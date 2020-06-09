@@ -8,8 +8,8 @@ type ModelConfig struct {
 	ID string
 }
 
-func (op *Op) testModel(parents [][]*LabelBuffer, slices []ClipSlice) []*LabelBuffer {
-	cfgBytes := []byte(op.Code)
+func (node *Node) testModel(parents [][]*LabelBuffer, slices []ClipSlice) []*LabelBuffer {
+	cfgBytes := []byte(node.Code)
 	var cfg ModelConfig
 	JsonUnmarshal(cfgBytes, &cfg)
 	return Models[cfg.ID](cfgBytes, parents, slices)

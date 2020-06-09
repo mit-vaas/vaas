@@ -17,6 +17,7 @@ type Video struct {
 	ID int
 	Name string
 	Ext string
+	Percent int
 }
 
 type Clip struct {
@@ -41,13 +42,13 @@ func (slice ClipSlice) Length() int {
 	return slice.End - slice.Start
 }
 
-const VideoQuery = "SELECT id, name, ext FROM videos"
+const VideoQuery = "SELECT id, name, ext, percent FROM videos"
 
 func videoListHelper(rows *Rows) []Video {
 	var videos []Video
 	for rows.Next() {
 		var video Video
-		rows.Scan(&video.ID, &video.Name, &video.Ext)
+		rows.Scan(&video.ID, &video.Name, &video.Ext, &video.Percent)
 		videos = append(videos, video)
 	}
 	return videos

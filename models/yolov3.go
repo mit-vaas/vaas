@@ -55,7 +55,6 @@ func init() {
 					if err != nil {
 						panic(err)
 					}
-					fmt.Println("[yolo] [stdout] " + strings.TrimSpace(line))
 					output += line
 					if strings.Contains(line, "Enter") {
 						break
