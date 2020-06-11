@@ -111,7 +111,7 @@ function loadQuery() {
 	var addMore = function() {
 		var req = {
 			video_id: $('#q-exec-video').val(),
-			node_id: $('#q-exec-query').val()
+			query_id: $('#q-exec-query').val()
 		};
 		var row = $('<div>')
 			.addClass('q-results-row');

@@ -74,6 +74,11 @@ func init() {
 		-- it refers to clip containing the output corresponding to input clip_id above
 		out_clip_id INTEGER REFERENCES clips(id)
 	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS queries (
+		id INTEGER PRIMARY KEY ASC,
+		name TEXT NOT NULL,
+		node_id INTEGER NOT NULL
+	)`)
 /*
 INSERT INTO videos VALUES (1, 'tokyo', 'jpeg');
 INSERT INTO clips VALUES (1, 1, 30000, 960, 540);

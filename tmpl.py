@@ -116,18 +116,23 @@ def output_packet(slice_idx, frame_range, data):
 	sys.stdout.buffer.write(encoded_data)
 
 meta = input_packet()
-states = [None for _ in range(meta['Count'])]
+states = {}
 while True:
-	job_desc = input_packet()
-	if job_desc is None:
+	packet = input_packet()
+	if packet is None:
 		break
-	slice_idx = job_desc['SliceIdx']
-	inputs = [{
-		'range': job_desc['Range'],
-		'is_last': job_desc['IsLast'],
-		'slice_idx': slice_idx,
-		'state': states[slice_idx],
-	}]
-	for _ in range(meta['Parents']):
-		inputs.append(input_packet())
-	states[slice_idx] = f(*inputs)
+	if 'ID' in packet:
+		# init packet
+		states[packet['ID']] = None
+	else:
+		# job packet
+		slice_idx = packet['SliceIdx']
+		inputs = [{
+			'range': packet['Range'],
+			'is_last': packet['IsLast'],
+			'slice_idx': slice_idx,
+			'state': states[slice_idx],
+		}]
+		for _ in range(meta['Parents']):
+			inputs.append(input_packet())
+		states[slice_idx] = f(*inputs)

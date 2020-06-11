@@ -1,13 +1,9 @@
 package skyhook
 
 import (
-	"encoding/binary"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,6 +27,11 @@ func (parent Parent) DataType() DataType {
 		return VideoType
 	}
 	panic(fmt.Errorf("bad parent type %v", parent.Type))
+}
+
+type Executor interface {
+	Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuffer
+	Close()
 }
 
 type Node struct {
@@ -82,15 +83,22 @@ func GetNode(id int) *Node {
 }
 
 func (node *Node) Load() {
-	if len(node.Parents) > 0 {
-		return
-	}
+	node.LoadMap(map[int]*Node{})
+}
+
+func (node *Node) LoadMap(m map[int]*Node) {
+	populate := len(node.Parents) == 0
+	m[node.ID] = node
 	for _, parent := range node.ParentSpecs {
 		if parent.Type == NodeParent {
-			parent.Node = GetNode(parent.ID)
-			parent.Node.Load()
+			if m[parent.ID] == nil {
+				GetNode(parent.ID).LoadMap(m)
+			}
+			parent.Node = m[parent.ID]
 		}
-		node.Parents = append(node.Parents, parent)
+		if populate {
+			node.Parents = append(node.Parents, parent)
+		}
 	}
 }
 
@@ -99,14 +107,22 @@ func (node *Node) ListVNodes() []*VNode {
 }
 
 // Returns label for this node on the specified clip.
-func (node *Node) Test(slices []ClipSlice) []*LabelBuffer {
+func (node *Node) Exec(query *Query) Executor {
+	if node.Ext == "python" {
+		return node.pythonExecutor(query)
+	} else if node.Ext == "model" {
+		//return node.modelExecutor(query)
+	}
+	panic(fmt.Errorf("exec on node with unknown ext %s", node.Ext))
+}
+/*
 	// parents[i][j] is the output of parent i on slice j
-	log.Printf("[exec node-%v %v] begin node testing", node.Name, slices)
+	log.Printf("[exec (%s/%s) %v] begin node testing", query.Name, node.Name, slices)
 	parents := make([][]*LabelBuffer, len(node.Parents))
 	for parentIdx, parent := range node.Parents {
 		if parent.Type == NodeParent {
 			parentVN := GetVNode(parent.Node, slices[0].Clip.Video)
-			for _, labelBuf := range parentVN.Test(slices) {
+			for _, labelBuf := range parentVN.Test(query, slices) {
 				parents[parentIdx] = append(parents[parentIdx], labelBuf)
 			}
 		} else if parent.Type == VideoParent {
@@ -120,210 +136,11 @@ func (node *Node) Test(slices []ClipSlice) []*LabelBuffer {
 	}
 
 	if node.Ext == "python" {
-		return node.testPython(parents, slices)
+		return node.testPython(query, parents, slices)
 	} else if node.Ext == "model" {
-		return node.testModel(parents, slices)
+		return node.testModel(query, parents, slices)
 	}
-	return nil
-}
-
-func (node *Node) testPython(parents [][]*LabelBuffer, slices []ClipSlice) []*LabelBuffer {
-	log.Printf("[exec node-%v %v] launching python script", node.Name, slices)
-	template, err := ioutil.ReadFile("tmpl.py")
-	if err != nil {
-		panic(err)
-	}
-	script := strings.ReplaceAll(string(template), "[CODE]", node.Code)
-	tempFile, err := ioutil.TempFile("", "*.py")
-	if err != nil {
-		panic(err)
-	}
-	if _, err := tempFile.Write([]byte(script)); err != nil {
-		panic(err)
-	}
-	if err := tempFile.Close(); err != nil {
-		panic(err)
-	}
-	cmd, stdin, stdout := Command(
-		fmt.Sprintf("exec-python-%s", node.Name), CommandOptions{},
-		"/usr/bin/python3", tempFile.Name(),
-	)
-
-	go func() {
-		writeJSONPacket := func(x interface{}) {
-			bytes := JsonMarshal(x)
-			buf := make([]byte, 5)
-			binary.BigEndian.PutUint32(buf[0:4], uint32(len(bytes)))
-			buf[4] = 'j'
-			stdin.Write(buf)
-			stdin.Write(bytes)
-		}
-
-		writeVideoPacket := func(images []Image) {
-			buf := make([]byte, 21)
-			l := 16+len(images)*images[0].Width*images[0].Height*3
-			binary.BigEndian.PutUint32(buf[0:4], uint32(l))
-			buf[4] = 'v'
-			binary.BigEndian.PutUint32(buf[5:9], uint32(len(images)))
-			binary.BigEndian.PutUint32(buf[9:13], uint32(images[0].Height))
-			binary.BigEndian.PutUint32(buf[13:17], uint32(images[0].Width))
-			binary.BigEndian.PutUint32(buf[17:21], 3)
-			stdin.Write(buf)
-			for _, image := range images {
-				stdin.Write(image.ToBytes())
-			}
-		}
-
-		// prepare meta
-		var meta struct {
-			Type DataType
-			Lengths []int
-			Count int
-			Parents int
-		}
-		meta.Type = node.Type
-		for _, slice := range slices {
-			meta.Lengths = append(meta.Lengths, slice.Length())
-		}
-		meta.Count = len(slices)
-		meta.Parents = len(parents)
-		writeJSONPacket(meta)
-
-		var mu sync.Mutex
-		donech := make(chan error, len(slices))
-		for sliceIdx := range slices {
-			go func(sliceIdx int) {
-				completed := 0
-				for completed < slices[sliceIdx].Length() {
-					// peek each parent to see how much we can read
-					length := -1
-					for parentIdx := range parents {
-						data, err := parents[parentIdx][sliceIdx].Peek(completed, 1)
-						if err != nil {
-							donech <- err
-							return
-						}
-						if length == -1 || data.Length() < length {
-							length = data.Length()
-						}
-					}
-
-					datas := make([]Data, len(parents))
-					for parentIdx := range parents {
-						data, err := parents[parentIdx][sliceIdx].Read(completed, length)
-						if err != nil {
-							donech <- err
-							return
-						}
-						datas[parentIdx] = data
-					}
-
-					mu.Lock()
-					var job struct {
-						SliceIdx int
-						Range [2]int
-						IsLast bool
-					}
-					job.SliceIdx = sliceIdx
-					job.Range = [2]int{completed, completed+length}
-					job.IsLast = job.Range[1] == slices[sliceIdx].Length()
-					writeJSONPacket(job)
-					for _, data := range datas {
-						if data.Type == VideoType {
-							writeVideoPacket(data.Images)
-						} else {
-							writeJSONPacket(data.Get())
-						}
-					}
-					mu.Unlock()
-					completed += length
-				}
-
-				donech <- nil
-			}(sliceIdx)
-		}
-		for _ = range slices {
-			err := <- donech
-			if err != nil {
-				log.Printf("[exec node-%v %v] error reading from parent: %v", node.Name, slices, err)
-				break
-			}
-		}
-		stdin.Close()
-	}()
-
-	buffers := make([]*LabelBuffer, len(slices))
-	for i := range buffers {
-		buffers[i] = NewLabelBuffer(node.Type)
-	}
-
-	go func() {
-		defer os.Remove(tempFile.Name())
-		defer cmd.Wait()
-		defer stdin.Close()
-		defer stdout.Close()
-
-		dones := make([]bool, len(slices))
-		isDone := func() bool {
-			for _, done := range dones {
-				if !done {
-					return false
-				}
-			}
-			return true
-		}
-
-		setErr := func(err error) {
-			log.Printf("[exec node-%v %v] error during python execution: %v", node.Name, slices, err)
-			for i := range buffers {
-				buffers[i].Error(err)
-			}
-		}
-
-		header := make([]byte, 16)
-		for !isDone() {
-			_, err := io.ReadFull(stdout, header)
-			if err != nil {
-				setErr(err)
-				return
-			}
-			sliceIdx := int(binary.BigEndian.Uint32(header[0:4]))
-			start := int(binary.BigEndian.Uint32(header[4:8]))
-			end := int(binary.BigEndian.Uint32(header[8:12]))
-			size := int(binary.BigEndian.Uint32(header[12:16]))
-			buf := make([]byte, size)
-			_, err = io.ReadFull(stdout, buf)
-			if err != nil {
-				setErr(err)
-				return
-			}
-			data := Data{Type: node.Type}
-			if node.Type == DetectionType || node.Type == TrackType {
-				JsonUnmarshal(buf, &data.Detections)
-			} else if node.Type == ClassType {
-				JsonUnmarshal(buf, &data.Classes)
-			} else if node.Type == VideoType {
-				nframes := int(binary.BigEndian.Uint32(buf[0:4]))
-				height := int(binary.BigEndian.Uint32(buf[4:8]))
-				width := int(binary.BigEndian.Uint32(buf[8:12]))
-				// TODO: channels buf[12:16]
-				chunkSize := width*height*3
-				buf = buf[16:]
-				for i := 0; i < nframes; i++ {
-					data.Images = append(data.Images, ImageFromBytes(width, height, buf[i*chunkSize:(i+1)*chunkSize]))
-				}
-				//log.Printf("[exec node-%v %v] got the video output", node.Name, slices)
-			}
-			data = data.EnsureLength(end-start)
-			buffers[sliceIdx].Write(data)
-			if end >= slices[sliceIdx].Length() {
-				dones[sliceIdx] = true
-			}
-		}
-	}()
-
-	return buffers
-}
+	return nil*/
 
 type VNode struct {
 	ID int
@@ -349,10 +166,10 @@ func vnodeListHelper(rows *Rows) []*VNode {
 
 func GetVNode(node *Node, video Video) *VNode {
 	rows := db.Query(VNodeQuery + " AND vn.video_id = ? AND vn.node_id = ?", video.ID, node.ID)
-	nodes := vnodeListHelper(rows)
-	if len(nodes) == 1 {
-		nodes[0].Load()
-		return nodes[0]
+	vnodes := vnodeListHelper(rows)
+	if len(vnodes) == 1 {
+		vnodes[0].Load()
+		return vnodes[0]
 	} else {
 		return nil
 	}
@@ -382,81 +199,294 @@ func (vn *VNode) Load() {
 	}
 }
 
-func (vn *VNode) Test(slices []ClipSlice) []*LabelBuffer {
-	vn.Load()
-	// if we have the labels in our LabelSet, then just return that
-	// otherwise call Test on our Node
-	outputs := make([]*LabelBuffer, len(slices))
-	uniqueClips := make(map[int][]int)
-	for i, slice := range slices {
-		uniqueClips[slice.Clip.ID] = append(uniqueClips[slice.Clip.ID], i)
-	}
-	var missingSlices []ClipSlice
-	var missingIndexes []int // indexes in arg slices
-	for _, indexes := range uniqueClips {
-		for _, idx := range indexes {
-			if vn.LabelSet != nil {
-				label := vn.LabelSet.GetBySlice(slices[idx])
-				if label != nil {
-					outputs[idx] = label.Load(slices[idx])
-					continue
-				}
-			}
-			missingSlices = append(missingSlices, slices[idx])
-			missingIndexes = append(missingIndexes, idx)
-		}
-	}
-	log.Printf("[exec (%s) %v] missing slices = %v", vn.Node.Name, slices, missingSlices)
-	if len(missingSlices) == 0 {
-		return outputs
-	}
-
-	// if no label set, create one to store the exec outputs
-	if vn.LabelSet == nil {
-		db.Transaction(func(tx Tx) {
-			var lsID *int
-			tx.QueryRow("SELECT ls_id FROM vnodes WHERE id = ?", vn.ID).Scan(&lsID)
-			if lsID != nil {
-				vn.LabelSetID = lsID
-				return
-			}
-			name := fmt.Sprintf("exec-%v-%d", vn.Node.Name, vn.ID)
-			res := tx.Exec(
-				"INSERT INTO label_sets (name, unit, src_video, video_id, label_type) VALUES (?, ?, ?, ?, ?)",
-				name, 1, vn.Video.ID, vn.Video.ID, vn.Node.Type,
-			)
-			vn.LabelSetID = new(int)
-			*vn.LabelSetID = res.LastInsertId()
-			tx.Exec("UPDATE vnodes SET ls_id = ? WHERE id = ?", vn.LabelSetID, vn.ID)
-		})
-		vn.LabelSet = GetLabelSet(*vn.LabelSetID)
-	}
-
-	missingOutputs := vn.Node.Test(missingSlices)
-	for i := range missingOutputs {
-		outputs[missingIndexes[i]] = missingOutputs[i]
-	}
-
-	// write the outputs
-	go func() {
-		for i := range missingOutputs {
-			data, err := missingOutputs[i].ReadFull(missingSlices[i].Length())
-			if err != nil {
-				continue
-			}
-			vn.LabelSet.AddLabel(missingSlices[i], data)
-		}
-	}()
-
-	return outputs
-}
-
 // clear saved labels at a node
 func (vn *VNode) Clear() {
 	vn.Load()
 	if vn.LabelSet != nil {
 		log.Printf("[exec (%s)] clearing label set %d", vn.Node.Name, vn.LabelSet.ID)
 		vn.LabelSet.Clear()
+	}
+}
+
+type Plan struct {
+	// video -> classification nodes that specify whether the segment should be skipped or not
+	// (e.g. probabilistic predicates)
+	// there could be multiple nodes but they should be combined with OR/AND into one node
+	SkipOptimization *Node
+
+	// these replace the outputs of certain nodes with an alternative node
+	// for example, MIRIS replaces the output of a track predicate node with its own node
+	// this node may internally use predecessor nodes in the query graph, such as detection
+	//   and tracking steps, but the predecessors are not called by the system
+	ReplaceOptimizations map[int]*Node
+
+	// for now, model/resolution auto-selection seems better to implement as a special node
+	// that decides what to do instead of as part of the execution plan.
+	// but we could always implement it as a ReplaceOptimization if desired.
+}
+
+type Query struct {
+	ID int
+	Name string
+	Plan *Plan
+
+	// for now we only represent a single output node
+	// e.g. this could be detection that we will draw
+	NodeID int
+
+	Nodes map[int]*Node
+}
+
+
+
+const QueryQuery = "SELECT q.id, q.name, q.node_id FROM queries AS q"
+
+func queryListHelper(rows *Rows) []*Query {
+	var queries []*Query
+	for rows.Next() {
+		var query Query
+		rows.Scan(&query.ID, &query.Name, &query.NodeID)
+		queries = append(queries, &query)
+	}
+	return queries
+}
+
+func GetQuery(queryID int) *Query {
+	rows := db.Query(QueryQuery + " WHERE q.id = ?", queryID)
+	queries := queryListHelper(rows)
+	if len(queries) == 1 {
+		return queries[0]
+	} else {
+		return nil
+	}
+}
+
+func (query *Query) Load() {
+	if len(query.Nodes) > 0 {
+		return
+	}
+	node := GetNode(query.NodeID)
+	m := make(map[int]*Node)
+	node.LoadMap(m)
+	query.Nodes = m
+}
+
+type NodeStats struct {
+	samples []time.Duration
+}
+
+// mean time in seconds
+func (s NodeStats) Mean() float64 {
+	if len(s.samples) == 0 {
+		return 0
+	}
+	var sum float64 = 0
+	for _, x := range s.samples {
+		sum += x.Seconds()
+	}
+	return sum / float64(len(s.samples))
+}
+
+type QueryExecutor struct {
+	query *Query
+
+	// map from node ID to executors
+	executors map[int]Executor
+
+	wg sync.WaitGroup
+	stats map[int]NodeStats
+}
+
+func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuffer {
+	/*
+	// check what the skip optimization says about it
+	skipBuffers := GetVNode(query.Plan.SkipOptimization, slices[0].Clip.Video).Test(query, slices)
+	for i := range skipBuffers {
+		go func(i int) {
+			data, err := skipBuffers[i].ReadFull()
+			if err != nil {
+				outputs[i].Error(err)
+				return
+			}
+			any := false
+			for _, cls := range data.Classes {
+				if cls != 0 {
+					any = true
+					break
+				}
+			}
+			if !any {
+				outputs[i].Error(fmt.Errorf("skipped"))
+				return
+			}
+			buf := vn.Test(query, []ClipSlice{slices[i]})[0]
+			outputs[i].CopyFrom(buf)
+		}(i)
+	}
+
+	// if replaced by optimization, then run the optimization node instead
+	if query.ReplaceOptimizations[node.ID] != nil {
+		vn := GetVNode(query.ReplaceOptimizations[node.ID], slices[0].Clip.Video)
+		return vn.Exec(query, slices)
+	}
+	*/
+
+	// create map (node ID -> outputs at that node) for caching outputs
+	// we will populate this either by loading label or by running node
+	cachedOutputs := make(map[int]*LabelBuffer)
+
+	// (1) load labels that we already have
+	loadLabels := func(node *Node) bool {
+		if cachedOutputs[node.ID] != nil {
+			return true
+		}
+		vn := GetOrCreateVNode(node, slice.Clip.Video)
+		if vn.LabelSet == nil {
+			return false
+		}
+		label := vn.LabelSet.GetBySlice(slice)
+		if label == nil {
+			return false
+		}
+		cachedOutputs[node.ID] = label.Load(slice)
+		return true
+	}
+	q := []*Node{e.query.Nodes[e.query.NodeID]}
+	seen := make(map[int]bool)
+	needed := make(map[int]bool)
+	// first pass: load the query output nodes
+	haveAllOutputs := true
+	for _, node := range q {
+		seen[node.ID] = true
+		ok := loadLabels(node)
+		if !ok {
+			haveAllOutputs = false
+		}
+	}
+	if haveAllOutputs {
+		return cachedOutputs[e.query.NodeID]
+	}
+	// second pass: go down graph to load the rest
+	for len(q) > 0 {
+		node := q[0]
+		q = q[1:]
+		ok := loadLabels(node)
+		if ok {
+			continue
+		}
+		needed[node.ID] = true
+		for _, parent := range node.Parents {
+			if parent.Type != NodeParent {
+				continue
+			} else if seen[parent.Node.ID] {
+				continue
+			}
+			seen[parent.Node.ID] = true
+			q = append(q, parent.Node)
+		}
+	}
+
+	var videoBuffer *LabelBuffer
+	collectParents := func(node *Node) []*LabelBuffer {
+		parents := []*LabelBuffer{}
+		for _, parent := range node.Parents {
+			if parent.Type == VideoParent {
+				if videoBuffer == nil {
+					rd := ReadVideo(slice, slice.Clip.Width, slice.Clip.Height)
+					videoBuffer = NewLabelBuffer(VideoType)
+					go videoBuffer.FromVideoReader(rd)
+				}
+				parents = append(parents, videoBuffer)
+			} else if parent.Type == NodeParent {
+				buf := cachedOutputs[parent.Node.ID]
+				if buf == nil {
+					return nil
+				}
+				parents = append(parents, buf)
+			}
+		}
+		return parents
+	}
+
+	// (2) repeatedly run nodes where parents are all there, until no more needed
+	for len(needed) > 0 {
+		for nodeID := range needed {
+			node := e.query.Nodes[nodeID]
+			parents := collectParents(node)
+			if parents == nil {
+				continue
+			}
+			if e.executors[nodeID] == nil {
+				e.executors[nodeID] = node.Exec(e.query)
+			}
+			cachedOutputs[nodeID] = e.executors[nodeID].Run(parents, slice)
+			delete(needed, nodeID)
+
+			// if no label set, create one to store the exec outputs
+			vn := GetOrCreateVNode(node, slice.Clip.Video)
+			if vn.LabelSet == nil {
+				db.Transaction(func(tx Tx) {
+					var lsID *int
+					tx.QueryRow("SELECT ls_id FROM vnodes WHERE id = ?", vn.ID).Scan(&lsID)
+					if lsID != nil {
+						vn.LabelSetID = lsID
+						return
+					}
+					name := fmt.Sprintf("exec-%v-%d", vn.Node.Name, vn.ID)
+					res := tx.Exec(
+						"INSERT INTO label_sets (name, unit, src_video, video_id, label_type) VALUES (?, ?, ?, ?, ?)",
+						name, 1, vn.Video.ID, vn.Video.ID, vn.Node.Type,
+					)
+					vn.LabelSetID = new(int)
+					*vn.LabelSetID = res.LastInsertId()
+					tx.Exec("UPDATE vnodes SET ls_id = ? WHERE id = ?", vn.LabelSetID, vn.ID)
+				})
+				vn.LabelSet = GetLabelSet(*vn.LabelSetID)
+			}
+
+			// persist the outputs
+			go func() {
+				start := time.Now()
+				data, err := cachedOutputs[vn.Node.ID].ReadFull(slice.Length())
+				if err != nil {
+					return
+				}
+				vn.LabelSet.AddLabel(slice, data)
+				e.stats[vn.Node.ID] = NodeStats{
+					samples: append(e.stats[vn.Node.ID].samples, time.Now().Sub(start)),
+				}
+			}()
+		}
+	}
+
+	out := cachedOutputs[e.query.NodeID]
+
+	e.wg.Add(1)
+	go func() {
+		out.ReadFull(slice.Length())
+		e.wg.Done()
+	}()
+
+	return out
+}
+
+func (e *QueryExecutor) Close() {
+	for _, nodeExec := range e.executors {
+		nodeExec.Close()
+	}
+}
+
+// close after the current outputs finish
+func (e *QueryExecutor) Wait() {
+	e.wg.Wait()
+	e.Close()
+}
+
+func (query *Query) Exec() *QueryExecutor {
+	query.Load()
+	return &QueryExecutor{
+		query: query,
+		executors: make(map[int]Executor),
 	}
 }
 
@@ -541,10 +571,10 @@ func init() {
 	http.HandleFunc("/exec/test", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 		videoID, _ := strconv.Atoi(r.PostForm.Get("video_id"))
-		nodeID, _ := strconv.Atoi(r.PostForm.Get("node_id"))
+		queryID, _ := strconv.Atoi(r.PostForm.Get("query_id"))
 
-		node := GetNode(nodeID)
-		if node == nil {
+		query := GetQuery(queryID)
+		if query == nil {
 			w.WriteHeader(404)
 			return
 		}
@@ -553,19 +583,18 @@ func init() {
 			w.WriteHeader(404)
 			return
 		}
-		vn := GetOrCreateVNode(node, *video)
-		vn.Load()
 		slice := video.Uniform(VisualizeMaxFrames)
-		log.Printf("[exec (%s) %v] beginning test", node.Name, slice)
-		labelBuf := vn.Test([]ClipSlice{slice})[0]
+		log.Printf("[exec (%s) %v] beginning test", query.Name, slice)
+		e := query.Exec()
+		labelBuf := e.Run(nil, slice)
 		if labelBuf == nil {
 			w.WriteHeader(404)
 			return
 		}
-		log.Printf("[exec (%s) %v] test: got labelBuf, loading preview", node.Name, slice)
+		log.Printf("[exec (%s) %v] test: got labelBuf, loading preview", query.Name, slice)
 		pc := CreatePreview(slice, labelBuf)
 		uuid := cache.Add(pc)
-		log.Printf("[exec (%s) %v] test: cached preview with %d frames, uuid=%s", node.Name, slice, pc.Slice.Length(), uuid)
+		log.Printf("[exec (%s) %v] test: cached preview with %d frames, uuid=%s", query.Name, slice, pc.Slice.Length(), uuid)
 		JsonResponse(w, VisualizeResponse{
 			PreviewURL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", uuid),
 			URL: fmt.Sprintf("/cache/view?id=%s&type=mp4", uuid),
@@ -573,15 +602,17 @@ func init() {
 			Height: slice.Clip.Height,
 			UUID: uuid,
 		})
+
+		go e.Wait()
 	})
 
-	http.HandleFunc("/exec/test2", func(w http.ResponseWriter, r *http.Request) {
+	/*http.HandleFunc("/exec/test2", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 		videoID, _ := strconv.Atoi(r.PostForm.Get("video_id"))
-		nodeID, _ := strconv.Atoi(r.PostForm.Get("node_id"))
+		queryID, _ := strconv.Atoi(r.PostForm.Get("query_id"))
 
-		node := GetNode(nodeID)
-		if node == nil {
+		query := GetQuery(queryID)
+		if query == nil {
 			w.WriteHeader(404)
 			return
 		}
@@ -595,7 +626,7 @@ func init() {
 		for {
 			slice := video.Uniform(VisualizeMaxFrames)
 			log.Printf("[exec (%s) %v] beginning test", node.Name, slice)
-			labelBuf := vn.Test([]ClipSlice{slice})[0]
+			labelBuf := query.Test([]ClipSlice{slice})[0]
 			if labelBuf == nil {
 				w.WriteHeader(404)
 				return
@@ -623,5 +654,5 @@ func init() {
 			})
 			break
 		}
-	})
+	})*/
 }

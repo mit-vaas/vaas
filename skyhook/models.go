@@ -8,7 +8,7 @@ type ModelConfig struct {
 	ID string
 }
 
-func (node *Node) testModel(parents [][]*LabelBuffer, slices []ClipSlice) []*LabelBuffer {
+func (node *Node) testModel(query *Query, parents [][]*LabelBuffer, slices []ClipSlice) []*LabelBuffer {
 	cfgBytes := []byte(node.Code)
 	var cfg ModelConfig
 	JsonUnmarshal(cfgBytes, &cfg)

@@ -256,6 +256,19 @@ func (buf *LabelBuffer) Type() DataType {
 	return buf.buf.Type
 }
 
+func (buf *LabelBuffer) CopyFrom(length int, other *LabelBuffer) error {
+	cur := 0
+	for cur < length {
+		data, err := other.Read(cur, 0)
+		if err != nil {
+			buf.Error(err)
+			return err
+		}
+		buf.Write(data)
+	}
+	return nil
+}
+
 // Returns a new buffer that reads from this buffer without removing the read
 // content. This allows single-writer multi-reader mode, where all the readers
 // read from different splits of the original buffer.
