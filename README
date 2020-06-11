@@ -1,4 +1,0 @@
-To run:
-
-	mkdir labels clips
-	go run main.go
