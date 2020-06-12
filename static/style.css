@@ -56,6 +56,37 @@ html, body, #app, #nodes-panel {
 	height: 100%;
 }
 
+/* explore panel */
+
+#explore-div {
+	height: 100%;
+	display: flex;
+	flex-flow: column;
+}
+
+#explore-results-div {
+	flex-grow: 1;
+}
+
+#explore-test-btn, #explore-run-btn {
+	width: 100%;
+}
+
+.explore-results-row {
+	display: flex;
+	flex-direction: row;
+}
+
+.explore-results-col {
+	flex-grow: 1;
+	flex-shrink: 1;
+	padding: 5px;
+}
+
+.explore-result-img {
+	max-width: 100%;
+}
+
 /* n-edit-text */
 
 #n-edit-text-div {
@@ -75,23 +106,4 @@ html, body, #app, #nodes-panel {
 
 #n-edit-text-save {
 	width: 100%;
-}
-
-#q-exec-test-btn, #q-exec-run-btn {
-	width: 100%;
-}
-
-.q-results-row {
-	display: flex;
-	flex-direction: row;
-}
-
-.q-results-col {
-	flex-grow: 1;
-	flex-shrink: 1;
-	padding: 5px;
-}
-
-.q-result-img {
-	max-width: 100%;
 }
