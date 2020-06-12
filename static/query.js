@@ -21,11 +21,14 @@ function loadQuery() {
 		var div = $('#q-node-list');
 		div.children().remove();
 		data.forEach(function(el) {
+			var btndiv = $('<div>')
+				.addClass('m-1');
 			var btn = $('<button>')
 				.attr('type', 'button')
 				.addClass('btn btn-primary btn-sm q-btn-node')
 				.text(el.Name + ' (' + el.ID + ')');
-			div.append(btn);
+			btndiv = btndiv.append(btn);
+			div.append(btndiv);
 
 			btn.click(function() {
 				$('.q-btn-node').removeClass('btn-success');

@@ -59,6 +59,10 @@ html, body, #content, #query-panel {
 	width: 100%;
 }
 
+#q-node-save-btn {
+	width: 100%;
+}
+
 #q-exec-test-btn, #q-exec-run-btn {
 	width: 100%;
 }

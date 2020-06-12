@@ -18,6 +18,8 @@ $(document).ready(function() {
 		}
 		keyHandler(e);
 	});
+
+	myLoad('#video-panel', 'video-index.html', loadVideo);
 });
 
 function myLoad(target, href, f) {

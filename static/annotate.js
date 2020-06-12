@@ -46,11 +46,11 @@ function loadAnnotate() {
 
 			var annotateBtn = $('<btn>')
 				.attr('type', 'button')
-				.addClass('btn btn-primary btn-sm')
+				.addClass('btn btn-primary btn-sm mx-1')
 				.text('Annotate');
 			var visualizeBtn = $('<btn>')
 				.attr('type', 'button')
-				.addClass('btn btn-primary btn-sm')
+				.addClass('btn btn-primary btn-sm mx-1')
 				.text('Visualize');
 			var item = $('<td>')
 				.append(annotateBtn)
