@@ -24,5 +24,6 @@ $(document).ready(function() {
 
 function myLoad(target, href, f) {
 	keyHandler = null;
+	$(target).html('');
 	$(target).load(href + '?x=' + Math.floor(Date.now() / 1000), f);
 }
