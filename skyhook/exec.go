@@ -488,6 +488,7 @@ func (query *Query) Exec() *QueryExecutor {
 	return &QueryExecutor{
 		query: query,
 		executors: make(map[int]Executor),
+		stats: make(map[int]NodeStats),
 	}
 }
 

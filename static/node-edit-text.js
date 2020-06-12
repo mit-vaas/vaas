@@ -16,7 +16,7 @@ Vue.component('node-edit-text', {
 				e.preventDefault();
 				var start = el.selectionStart;
 				var prefix = this.node.Code.substring(0, start);
-				var suffix = this.node.Code.substring(this.selectionEnd);
+				var suffix = this.node.Code.substring(el.selectionEnd);
 				this.node.Code = prefix + '\t' + suffix;
 				el.selectionStart = start+1;
 				el.selectionEnd = start+1;
@@ -25,13 +25,13 @@ Vue.component('node-edit-text', {
 				e.preventDefault();
 				var start = el.selectionStart;
 				var prefix = this.node.Code.substring(0, start);
-				var suffix = this.node.Code.substring(this.selectionEnd);
+				var suffix = this.node.Code.substring(el.selectionEnd);
 				var prevLine = this.node.Code.lastIndexOf('\n', start);
 
 				var spacing = '';
 				if(prevLine != -1) {
 					for(var i = prevLine+1; i < start; i++) {
-						var char = this.node.Code.value[i];
+						var char = this.node.Code[i];
 						if(char != '\t' && char != ' ') {
 							break;
 						}
