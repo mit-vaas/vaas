@@ -1,5 +1,15 @@
-html, body, #app, #content, #query-panel {
+html, body, #app, #nodes-panel {
 	height: 100%;
+}
+
+#app {
+	height: 100%;
+	display: flex;
+	flex-flow: column;
+}
+
+#content {
+	flex-grow: 1;
 }
 
 /* annotate panel */
@@ -18,48 +28,52 @@ html, body, #app, #content, #query-panel {
 
 }
 
-/* query panel */
-#q-top, #q-results {
-	height: 50%;
-}
+/* nodes panel */
 
-#q-top {
+#n-div {
+	height: 100%;
 	display: grid;
 	grid-template-columns: 200px auto;
 }
 
-#q-organizer {
+#n-organizer {
 	height: 100%;
 	float: left;
 	display: flex;
 	flex-flow: column;
 }
 
-#q-node-list {
-	height: 100%;
+#n-node-list {
+	flex-grow: 1;
 	border: 1px solid;
 }
 
-.q-btn-node {
+.n-btn-node {
 	width: 100%;
 }
 
-#q-run-div {
+#n-edit-div {
+	height: 100%;
+}
+
+/* n-edit-text */
+
+#n-edit-text-div {
 	height: 100%;
 	display: flex;
 	flex-flow: column;
 }
 
-#q-node-code-div {
+#n-edit-text-code-div {
 	flex-grow: 1;
 }
 
-#q-node-code {
+#n-edit-text-code {
 	height: 100%;
 	width: 100%;
 }
 
-#q-node-save-btn {
+#n-edit-text-save {
 	width: 100%;
 }
 

@@ -1,43 +1,4 @@
 function loadQuery() {
-	var loadNode = function(nodeID) {
-		$.get('/node', {id: nodeID}, function(data) {
-			$('#q-node-code').val(data.Code);
-			$('#q-node-code').data('node_id', data.ID);
-		}, 'json');
-	};
-
-	$('#q-node-save-btn').click(function() {
-		var nodeID = $('#q-node-code').data('node_id');
-		var code = $('#q-node-code').val();
-		$.post('/node?id='+nodeID, {
-			code: code,
-		});
-	});
-
-	$.get('/nodes', function(data) {
-		if(!data) {
-			return;
-		}
-		var div = $('#q-node-list');
-		div.children().remove();
-		data.forEach(function(el) {
-			var btndiv = $('<div>')
-				.addClass('m-1');
-			var btn = $('<button>')
-				.attr('type', 'button')
-				.addClass('btn btn-primary btn-sm q-btn-node')
-				.text(el.Name + ' (' + el.ID + ')');
-			btndiv = btndiv.append(btn);
-			div.append(btndiv);
-
-			btn.click(function() {
-				$('.q-btn-node').removeClass('btn-success');
-				btn.addClass('btn-success');
-				loadNode(el.ID);
-			});
-		});
-	}, 'json');
-
 	$.get('/videos', function(data) {
 		if(!data) {
 			return;
@@ -49,42 +10,6 @@ function loadQuery() {
 			$('#q-exec-video').append(option);
 		});
 	}, 'json');
-
-	// auto indentation
-	$('#q-node-code').keydown(function(e) {
-		if(e.keyCode == 9) {
-			// tab
-			e.preventDefault();
-			var start = this.selectionStart;
-			var prefix = this.value.substring(0, start);
-			var suffix = this.value.substring(this.selectionEnd);
-			this.value = prefix + '\t' + suffix;
-			this.selectionStart = start+1;
-			this.selectionEnd = start+1;
-		} else if(e.keyCode == 13) {
-			// enter
-			e.preventDefault();
-			var start = this.selectionStart;
-			var prefix = this.value.substring(0, start);
-			var suffix = this.value.substring(this.selectionEnd);
-			var prevLine = this.value.lastIndexOf('\n', start);
-
-			var spacing = '';
-			if(prevLine != -1) {
-				for(var i = prevLine+1; i < start; i++) {
-					var char = this.value[i];
-					if(char != '\t' && char != ' ') {
-						break;
-					}
-					spacing += char;
-				}
-			}
-
-			this.value = prefix + '\n' + spacing + suffix;
-			this.selectionStart = start+1+spacing.length;
-			this.selectionEnd = this.selectionStart;
-		}
-	});
 
 	var testOne = function(div) {
 		return function(data) {
@@ -142,26 +67,5 @@ function loadQuery() {
 		});
 		div.append(btn);
 		addMore();
-	});
-
-	$('#q-new-node-btn').click(function() {
-		$('.q-modal-input').val('');
-		$('#q-new-node-unit').val('750');
-		$('#q-new-node-modal').modal('show');
-	});
-
-	$('#q-new-node-form').submit(function(e) {
-		e.preventDefault();
-		var params = {
-			'name': $('#q-new-node-name').val(),
-			'parents': $('#q-new-node-parents').val(),
-			'unit': $('#q-new-node-unit').val(),
-			'type': $('#q-new-node-type').val(),
-			'ext': $('#q-new-node-ext').val(),
-		};
-		$.post('/nodes', params, function() {
-			$('#q-new-node-modal').modal('hide');
-			myLoad('#query-panel', 'query.html', loadQuery);
-		});
 	});
 }

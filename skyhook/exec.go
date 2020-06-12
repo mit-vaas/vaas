@@ -49,7 +49,7 @@ type Node struct {
 const NodeQuery = "SELECT id, name, parents, type, ext, code FROM nodes"
 
 func nodeListHelper(rows *Rows) []*Node {
-	var nodes []*Node
+	nodes := []*Node{}
 	for rows.Next() {
 		var node Node
 		var parents string

@@ -45,7 +45,7 @@ func (slice ClipSlice) Length() int {
 const VideoQuery = "SELECT id, name, ext, percent FROM videos"
 
 func videoListHelper(rows *Rows) []Video {
-	var videos []Video
+	videos := []Video{}
 	for rows.Next() {
 		var video Video
 		rows.Scan(&video.ID, &video.Name, &video.Ext, &video.Percent)

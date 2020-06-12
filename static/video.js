@@ -5,12 +5,12 @@ Vue.component('video-tab', {
 		};
 	},
 	created: function() {
-		this.fetchVideos();
+		this.fetchVideos(true);
 		setInterval(this.fetchVideos, 1000);
 	},
 	methods: {
-		fetchVideos: function() {
-			if(getTab() != 'video-tab') {
+		fetchVideos: function(force) {
+			if(!force && getTab() != 'video-tab') {
 				return;
 			}
 			$.get('/videos', function(data) {
