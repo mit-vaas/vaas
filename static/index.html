@@ -8,47 +8,53 @@
 		<link rel="stylesheet" href="/style.css">
 	</head>
 	<body>
-		<ul class="nav nav-tabs" id="myTab" role="tablist">
-			<li class="nav-item">
-				<a class="nav-link active" id="video-tab" data-toggle="tab" href="#video-panel" role="tab" aria-controls="video" aria-selected="true">Video</a>
-			</li>
-			<li class="nav-item">
-				<a class="nav-link" id="annotate-tab" data-toggle="tab" href="#annotate-panel" role="tab" aria-controls="annotate" aria-selected="true">Annotate</a>
-			</li>
-			<li class="nav-item">
-				<a class="nav-link" id="models-tab" data-toggle="tab" href="#models-panel" role="tab" aria-controls="models" aria-selected="true">Models</a>
-			</li>
-			<li class="nav-item">
-				<a class="nav-link" id="query-tab" data-toggle="tab" href="#query-panel" role="tab" aria-controls="query" aria-selected="true">Query</a>
-			</li>
-		</ul>
-		<div class="tab-content mx-1" id="content">
-			<!-- Video Tab -->
-			<div class="tab-pane fade show active" id="video-panel" role="tabpanel" aria-labelledby="video-tab">
-			</div>
+		<div id="app">
+			<ul class="nav nav-tabs" id="myTab" role="tablist">
+				<li class="nav-item">
+					<a class="nav-link active" id="video-tab" data-toggle="tab" href="#video-panel" role="tab" aria-controls="video" aria-selected="true">Video</a>
+				</li>
+				<li class="nav-item">
+					<a class="nav-link" id="annotate-tab" data-toggle="tab" href="#annotate-panel" role="tab" aria-controls="annotate" aria-selected="true">Annotate</a>
+				</li>
+				<li class="nav-item">
+					<a class="nav-link" id="models-tab" data-toggle="tab" href="#models-panel" role="tab" aria-controls="models" aria-selected="true">Models</a>
+				</li>
+				<li class="nav-item">
+					<a class="nav-link" id="query-tab" data-toggle="tab" href="#query-panel" role="tab" aria-controls="query" aria-selected="true">Query</a>
+				</li>
+			</ul>
+			<div class="tab-content mx-1" id="content">
+				<!-- Video Tab -->
+				<div class="tab-pane fade show active" id="video-panel" role="tabpanel" aria-labelledby="video-tab">
+					<video-tab></video-tab>
+				</div>
 
-			<!-- Annotate Tab -->
-			<div class="tab-pane fade" id="annotate-panel" role="tabpanel" aria-labelledby="annotate-tab">
-			</div>
+				<!-- Annotate Tab -->
+				<div class="tab-pane fade" id="annotate-panel" role="tabpanel" aria-labelledby="annotate-tab">
+				</div>
 
-			<!-- Models Tab -->
-			<div class="tab-pane fade" id="models-panel" role="tabpanel" aria-labelledby="models-tab">
-			</div>
+				<!-- Models Tab -->
+				<div class="tab-pane fade" id="models-panel" role="tabpanel" aria-labelledby="models-tab">
+				</div>
 
-			<!-- Query Tab -->
-			<div class="tab-pane fade" id="query-panel" role="tabpanel" aria-labelledby="query-tab">
+				<!-- Query Tab -->
+				<div class="tab-pane fade" id="query-panel" role="tabpanel" aria-labelledby="query-tab">
+				</div>
 			</div>
 		</div>
 		<script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
 		<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
 		<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
+		<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
 
-		<script src="index.js"></script>
 		<script src="video.js"></script>
+		<script src="video-import-local.js"></script>
+		<script src="video-import-youtube.js"></script>
 		<script src="annotate.js"></script>
 		<script src="annotate-detection.js"></script>
 		<script src="annotate-class.js"></script>
 		<script src="annotate-visualize.js"></script>
 		<script src="query.js"></script>
+		<script src="index.js"></script>
 	</body>
 </html>
