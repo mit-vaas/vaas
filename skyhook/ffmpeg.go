@@ -144,6 +144,20 @@ func ffmpegTime(index int) string {
 	return fmt.Sprintf("%d.%d", ts/100, ts%100)
 }
 
+// Returns time in milliseconds e.g. "01:32:42.1" -> (1*3600+32*60+42.1)*1000.
+func parseFfmpegTime(str string) int {
+	parts := strings.Split(str, ":")
+	if len(parts) == 3 {
+		h := ParseFloat(parts[0])
+		m := ParseFloat(parts[1])
+		s := ParseFloat(parts[2])
+		return int(h*3600*1000 + m*60*1000 + s*1000)
+	} else {
+		s := ParseFloat(str)
+		return int(s*1000)
+	}
+}
+
 func ReadFfmpeg(fname string, start int, end int, width int, height int) ffmpegReader {
 	log.Printf("[ffmpeg] from %s extract frames [%d:%d) %dx%d", fname, start, end, width, height)
 

@@ -8,14 +8,13 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
 
-func progressUpdater(video Video, initialPercent int, targetPercent int) func(frac float64) {
+func progressUpdater(video Video, initialPercent int, targetPercent int) func(frac float64, msg string) {
 	var lastUpdate time.Time
-	return func(frac float64) {
+	return func(frac float64, msg string) {
 		if time.Now().Sub(lastUpdate) < 2*time.Second {
 			return
 		}
@@ -26,7 +25,7 @@ func progressUpdater(video Video, initialPercent int, targetPercent int) func(fr
 		} else if percent > targetPercent {
 			percent = targetPercent-1
 		}
-		log.Printf("[video_import (%s)] update progress %d", video.Name, percent)
+		log.Printf("[video_import (%s)] update progress %d (%s)", video.Name, percent, msg)
 		db.Exec("UPDATE videos SET percent = ? WHERE id = ?", percent, video.ID)
 	}
 }
@@ -54,33 +53,37 @@ func Transcode(src string, dst string, video Video, initialPercent int) error {
 
 	rd := bufio.NewReader(stderr)
 	var duration int
+	var lastLine string
 	for {
 		line, err := rd.ReadString('\n')
+		line = strings.TrimSpace(line)
+		if line != "" {
+			lastLine = line
+		}
+
 		if err == io.EOF {
 			break
 		} else if err != nil {
 			return err
 		}
 
-		line = strings.TrimSpace(line)
-
 		if strings.HasPrefix(line, "Duration:") {
-			line = strings.Split(line, "Duration: ")[1]
-			line = strings.Split(line, ", ")[0]
-			parts := strings.Split(line, ":")
-			h, _ := strconv.ParseFloat(parts[0], 64)
-			m, _ := strconv.ParseFloat(parts[1], 64)
-			s, _ := strconv.ParseFloat(parts[2], 64)
-			duration = int(h*3600*1000 + m*60*1000 + s*1000)
-		} else if duration > 0 && strings.HasPrefix(line, "out_time_ms=") {
-			line = strings.Split(line, "=")[1]
-			elapsed, _ := strconv.ParseFloat(line, 64)
-			frac := elapsed/float64(duration)
-			updateProgress(frac)
+			str := strings.Split(line, "Duration: ")[1]
+			str = strings.Split(str, ", ")[0]
+			duration = parseFfmpegTime(str)
+			log.Printf("[ffmpeg-transcode] detect duration [%d] (%s)", duration, line)
+		} else if duration > 0 && strings.HasPrefix(line, "out_time=") {
+			str := strings.Split(line, "=")[1]
+			elapsed := parseFfmpegTime(str)
+			frac := float64(elapsed)/float64(duration)
+			updateProgress(frac, line)
 		}
 	}
 
-	cmd.Wait()
+	err := cmd.Wait()
+	if err != nil {
+		return fmt.Errorf("ffmpeg: %v (last line: %s)", err, lastLine)
+	}
 	db.Exec("UPDATE videos SET percent = 100 WHERE id = ?", video.ID)
 	return nil
 }
@@ -135,10 +138,10 @@ func ImportYoutube(url string) func(video Video) error {
 			if !strings.HasPrefix(line, "[download] ") || !strings.Contains(line, "% of") {
 				continue
 			}
-			line = strings.Split(line, "%")[0]
-			line = strings.Split(line, "[download] ")[1]
-			percent, _ := strconv.ParseFloat(line, 64)
-			updateProgress(percent/100)
+			str := strings.Split(line, "%")[0]
+			str = strings.Split(str, "[download] ")[1]
+			percent := ParseFloat(str)
+			updateProgress(percent/100, line)
 		}
 
 		cmd.Wait()
@@ -159,7 +162,8 @@ func ImportVideo(name string, f func(Video) error) {
 	log.Printf("[video_import (%s)] import id=%d", name, video.ID)
 	err := f(*video)
 	if err != nil {
-		log.Printf("[video_import (%s)] import error: %v", err)
+		log.Printf("[video_import (%s)] import error: %v", video.Name, err)
+		video.Delete()
 		return
 	}
 }

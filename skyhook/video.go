@@ -2,8 +2,10 @@ package skyhook
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"strconv"
 )
 
@@ -152,6 +154,15 @@ func (video Video) Uniform(unit int) ClipSlice {
 	return ClipSlice{clip, start, end}
 }
 
+func (video Video) Delete() {
+	err := os.RemoveAll(fmt.Sprintf("clips/%d", video.ID))
+	if err != nil {
+		log.Printf("[video] warning: error deleting video %s (id=%d): %v", video.Name, video.ID, err)
+	}
+	db.Exec("DELETE FROM clips WHERE video_id = ?", video.ID)
+	db.Exec("DELETE FROM videos WHERE id = ?", video.ID)
+}
+
 func pad6(x int) string {
 	s := fmt.Sprintf("%d", x)
 	for len(s) < 6 {
@@ -175,6 +186,21 @@ func (clip Clip) ToSlice() ClipSlice {
 func init() {
 	http.HandleFunc("/videos", func(w http.ResponseWriter, r *http.Request) {
 		JsonResponse(w, ListVideos())
+	})
+
+	http.HandleFunc("/videos/delete", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+		r.ParseForm()
+		videoID, _ := strconv.Atoi(r.PostForm.Get("video_id"))
+		video := GetVideo(videoID)
+		if video == nil {
+			w.WriteHeader(404)
+			return
+		}
+		video.Delete()
 	})
 
 	http.HandleFunc("/clips/get", func(w http.ResponseWriter, r *http.Request) {

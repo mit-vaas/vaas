@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -66,6 +67,14 @@ func JsonRequest(w http.ResponseWriter, r *http.Request, x interface{}) error {
 	return nil
 }
 
+func ParseFloat(str string) float64 {
+	x, err := strconv.ParseFloat(str, 64)
+	if err != nil {
+		panic(err)
+	}
+	return x
+}
+
 const Debug bool = false
 
 func PrintStderr(prefix string, stderr io.ReadCloser, onlyDebug bool) {
@@ -78,8 +87,6 @@ func PrintStderr(prefix string, stderr io.ReadCloser, onlyDebug bool) {
 			// sometimes the cmd.Wait() may call before we finish reading stderr
 			// to fix this we would need to have whoever calls cmd.Wait to wait for this
 			//  function to exit before actually calling it
-			// but for now we just log the error instead of panic
-			log.Printf("[%s] error reading stderr: %v", prefix, err)
 			break
 		}
 		if !onlyDebug || Debug {

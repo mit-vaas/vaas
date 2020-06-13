@@ -5,6 +5,11 @@ Vue.component('video-import-local', {
 			path: '',
 		};
 	},
+	mounted: function() {
+		$('#v-local-modal').on('shown.bs.modal', function() {
+			$('#v-local-name').focus();
+		});
+	},
 	methods: {
 		click: function() {
 			this.name = '';
@@ -33,7 +38,7 @@ Vue.component('video-import-local', {
 						<div class="form-group row">
 							<label class="col-sm-2 col-form-label">Name</label>
 							<div class="col-sm-10">
-								<input class="form-control" type="text" v-model="name" />
+								<input class="form-control" type="text" v-model="name" id="v-local-name" />
 							</div>
 						</div>
 						<div class="form-group row">

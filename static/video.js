@@ -18,6 +18,11 @@ Vue.component('video-tab', {
 				this.videos = data;
 			}.bind(this));
 		},
+		deleteVideo: function(video_id) {
+			$.post('/videos/delete', {'video_id': video_id}, function() {
+				this.fetchVideos();6
+			}.bind(this));
+		},
 	},
 	watch: {
 		tab: function() {
@@ -38,6 +43,7 @@ Vue.component('video-tab', {
 			<tr>
 				<th>Name</th>
 				<th>Progress</th>
+				<th></th>
 			</tr>
 		</thead>
 		<tbody>
@@ -49,6 +55,9 @@ Vue.component('video-tab', {
 				<template v-else>
 					<td>{{ video.Percent }}%</td>
 				</template>
+				<td>
+					<button v-on:click="deleteVideo(video.ID)" class="btn btn-danger">Delete</button>
+				</td>
 			</tr>
 		</tbody>
 	</table>
