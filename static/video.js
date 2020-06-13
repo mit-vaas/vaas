@@ -4,18 +4,27 @@ Vue.component('video-tab', {
 			videos: [],
 		};
 	},
+	props: ['tab'],
 	created: function() {
 		this.fetchVideos(true);
 		setInterval(this.fetchVideos, 1000);
 	},
 	methods: {
 		fetchVideos: function(force) {
-			if(!force && getTab() != 'video-tab') {
+			if(!force && this.tab != '#video-panel') {
 				return;
 			}
 			$.get('/videos', function(data) {
 				this.videos = data;
 			}.bind(this));
+		},
+	},
+	watch: {
+		tab: function() {
+			if(this.tab != '#video-panel') {
+				return;
+			}
+			this.fetchVideos(true);
 		},
 	},
 	template: `

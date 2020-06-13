@@ -230,10 +230,9 @@ type Query struct {
 	ID int
 	Name string
 	Plan *Plan
-
-	// for now we only represent a single output node
-	// e.g. this could be detection that we will draw
 	NodeID int
+
+	Node *Node
 
 	Nodes map[int]*Node
 }
@@ -249,6 +248,9 @@ func queryListHelper(rows *Rows) []*Query {
 		rows.Scan(&query.ID, &query.Name, &query.NodeID)
 		queries = append(queries, &query)
 	}
+	for _, query := range queries {
+		query.Node = GetNode(query.NodeID)
+	}
 	return queries
 }
 
@@ -262,13 +264,17 @@ func GetQuery(queryID int) *Query {
 	}
 }
 
+func ListQueries() []*Query {
+	rows := db.Query(QueryQuery)
+	return queryListHelper(rows)
+}
+
 func (query *Query) Load() {
 	if len(query.Nodes) > 0 {
 		return
 	}
-	node := GetNode(query.NodeID)
 	m := make(map[int]*Node)
-	node.LoadMap(m)
+	query.Node.LoadMap(m)
 	query.Nodes = m
 }
 
@@ -352,7 +358,7 @@ func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuffe
 		cachedOutputs[node.ID] = label.Load(slice)
 		return true
 	}
-	q := []*Node{e.query.Nodes[e.query.NodeID]}
+	q := []*Node{e.query.Node}
 	seen := make(map[int]bool)
 	needed := make(map[int]bool)
 	// first pass: load the query output nodes
@@ -365,7 +371,7 @@ func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuffe
 		}
 	}
 	if haveAllOutputs {
-		return cachedOutputs[e.query.NodeID]
+		return cachedOutputs[e.query.Node.ID]
 	}
 	// second pass: go down graph to load the rest
 	for len(q) > 0 {
@@ -460,7 +466,7 @@ func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuffe
 		}
 	}
 
-	out := cachedOutputs[e.query.NodeID]
+	out := cachedOutputs[e.query.Node.ID]
 
 	e.wg.Add(1)
 	go func() {
@@ -568,6 +574,24 @@ func init() {
 				vn.Clear()
 			}
 		}
+	})
+
+	http.HandleFunc("/queries", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			JsonResponse(w, ListQueries())
+			return
+		} else if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+
+		r.ParseForm()
+		name := r.PostForm.Get("name")
+		nodeID, _ := strconv.Atoi(r.PostForm.Get("node_id"))
+		db.Exec(
+			"INSERT INTO queries (name, node_id) VALUES (?, ?)",
+			name, nodeID,
+		)
 	})
 
 	http.HandleFunc("/exec/test", func(w http.ResponseWriter, r *http.Request) {

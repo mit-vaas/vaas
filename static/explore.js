@@ -3,18 +3,29 @@ Vue.component('explore-tab', {
 		return {
 			query: '',
 			selectedVideoID: '',
+			queries: [],
 			videos: [],
 
 			resultRows: [],
 		};
 	},
+	props: ['tab'],
 	created: function() {
-		this.fetchVideos();
+		this.fetch();
 	},
 	methods: {
-		fetchVideos: function() {
+		fetch: function() {
 			$.get('/videos', function(data) {
 				this.videos = data;
+				if(!this.selectedVideoID) {
+					this.selectedVideoID = this.videos[0].ID;
+				}
+			}.bind(this));
+			$.get('/queries', function(data) {
+				this.queries = data;
+				if(!this.query) {
+					this.query = this.queries[0].ID;
+				}
 			}.bind(this));
 		},
 		addMore: function() {
@@ -48,15 +59,24 @@ Vue.component('explore-tab', {
 			this.resultRows[i][j].clicked = true;
 		},
 	},
+	watch: {
+		tab: function() {
+			if(this.tab != '#explore-panel') {
+				return;
+			}
+			this.fetch();
+		},
+	},
 	template: `
 <div id="explore-div">
 	<div id="explore-exec-div" class="row m-1">
 		<div class="col-4">
-			<input v-model="query" type="text" class="form-control" placeholder="Your Query Here" />
+			<select v-model="query" class="form-control">
+				<option v-for="query in queries" :value="query.ID">{{ query.Name }}</option>
+			</select>
 		</div>
 		<div class="col-4">
-			<select v-model="selectedVideoID" class="form-control" id="q-exec-video">
-				<option value=""></option>
+			<select v-model="selectedVideoID" class="form-control">
 				<option v-for="video in videos" :value="video.ID">{{ video.Name }}</option>
 			</select>
 		</div>

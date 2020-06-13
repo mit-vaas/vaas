@@ -8,13 +8,14 @@ Vue.component('nodes-tab', {
 			newNodeFields: {},
 		};
 	},
+	props: ['tab'],
 	created: function() {
 		this.fetchNodes(true);
 		setInterval(this.fetchNodes, 5000);
 	},
 	methods: {
 		fetchNodes: function(force) {
-			if(!force && getTab() != 'nodes-tab') {
+			if(!force && this.tab != '#nodes-panel') {
 				return;
 			}
 			$.get('/nodes', function(data) {
@@ -46,6 +47,14 @@ Vue.component('nodes-tab', {
 				$('#n-new-node-modal').modal('hide');
 				this.fetchNodes();
 			}.bind(this));
+		},
+	},
+	watch: {
+		tab: function() {
+			if(this.tab != '#nodes-panel') {
+				return;
+			}
+			this.fetchNodes(true);
 		},
 	},
 	template: `

@@ -17,6 +17,9 @@
 					<a class="nav-link" id="nodes-tab" data-toggle="tab" href="#nodes-panel" role="tab" aria-controls="nodes-panel" aria-selected="true">Nodes</a>
 				</li>
 				<li class="nav-item">
+					<a class="nav-link" id="query-tab" data-toggle="tab" href="#query-panel" role="tab" aria-controls="query-panel" aria-selected="true">Query</a>
+				</li>
+				<li class="nav-item">
 					<a class="nav-link" id="explore-tab" data-toggle="tab" href="#explore-panel" role="tab" aria-controls="explore-panel" aria-selected="true">Explore</a>
 				</li>
 				<li class="nav-item">
@@ -26,13 +29,16 @@
 			<div class="tab-content mx-1" id="content">
 				<!-- Video Tab -->
 				<div class="tab-pane fade show active" id="video-panel" role="tabpanel" aria-labelledby="video-tab">
-					<video-tab></video-tab>
+					<video-tab :tab="tab"></video-tab>
 				</div>
 				<div class="tab-pane fade" id="nodes-panel" role="tabpanel" aria-labelledby="nodes-tab">
-					<nodes-tab></nodes-tab>
+					<nodes-tab :tab="tab"></nodes-tab>
+				</div>
+				<div class="tab-pane fade" id="query-panel" role="tabpanel" aria-labelledby="query-tab">
+					<query-tab :tab="tab"></query-tab>
 				</div>
 				<div class="tab-pane fade" id="explore-panel" role="tabpanel" aria-labelledby="explore-tab">
-					<explore-tab></explore-tab>
+					<explore-tab :tab="tab"></explore-tab>
 				</div>
 
 				<!-- Annotate Tab -->
@@ -50,6 +56,7 @@
 		<script src="video-import-youtube.js"></script>
 		<script src="nodes.js"></script>
 		<script src="node-edit-text.js"></script>
+		<script src="query.js"></script>
 		<script src="explore.js"></script>
 		<script src="annotate.js"></script>
 		<script src="annotate-detection.js"></script>

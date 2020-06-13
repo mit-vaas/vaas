@@ -6,6 +6,7 @@ $(document).ready(function() {
 		if(target == '#annotate-panel') {
 			myLoad('#annotate-panel', 'annotate-index.html', loadAnnotate);
 		}
+		app.tab = target;
 	});
 
 	$('body').keypress(function(e) {
@@ -22,8 +23,9 @@ function myLoad(target, href, f) {
 	$(target).load(href + '?x=' + Math.floor(Date.now() / 1000), f);
 }
 
-function getTab() {
-	return $("ul#myTab a.active").attr('id');
-}
-
-new Vue({ el: '#app' });
+var app = new Vue({
+	el: '#app',
+	data: {
+		tab: $('a[data-toggle="tab"].active').attr('href'),
+	},
+});
