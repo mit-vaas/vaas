@@ -141,7 +141,7 @@ type ffmpegReader struct {
 
 func ffmpegTime(index int) string {
 	ts := (index*100)/FPS
-	return fmt.Sprintf("%d.%d", ts/100, ts%100)
+	return fmt.Sprintf("%d.%02d", ts/100, ts%100)
 }
 
 // Returns time in milliseconds e.g. "01:32:42.1" -> (1*3600+32*60+42.1)*1000.
@@ -163,12 +163,14 @@ func ReadFfmpeg(fname string, start int, end int, width int, height int) ffmpegR
 
 	cmd, _, stdout := Command(
 		"ffmpeg", CommandOptions{NoStdin: true, OnlyDebug: true},
-	 	"ffmpeg", "-i", fname,
-	 	"-ss", ffmpegTime(start), "-to", ffmpegTime(end),
-	 	"-c:v", "rawvideo", "-pix_fmt", "rgb24", "-f", "rawvideo",
-	 	"-vf", fmt.Sprintf("scale=%dx%d", width, height),
-	 	"-",
- 	)
+		"ffmpeg",
+		"-ss", ffmpegTime(start),
+		"-i", fname,
+		"-to", ffmpegTime(end-start),
+		"-c:v", "rawvideo", "-pix_fmt", "rgb24", "-f", "rawvideo",
+		"-vf", fmt.Sprintf("scale=%dx%d", width, height),
+		"-",
+	)
 
  	return ffmpegReader{
  		cmd: cmd,

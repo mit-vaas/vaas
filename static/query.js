@@ -41,7 +41,6 @@ Vue.component('query-tab', {
 	},
 	watch: {
 		tab: function() {
-			console.log(this.tab);
 			if(this.tab != '#query-panel') {
 				return;
 			}

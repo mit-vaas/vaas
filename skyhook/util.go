@@ -102,6 +102,7 @@ type CommandOptions struct {
 }
 
 func Command(prefix string, opts CommandOptions, command string, args ...string) (*exec.Cmd, io.WriteCloser, io.ReadCloser) {
+	log.Printf("[util] %s %v", command, args)
 	cmd := exec.Command(command, args...)
 	var stdin io.WriteCloser
 	if !opts.NoStdin {

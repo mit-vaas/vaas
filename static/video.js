@@ -20,7 +20,7 @@ Vue.component('video-tab', {
 		},
 		deleteVideo: function(video_id) {
 			$.post('/videos/delete', {'video_id': video_id}, function() {
-				this.fetchVideos();6
+				this.fetchVideos();
 			}.bind(this));
 		},
 	},

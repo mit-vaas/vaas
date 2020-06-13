@@ -1,60 +1,78 @@
-function loadAnnotateVisualize(lsID) {
-	var clipIndex, frameIndex, uuid;
-	var width, height, videoURL;
-	var state = 'preview';
+Vue.component('annotate-visualize', {
+	data: function() {
+		return {
+			curData: null,
 
-	var update = function(data) {
-		var div = $('#a-v-container');
-		div.children().remove();
-		div.css('width', data.Width + 'px');
-		div.css('height', data.Height + 'px');
-		var im = $('<img>')
-			.attr('src', data.PreviewURL);
-		div.append(im);
+			// user clicked the video and we're playing it?
+			playing: false,
 
-		uuid = data.UUID;
-		width = data.Width;
-		height = data.Height;
-		videoURL = data.URL;
-		state = 'preview';
-		$('#a-d-index').text('');
-	};
+			clipIndex: 0,
+			frameIndex: 0,
+		};
+	},
+	props: ['ls'],
+	created: function() {
+		$.get('/labelsets/visualize?id='+this.ls.ID, this.update, 'json');
+	},
+	methods: {
+		update: function(data) {
+			this.curData = data;
+		},
+		playVideo: function() {
+			this.playing = true;
+		},
+		prevClip: function() {
 
-	$('#a-v-container').click(function(e) {
-		if(state != 'preview') {
-			return;
-		}
-		var div = $('#a-v-container');
-		div.children().remove();
-		var source = $('<source>')
-			.attr('src', videoURL)
-			.attr('type', 'video/mp4');
-		var video = $('<video>')
-			.attr('width', width)
-			.attr('height', height)
-			.attr('controls', true)
-			.attr('autoplay', true)
-			.append(source);
-		div.append(video);
-	});
+		},
+		nextClip: function() {
 
-	$('#a-v-prev').click(function() {
-		if(index < 0) {
-			$.get('/labelsets/labels?id='+lsID+'&index=0', updateImage, 'json');
-		} else {
-			var i = index-1;
-			$.get('/labelsets/labels?id='+lsID+'&index='+i, updateImage, 'json');
-		}
-	});
+		},
+		prev: function() {
 
-	$('#a-v-next').click(function() {
-		if(index < 0) {
-			$.get('/labelsets/labels?id='+lsID+'&index=-1', updateImage, 'json');
-		} else {
-			var i = index+1;
-			$.get('/labelsets/labels?id='+lsID+'&index='+i, updateImage, 'json');
-		}
-	});
+		},
+		next: function() {
 
-	$.get('/labelsets/visualize?id='+lsID, update, 'json');
-};
+		},
+	},
+	template: `
+<div>
+	<div>
+		<template v-if="curData != null">
+			<div :style="{
+					width: curData.Width + 'px',
+					height: curData.Height + 'px',
+				}"
+				>
+				<template v-if="this.playing">
+					<video :width="curData.Width" :height="curData.Height" controls autoplay>
+						<source :src="curData.URL" type="video/mp4">
+					</video>
+				</template>
+				<template v-else>
+					<img :src="curData.PreviewURL" v-on:click="playVideo" />
+				</template>
+			</div>
+		</template>
+	</div>
+	<div class="form-row align-items-center">
+		<div class="col-auto">
+			<button v-on:click="prevClip" type="button" class="btn btn-primary">Prev Clip</button>
+		</div>
+			<div class="col-auto">
+				<button v-on:click="prev" type="button" class="btn btn-primary">Prev</button>
+			</div>
+		<div class="col-auto">
+			<template v-if="curData != null">
+				{{ curData.Index }}
+			</template>
+		</div>
+		<div class="col-auto">
+			<button v-on:click="next" type="button" class="btn btn-primary">Next</button>
+		</div>
+		<div class="col-auto">
+			<button v-on:click="nextClip" type="button" class="btn btn-primary">Next Clip</button>
+		</div>
+	</div>
+</div>
+	`,
+});
