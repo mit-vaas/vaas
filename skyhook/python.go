@@ -97,7 +97,7 @@ func (e *PythonExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuff
 			// peek each parent to see how much we can read
 			length := -1
 			for _, pbuf := range parents {
-				data, err := pbuf.Peek(completed, 1)
+				data, err := pbuf.Peek(1)
 				if err != nil {
 					buf.Error(err)
 					return
@@ -109,7 +109,7 @@ func (e *PythonExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuff
 
 			datas := make([]Data, len(parents))
 			for parentIdx, pbuf := range parents {
-				data, err := pbuf.Read(completed, length)
+				data, err := pbuf.Read(length)
 				if err != nil {
 					buf.Error(err)
 					return

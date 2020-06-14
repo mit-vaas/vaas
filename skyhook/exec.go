@@ -437,53 +437,73 @@ func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuffe
 			}
 			cachedOutputs[nodeID] = e.executors[nodeID].Run(parents, slice)
 			delete(needed, nodeID)
-
-			// if no label set, create one to store the exec outputs
-			vn := GetOrCreateVNode(node, slice.Clip.Video)
-			if vn.LabelSet == nil {
-				db.Transaction(func(tx Tx) {
-					var lsID *int
-					tx.QueryRow("SELECT ls_id FROM vnodes WHERE id = ?", vn.ID).Scan(&lsID)
-					if lsID != nil {
-						vn.LabelSetID = lsID
-						return
-					}
-					name := fmt.Sprintf("exec-%v-%d", vn.Node.Name, vn.ID)
-					res := tx.Exec(
-						"INSERT INTO label_sets (name, unit, src_video, video_id, label_type) VALUES (?, ?, ?, ?, ?)",
-						name, 1, vn.Video.ID, vn.Video.ID, vn.Node.Type,
-					)
-					vn.LabelSetID = new(int)
-					*vn.LabelSetID = res.LastInsertId()
-					tx.Exec("UPDATE vnodes SET ls_id = ? WHERE id = ?", vn.LabelSetID, vn.ID)
-				})
-				vn.LabelSet = GetLabelSet(*vn.LabelSetID)
-			}
-
-			// persist the outputs
-			go func() {
-				start := time.Now()
-				data, err := cachedOutputs[vn.Node.ID].ReadFull(slice.Length())
-				if err != nil {
-					return
-				}
-				vn.LabelSet.AddLabel(slice, data)
-				e.stats[vn.Node.ID] = NodeStats{
-					samples: append(e.stats[vn.Node.ID].samples, time.Now().Sub(start)),
-				}
-			}()
 		}
 	}
 
-	out := cachedOutputs[e.query.Node.ID]
+	save := func(node *Node, buf *LabelBuffer) {
+		// if no label set, create one to store the exec outputs
+		vn := GetOrCreateVNode(node, slice.Clip.Video)
+		if vn.LabelSet == nil {
+			db.Transaction(func(tx Tx) {
+				var lsID *int
+				tx.QueryRow("SELECT ls_id FROM vnodes WHERE id = ?", vn.ID).Scan(&lsID)
+				if lsID != nil {
+					vn.LabelSetID = lsID
+					return
+				}
+				name := fmt.Sprintf("exec-%v-%d", vn.Node.Name, vn.ID)
+				res := tx.Exec(
+					"INSERT INTO label_sets (name, unit, src_video, video_id, label_type) VALUES (?, ?, ?, ?, ?)",
+					name, 1, vn.Video.ID, vn.Video.ID, vn.Node.Type,
+				)
+				vn.LabelSetID = new(int)
+				*vn.LabelSetID = res.LastInsertId()
+				tx.Exec("UPDATE vnodes SET ls_id = ? WHERE id = ?", vn.LabelSetID, vn.ID)
+			})
+			vn.LabelSet = GetLabelSet(*vn.LabelSetID)
+		}
+
+		// persist the outputs
+		go func() {
+			start := time.Now()
+			data, err := buf.Read(slice.Length())
+			if err != nil {
+				return
+			}
+			vn.LabelSet.AddLabel(slice, data)
+			e.stats[vn.Node.ID] = NodeStats{
+				samples: append(e.stats[vn.Node.ID].samples, time.Now().Sub(start)),
+			}
+		}()
+	}
+
+	// save the non-outputs
+	for nodeID, buf := range cachedOutputs {
+		if nodeID == e.query.Node.ID {
+			continue
+		} else if e.query.Node.Type == VideoType {
+			continue
+		}
+		save(e.query.Nodes[nodeID], buf)
+	}
+
+	// split the output node so we can save it (and wait for it) and also output it
+	buf := cachedOutputs[e.query.Node.ID]
+	output := NewLabelBuffer(e.query.Node.Type)
+	splitBufs := []*LabelBuffer{output}
+	if e.query.Node.Type != VideoType {
+		saveBuf := NewLabelBuffer(e.query.Node.Type)
+		save(e.query.Node, saveBuf)
+		splitBufs = append(splitBufs, saveBuf)
+	}
 
 	e.wg.Add(1)
 	go func() {
-		out.ReadFull(slice.Length())
+		buf.Split(slice.Length(), splitBufs)
 		e.wg.Done()
 	}()
 
-	return out
+	return output
 }
 
 func (e *QueryExecutor) Close() {

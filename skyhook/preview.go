@@ -109,7 +109,7 @@ func (pc *PreviewClip) GetPreview() (Image, error) {
 				pc.mu.Unlock()
 			}
 
-			data, err := pc.labelBuf.Peek(0, 1)
+			data, err := pc.labelBuf.Peek(1)
 			if err != nil {
 				pc.setErr(err)
 				return
@@ -251,7 +251,7 @@ func (pc *PreviewClip) loadLabels() {
 	}
 
 	for myReady < pc.Slice.Length() {
-		data, err := pc.labelBuf.Read(myReady, 0)
+		data, err := pc.labelBuf.Read(0)
 		n := data.Length()
 		if err != nil {
 			pc.setErr(err)

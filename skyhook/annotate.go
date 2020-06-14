@@ -335,7 +335,7 @@ func init() {
 
 		label := ls.Get(index)
 		if label != nil {
-			data, err := label.Load(label.Slice).ReadFull(label.Slice.Length())
+			data, err := label.Load(label.Slice).Read(label.Slice.Length())
 			if err != nil {
 				panic(err)
 			}

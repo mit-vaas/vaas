@@ -14,7 +14,7 @@ func PerFrame(parents [][]*skyhook.LabelBuffer, slices []skyhook.ClipSlice, buff
 		completed := 0
 		stop := false
 		for !stop && completed < slice.Length() {
-			data, err := parents[0][i].Read(completed, 0)
+			data, err := parents[0][i].Read(0)
 			if err != nil {
 				log.Printf("[models (%v)] error reading from parent: %v", slice, err)
 				buffers[i].Error(err)
