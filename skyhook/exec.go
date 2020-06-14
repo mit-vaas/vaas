@@ -626,7 +626,6 @@ func init() {
 		}
 		var request TestRequest
 		if err := JsonRequest(w, r, &request); err != nil {
-			http.Error(w, fmt.Sprintf("json decode error: %v", err), 400)
 			return
 		}
 
@@ -685,6 +684,14 @@ func init() {
 				UUID: uuid,
 				Slice: slices[i],
 			})
+
+			// we need to call pc.GetVideo so that the output label buffer doesn't get stuck.
+			// before, we would only call GetVideo when the user clicks on a preview image,
+			// but then if the query produces a large video output it would either eat up
+			// a lot of memory or get stuck writing to buffer due to capacity.
+			// so currently we begin reading the labels (and the source video) immediately
+			// to begin producing the preview.
+			pc.GetVideo()
 		}
 		JsonResponse(w, response)
 	})

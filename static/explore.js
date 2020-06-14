@@ -45,13 +45,16 @@ Vue.component('explore-tab', {
 				}
 				if(parts.length >= 2) {
 					var idx = parts[1].split(':')[0];
-					params.StartSlice.Start = idx;
+					params.StartSlice.Start = parseInt(idx);
 				}
 			}
 			var i = this.resultRows.length;
 			var row = [];
 			for(var j = 0; j < 4; j++) {
-				row.push({'ready': false});
+				row.push({
+					ready: false,
+					selected: false,
+				});
 			}
 			this.resultRows.push(row);
 			$.ajax({
@@ -62,6 +65,7 @@ Vue.component('explore-tab', {
 					data.forEach(function(el) {
 						el.ready = true;
 						el.clicked = false;
+						el.selected = false;
 					});
 					Vue.set(this.resultRows, i, data)
 				}.bind(this),
@@ -73,6 +77,13 @@ Vue.component('explore-tab', {
 		},
 		onClick: function(i, j) {
 			this.resultRows[i][j].clicked = true;
+		},
+		toggleResult: function(i, j) {
+			var r = this.resultRows[i][j];
+			r.selected = !r.selected;
+			if(r.selected) {
+				this.sequentialClip = r.Slice.Clip.ID + '[' + r.Slice.Start + ']';
+			}
 		},
 	},
 	watch: {
@@ -128,12 +139,12 @@ Vue.component('explore-tab', {
 	</div>
 	<div id="explore-results-div">
 		<div v-for="(row, i) in resultRows" class="explore-results-row">
-			<div v-for="(result, j) in row" class="explore-results-col">
+			<div v-for="(result, j) in row" v-on:click.stop="toggleResult(i, j)" class="explore-results-col" :class="{selected: result.selected}">
 				<template v-if="result.ready">
 					<div>
 						<span>{{ result.Slice.Clip.ID }}[{{ result.Slice.Start }}:{{ result.Slice.End }}]</span>
 					</div>
-					<img v-if="!result.clicked" v-on:click="onClick(i, j)" :src="result.PreviewURL" class="explore-result-img" />
+					<img v-if="!result.clicked" v-on:click.stop="onClick(i, j)" :src="result.PreviewURL" class="explore-result-img" />
 					<video v-if="result.clicked" :width="result.Width" class="explore-result-img" controls autoplay>
 						<source :src="result.URL" type="video/mp4"></source>
 					</video>

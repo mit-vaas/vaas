@@ -88,6 +88,15 @@ html, body, #app, #nodes-panel {
 	flex-shrink: 1;
 	padding: 5px;
 }
+.explore-results-col:hover {
+	background-color: orange;
+}
+.explore-results-col.selected {
+	background-color: lightblue;
+}
+.explore-results-col.selected:hover {
+	background-color: blue;
+}
 
 .explore-result-img {
 	max-width: 100%;

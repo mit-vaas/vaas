@@ -57,11 +57,11 @@ func JsonResponse(w http.ResponseWriter, x interface{}) {
 func JsonRequest(w http.ResponseWriter, r *http.Request, x interface{}) error {
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		w.WriteHeader(400)
+		http.Error(w, fmt.Sprintf("json decode error: %v", err), 400)
 		return err
 	}
 	if err := json.Unmarshal(bytes, x); err != nil {
-		w.WriteHeader(400)
+		http.Error(w, fmt.Sprintf("json decode error: %v", err), 400)
 		return err
 	}
 	return nil
