@@ -30,26 +30,29 @@ Vue.component('explore-tab', {
 		},
 		addMore: function() {
 			var params = {
-				video_id: this.selectedVideoID,
-				query_id: this.query,
+				VideoID: this.selectedVideoID,
+				QueryID: this.query,
+				Mode: 'random',
+				Count: 4,
 			};
 			var i = this.resultRows.length;
-			this.resultRows.push([]);
-
-			var addOne = function(i, j) {
-				$.post('/exec/test', params, function(data) {
-					data['ready'] = true;
-					data['clicked'] = false;
-					Vue.set(this.resultRows[i], j, data);
-				}.bind(this));
-			}.bind(this);
-
+			var row = [];
 			for(var j = 0; j < 4; j++) {
-				this.resultRows[i].push({
-					'ready': false,
-				});
-				addOne(i, j);
+				row.push({'ready': false});
 			}
+			this.resultRows.push(row);
+			$.ajax({
+				type: "POST",
+				url: '/exec/test',
+				data: JSON.stringify(params),
+				success: function(data) {
+					data.forEach(function(el) {
+						el.ready = true;
+						el.clicked = false;
+					});
+					Vue.set(this.resultRows, i, data)
+				}.bind(this),
+			});
 		},
 		test: function() {
 			this.resultRows = [];

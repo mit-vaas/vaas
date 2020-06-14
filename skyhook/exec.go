@@ -304,6 +304,15 @@ type QueryExecutor struct {
 	stats map[int]NodeStats
 }
 
+func NewQueryExecutor(query *Query) *QueryExecutor {
+	query.Load()
+	return &QueryExecutor{
+		query: query,
+		executors: make(map[int]Executor),
+		stats: make(map[int]NodeStats),
+	}
+}
+
 func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuffer {
 	/*
 	// check what the skip optimization says about it
@@ -489,15 +498,6 @@ func (e *QueryExecutor) Wait() {
 	e.Close()
 }
 
-func (query *Query) Exec() *QueryExecutor {
-	query.Load()
-	return &QueryExecutor{
-		query: query,
-		executors: make(map[int]Executor),
-		stats: make(map[int]NodeStats),
-	}
-}
-
 func init() {
 	http.HandleFunc("/nodes", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
@@ -574,6 +574,8 @@ func init() {
 				vn.Clear()
 			}
 		}
+
+		tasks.nodeUpdated(node)
 	})
 
 	http.HandleFunc("/queries", func(w http.ResponseWriter, r *http.Request) {
@@ -595,42 +597,76 @@ func init() {
 	})
 
 	http.HandleFunc("/exec/test", func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
-		videoID, _ := strconv.Atoi(r.PostForm.Get("video_id"))
-		queryID, _ := strconv.Atoi(r.PostForm.Get("query_id"))
+		type TestRequest struct {
+			VideoID int
+			QueryID int
+			Mode string // "random" or "sequential"
+			StartSlice ClipSlice
+			Count int
+		}
+		var request TestRequest
+		if err := JsonRequest(w, r, &request); err != nil {
+			http.Error(w, fmt.Sprintf("json decode error: %v", err), 400)
+			return
+		}
 
-		query := GetQuery(queryID)
+		query := GetQuery(request.QueryID)
 		if query == nil {
-			w.WriteHeader(404)
+			http.Error(w, "no such query", 404)
 			return
 		}
-		video := GetVideo(videoID)
+		video := GetVideo(request.VideoID)
 		if video == nil {
-			w.WriteHeader(404)
+			http.Error(w, "no such video", 404)
 			return
 		}
-		slice := video.Uniform(VisualizeMaxFrames)
-		log.Printf("[exec (%s) %v] beginning test", query.Name, slice)
-		e := query.Exec()
-		labelBuf := e.Run(nil, slice)
-		if labelBuf == nil {
-			w.WriteHeader(404)
-			return
+		var slices []ClipSlice
+		if request.Mode == "random" {
+			for i := 0; i < request.Count; i++ {
+				slices = append(slices, video.Uniform(VisualizeMaxFrames))
+			}
+		} else if request.Mode == "sequential" {
+			clip := GetClip(request.StartSlice.Clip.ID)
+			if clip == nil || clip.Video.ID != video.ID {
+				http.Error(w, "invalid clip for sequential request", 404)
+				return
+			}
+			startIdx := request.StartSlice.Start
+			for i := 0; i < request.Count; i++ {
+				frameRange := [2]int{startIdx+i*VisualizeMaxFrames, startIdx+(i+1)*VisualizeMaxFrames}
+				if frameRange[1] > clip.Frames {
+					break
+				}
+				slices = append(slices, ClipSlice{
+					Clip: *clip,
+					Start: frameRange[0],
+					End: frameRange[1],
+				})
+			}
 		}
-		log.Printf("[exec (%s) %v] test: got labelBuf, loading preview", query.Name, slice)
-		pc := CreatePreview(slice, labelBuf)
-		uuid := cache.Add(pc)
-		log.Printf("[exec (%s) %v] test: cached preview with %d frames, uuid=%s", query.Name, slice, pc.Slice.Length(), uuid)
-		JsonResponse(w, VisualizeResponse{
-			PreviewURL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", uuid),
-			URL: fmt.Sprintf("/cache/view?id=%s&type=mp4", uuid),
-			Width: slice.Clip.Width,
-			Height: slice.Clip.Height,
-			UUID: uuid,
-			Slice: slice,
-		})
 
-		go e.Wait()
+		log.Printf("[exec (%s) %v] beginning test", query.Name, slices)
+		task := Task{
+			Query: query,
+			Slices: slices,
+		}
+		labelBufs := tasks.Schedule(task)
+		log.Printf("[exec (%s) %v] test: got labelBufs, loading previews", query.Name, slices)
+		var response []VisualizeResponse
+		for i, buf := range labelBufs {
+			pc := CreatePreview(slices[i], buf)
+			uuid := cache.Add(pc)
+			log.Printf("[exec (%s) %v] test: cached preview with %d frames, uuid=%s", query.Name, slices[i], pc.Slice.Length(), uuid)
+			response = append(response, VisualizeResponse{
+				PreviewURL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", uuid),
+				URL: fmt.Sprintf("/cache/view?id=%s&type=mp4", uuid),
+				Width: slices[i].Clip.Width,
+				Height: slices[i].Clip.Height,
+				UUID: uuid,
+				Slice: slices[i],
+			})
+		}
+		JsonResponse(w, response)
 	})
 
 	/*http.HandleFunc("/exec/test2", func(w http.ResponseWriter, r *http.Request) {
