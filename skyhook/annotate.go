@@ -279,7 +279,7 @@ type DetectionLabelRequest struct {
 	ID int `json:"id"`
 	Index int `json:"index"`
 	UUID string `json:"uuid"`
-	Labels [][][2]int `json:"labels"`
+	Labels [][]Detection `json:"labels"`
 }
 
 type ClassLabelRequest struct {
@@ -297,6 +297,7 @@ type VisualizeResponse struct {
 	Width int
 	Height int
 	UUID string
+	Slice ClipSlice
 }
 
 func init() {
@@ -383,7 +384,7 @@ func init() {
 			log.Printf("[annotate] add labels for new clip to ls %d", ls.ID)
 			ls.AddClip(images, Data{
 				Type: DetectionType,
-// TODO				Detections: request.Labels,
+				Detections: request.Labels,
 			})
 			w.WriteHeader(200)
 			return
@@ -398,7 +399,7 @@ func init() {
 		log.Printf("[annotate] update labels for clip %d in ls %d", label.Slice.Clip.ID, ls.ID)
 		ls.UpdateLabel(*label, Data{
 			Type: DetectionType,
-// TODO			Detections: request.Labels,
+			Detections: request.Labels,
 		})
 	})
 

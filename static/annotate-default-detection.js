@@ -4,9 +4,9 @@ Vue.component('annotate-default-detection', {
 			image: null,
 			context1: null,
 			context2: null,
-			labels: [],
+			labels: [[]],
 			working: [],
-			mode: 'line',
+			mode: 'box',
 			state: 'idle',
 		};
 	},
@@ -27,11 +27,32 @@ Vue.component('annotate-default-detection', {
 		},
 		render: function() {
 			this.context1.clearRect(0, 0, this.$refs.layer1.width, this.$refs.layer1.height);
-			if(this.mode == 'line') {
-				this.labels.forEach(function(el) {
+			if(this.mode == 'point') {
+				this.labels[0].forEach(function(el) {
 					this.context1.beginPath();
-					this.context1.moveTo(el[0][0], el[0][1]);
-					this.context1.lineTo(el[1][0], el[1][1]);
+					this.context1.arc(el.left, el.top, 3, 0, 2*Math.PI,);
+					this.context1.fillStyle = '#ff0000';
+					this.context1.fill();
+					this.context1.closePath();
+				}.bind(this));
+			} else if(this.mode == 'line') {
+				this.labels[0].forEach(function(el) {
+					this.context1.beginPath();
+					this.context1.moveTo(el.left, el.top);
+					this.context1.lineTo(el.right, el.bottom);
+					this.context1.lineWidth = 3;
+					this.context1.strokeStyle = '#ff0000';
+					this.context1.stroke();
+					this.context1.closePath();
+				}.bind(this));
+			} else if(this.mode == 'box') {
+				this.labels[0].forEach(function(el) {
+					this.context1.beginPath();
+					this.context1.moveTo(el.left, el.top);
+					this.context1.lineTo(el.left, el.bottom);
+					this.context1.lineTo(el.right, el.bottom);
+					this.context1.lineTo(el.right, el.top);
+					this.context1.lineTo(el.left, el.top);
 					this.context1.lineWidth = 3;
 					this.context1.strokeStyle = '#ff0000';
 					this.context1.stroke();
@@ -44,7 +65,7 @@ Vue.component('annotate-default-detection', {
 			if(image.Labels) {
 				this.labels = image.Labels;
 			} else {
-				this.labels = [];
+				this.labels = [[]];
 			}
 			this.working = [];
 			this.state = 'idle';
@@ -67,16 +88,24 @@ Vue.component('annotate-default-detection', {
 				}
 				e.preventDefault();
 				this.cancelWorking();
-			} else if(this.state == 'idle') {
-				if(this.mode == 'point') {
-					// ...
-				} else if(this.mode == 'line') {
-					this.state = 'line';
-					this.working.push([x, y]);
+			} else if(this.state == 'idle' && this.mode != 'point') {
+				this.state = this.mode;
+				this.working.push([x, y]);
+			} else if(this.mode == 'point' || this.state == 'line' || this.state == 'box') {
+				var detection = {
+					track_id: -1,
+					left: x,
+					top: y,
+					right: x,
+					bottom: y,
+				};
+				if(this.state == 'line' || this.state == 'box') {
+					detection.left = Math.min(detection.left, this.working[0][0]);
+					detection.top = Math.min(detection.top, this.working[0][1]);
+					detection.right = Math.max(detection.right, this.working[0][0]);
+					detection.bottom = Math.max(detection.bottom, this.working[0][1]);
 				}
-			} else if(this.state == 'line') {
-				var line = [[this.working[0][0], this.working[0][1]], [x, y]];
-				this.labels.push(line);
+				this.labels[0].push(detection);
 				this.cancelWorking();
 				this.render();
 			}
@@ -95,21 +124,32 @@ Vue.component('annotate-default-detection', {
 				this.context2.strokeStyle = '#ff0000';
 				this.context2.stroke();
 				this.context2.closePath();
+			} else if(this.state == 'box') {
+				this.context2.beginPath();
+				this.context2.moveTo(this.working[0][0], this.working[0][1]);
+				this.context2.lineTo(this.working[0][0], y);
+				this.context2.lineTo(x, y);
+				this.context2.lineTo(x, this.working[0][1]);
+				this.context2.lineTo(this.working[0][0], this.working[0][1]);
+				this.context2.lineWidth = 3;
+				this.context2.strokeStyle = '#ff0000';
+				this.context2.stroke();
+				this.context2.closePath();
 			}
 		},
 		prev: function() {
-			if(this.index < 0) {
+			if(this.image.Index < 0) {
 				$.get('/labelsets/labels?id='+this.ls.ID+'&index=0', this.updateImage, 'json');
 			} else {
-				var i = this.index - 1;
+				var i = this.image.Index - 1;
 				$.get('/labelsets/labels?id='+this.ls.ID+'&index='+i, this.updateImage, 'json');
 			}
 		},
 		next: function() {
-			if(this.index < 0) {
+			if(this.image.Index < 0) {
 				$.get('/labelsets/labels?id='+this.ls.ID+'&index=-1', this.updateImage, 'json');
 			} else {
-				var i = this.index+1;
+				var i = this.image.Index+1;
 				$.get('/labelsets/labels?id='+this.ls.ID+'&index='+i, this.updateImage, 'json');
 			}
 		},
@@ -126,17 +166,17 @@ Vue.component('annotate-default-detection', {
 				data: JSON.stringify(params),
 				processData: false,
 				success: function() {
-					if(this.index < 0) {
+					if(this.image.Index < 0) {
 						$.get('/labelsets/labels?id='+this.ls.ID+'&index=-1', this.updateImage, 'json');
 					} else {
-						var i = this.index+1;
+						var i = this.image.Index+1;
 						$.get('/labelsets/labels?id='+this.ls.ID+'&index='+i, this.updateImage, 'json');
 					}
 				}.bind(this),
 			});
 		},
 		clear: function() {
-			this.labels = [];
+			this.labels = [[]];
 			this.render();
 		},
 	},
