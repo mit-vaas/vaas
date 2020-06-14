@@ -91,6 +91,9 @@ Vue.component('explore-tab', {
 		<div v-for="(row, i) in resultRows" class="explore-results-row">
 			<div v-for="(result, j) in row" class="explore-results-col">
 				<template v-if="result.ready">
+					<div>
+						<span>{{ result.Slice.Clip.ID }}[{{ result.Slice.Start }}:{{ result.Slice.End }}]</span>
+					</div>
 					<img v-if="!result.clicked" v-on:click="onClick(i, j)" :src="result.PreviewURL" class="explore-result-img" />
 					<video v-if="result.clicked" :width="result.Width" class="explore-result-img" controls autoplay>
 						<source :src="result.URL" type="video/mp4"></source>

@@ -627,6 +627,7 @@ func init() {
 			Width: slice.Clip.Width,
 			Height: slice.Clip.Height,
 			UUID: uuid,
+			Slice: slice,
 		})
 
 		go e.Wait()
