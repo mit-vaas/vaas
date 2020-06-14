@@ -6,6 +6,9 @@ Vue.component('explore-tab', {
 			queries: [],
 			videos: [],
 
+			mode: 'random',
+			sequentialClip: '',
+
 			resultRows: [],
 		};
 	},
@@ -32,9 +35,19 @@ Vue.component('explore-tab', {
 			var params = {
 				VideoID: this.selectedVideoID,
 				QueryID: this.query,
-				Mode: 'random',
+				Mode: this.mode,
 				Count: 4,
 			};
+			if(this.mode == 'sequential') {
+				var parts = this.sequentialClip.split(']')[0].split('[');
+				params.StartSlice = {
+					Clip: {ID: parseInt(parts[0])},
+				}
+				if(parts.length >= 2) {
+					var idx = parts[1].split(':')[0];
+					params.StartSlice.Start = idx;
+				}
+			}
 			var i = this.resultRows.length;
 			var row = [];
 			for(var j = 0; j < 4; j++) {
@@ -72,22 +85,45 @@ Vue.component('explore-tab', {
 	},
 	template: `
 <div id="explore-div">
-	<div id="explore-exec-div" class="row m-1">
-		<div class="col-4">
-			<select v-model="query" class="form-control">
-				<option v-for="query in queries" :value="query.ID">{{ query.Name }}</option>
-			</select>
+	<div id="explore-exec-div" class="m-1">
+		<div>
+			<div class="form-group row">
+				<label class="col-sm-4">Query</label>
+				<div class="col-sm-8">
+					<select v-model="query" class="form-control">
+						<option v-for="query in queries" :value="query.ID">{{ query.Name }}</option>
+					</select>
+				</div>
+			</div>
+			<div class="form-group row">
+				<label class="col-sm-4">Video</label>
+				<div class="col-sm-8">
+					<select v-model="selectedVideoID" class="form-control">
+						<option v-for="video in videos" :value="video.ID">{{ video.Name }}</option>
+					</select>
+				</div>
+			</div>
+			<div>
+				<button v-on:click="test" type="button" class="btn btn-primary">Run</button>
+				<button v-on:click="test" type="button" class="btn btn-primary">Make Job</button>
+			</div>
 		</div>
-		<div class="col-4">
-			<select v-model="selectedVideoID" class="form-control">
-				<option v-for="video in videos" :value="video.ID">{{ video.Name }}</option>
-			</select>
-		</div>
-		<div class="col-2">
-			<button v-on:click="test" type="button" class="btn btn-primary" id="explore-test-btn">Test</button>
-		</div>
-		<div class="col-2">
-			<button type="button" class="btn btn-primary" id="explore-run-btn">Run</button>
+		<div>
+			<h3>Mode</h3>
+			<div class="form-check">
+				<input class="form-check-input" type="radio" value="random" v-model="mode" />
+				<label class="form-check-label">Random</label>
+			</div>
+			<div class="form-check">
+				<input class="form-check-input" type="radio" value="sequential" v-model="mode" />
+				<label class="form-check-label">Sequential</label>
+			</div>
+			<div class="form-group row">
+				<label class="col-sm-4">From Clip</label>
+				<div class="col-sm-8">
+					<input type="text" class="form-control" v-model="sequentialClip" />
+				</div>
+			</div>
 		</div>
 	</div>
 	<div id="explore-results-div">

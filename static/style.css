@@ -64,6 +64,12 @@ html, body, #app, #nodes-panel {
 	flex-flow: column;
 }
 
+#explore-exec-div {
+	display: flex;
+	flex-flow: row;
+	justify-content: space-evenly;
+}
+
 #explore-results-div {
 	flex-grow: 1;
 }
