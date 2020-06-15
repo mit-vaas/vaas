@@ -149,12 +149,13 @@ func (pc *PreviewClip) GetPreview() (Image, error) {
 	return *pc.preview, nil
 }
 
-type PCReader struct {
+// Reads and consumes images from the PreviewClip.
+type pcReader struct {
 	pc *PreviewClip
 	pos int
 }
 
-func (rd *PCReader) Read() (Image, error) {
+func (rd *pcReader) Read() (Image, error) {
 	if rd.pos >= rd.pc.Slice.Length() {
 		return Image{}, io.EOF
 	}
@@ -168,11 +169,12 @@ func (rd *PCReader) Read() (Image, error) {
 		return Image{}, rd.pc.err
 	}
 	im := rd.pc.images[rd.pos]
+	rd.pc.images[rd.pos] = Image{}
 	rd.pos++
 	return im, nil
 }
 
-func (rd *PCReader) Close() {}
+func (rd *pcReader) Close() {}
 
 type PCVideoReader struct {
 	pc *PreviewClip
@@ -311,7 +313,7 @@ func (pc *PreviewClip) GetVideo() (io.Reader, error) {
 	go pc.loadLabels()
 
 	go func() {
-		rd, cmd := MakeVideo(&PCReader{pc, 0}, im.Width, im.Height)
+		rd, cmd := MakeVideo(&pcReader{pc, 0}, im.Width, im.Height)
 		buf := make([]byte, 4096)
 		for {
 			n, err := rd.Read(buf)
