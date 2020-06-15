@@ -68,6 +68,14 @@ func JsonRequest(w http.ResponseWriter, r *http.Request, x interface{}) error {
 	return nil
 }
 
+func ParseInt(str string) int {
+	x, err := strconv.Atoi(str)
+	if err != nil {
+		panic(err)
+	}
+	return x
+}
+
 func ParseFloat(str string) float64 {
 	x, err := strconv.ParseFloat(str, 64)
 	if err != nil {

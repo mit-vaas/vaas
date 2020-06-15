@@ -495,11 +495,17 @@ func init() {
 		if slice.Length() > VisualizeMaxFrames {
 			slice.End = slice.Start + VisualizeMaxFrames
 		}
-		log.Printf("[annotate] visualize: loading preview for slice %v", slice)
-		buf := label.Load(slice)
-		pc := CreatePreview(slice, buf.Reader())
-		uuid := cache.Add(pc)
-		log.Printf("[annotate] visualize: cached preview with %d frames, uuid=%s", pc.Slice.Length(), uuid)
+		log.Printf("[annotate] visualize: rendering video for slice %v", slice)
+		videoRd := ReadVideo(slice, slice.Clip.Width, slice.Clip.Height)
+		videoBuf := NewLabelBuffer(VideoType)
+		go videoBuf.FromVideoReader(videoRd)
+		inputs := [][]*BufferReader{{
+			videoBuf.Reader(),
+			label.Load(slice).Reader(),
+		}}
+		renderer := RenderVideo(slice, inputs)
+		uuid := cache.Add(renderer)
+		log.Printf("[annotate] visualize: cached renderer with %d frames, uuid=%s", slice.Length(), uuid)
 		JsonResponse(w, VisualizeResponse{
 			PreviewURL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", uuid),
 			URL: fmt.Sprintf("/cache/view?id=%s&type=mp4", uuid),
@@ -507,7 +513,7 @@ func init() {
 			Height: slice.Clip.Height,
 			UUID: uuid,
 			Slice: slice,
-			Type: buf.Type(),
+			Type: inputs[0][1].Type(),
 		})
 	})
 

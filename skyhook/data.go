@@ -212,6 +212,10 @@ func (buf *LabelBuffer) length() int {
 func (buf *LabelBuffer) discard() {
 	npos := buf.rdpos[0]
 	for _, x := range buf.rdpos {
+		if x < 0 {
+			// this reader closed
+			continue
+		}
 		if x < npos {
 			npos = x
 		}
@@ -375,6 +379,60 @@ func (rd *BufferReader) Wait(length int) error {
 		}
 		completed += data.Length()
 	}
+	return nil
+}
+
+func (rd *BufferReader) Close() {
+	// tell buffer that we read everything so that it doesn't wait on us
+	rd.buf.mu.Lock()
+	rd.buf.rdpos[rd.id] = -1
+	rd.buf.discard()
+	rd.buf.mu.Unlock()
+}
+
+// TODO: there could be issues due to buffer capacity if inputs have mutual dependencies
+// e.g. inputs[0] is video and inputs[1] depends on inputs[0]
+// additionally, suppose inputs[1] is NOT streaming (waits for entire inputs[0] before outputting data)
+// then below we would get stuck since inputs[0] is capacity limited and inputs[1] isn't producing anything
+// probably solution is to cache the video (either as images or video) if a descendant operation is not streaming
+func ReadMultiple(length int, inputs []*BufferReader, callback func(int, []Data) error) error {
+	defer func() {
+		for _, input := range inputs {
+			input.Close()
+		}
+	}()
+
+	completed := 0
+	for completed < length {
+		// peek each input to see how much we can read
+		available := -1
+		for _, rd := range inputs {
+			data, err := rd.Peek(1)
+			if err != nil {
+				return err
+			}
+			if available == -1 || data.Length() < available {
+				available = data.Length()
+			}
+		}
+
+		datas := make([]Data, len(inputs))
+		for i, rd := range inputs {
+			data, err := rd.Read(available)
+			if err != nil {
+				return err
+			}
+			datas[i] = data
+		}
+
+		err := callback(completed, datas)
+		if err != nil {
+			return err
+		}
+
+		completed += available
+	}
+
 	return nil
 }
 

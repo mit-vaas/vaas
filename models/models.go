@@ -7,34 +7,25 @@ import (
 	"log"
 )
 
-type PerFrameFunc func(im skyhook.Image, outBuf *skyhook.LabelBuffer) error
+type PerFrameFunc func(idx int, data skyhook.Data, outBuf *skyhook.LabelBuffer) error
 
-func PerFrame(parents [][]*skyhook.BufferReader, slices []skyhook.ClipSlice, buffers []*skyhook.LabelBuffer, f PerFrameFunc) {
-	for i, slice := range slices {
-		completed := 0
-		stop := false
-		for !stop && completed < slice.Length() {
-			data, err := parents[0][i].Read(0)
+func PerFrame(parents []*skyhook.BufferReader, slice skyhook.ClipSlice, buf *skyhook.LabelBuffer, t skyhook.DataType, f PerFrameFunc) {
+	err := skyhook.ReadMultiple(slice.Length(), parents, func(index int, datas []skyhook.Data) error {
+		if len(datas) != 1 {
+			panic(fmt.Errorf("expected exactly one input, but got %d", len(datas)))
+		} else if datas[0].Type != t {
+			panic(fmt.Errorf("expected type %v", t))
+		}
+		for i := 0; i < datas[0].Length(); i++ {
+			err := f(index+i, datas[0].Slice(i, i+1), buf)
 			if err != nil {
-				log.Printf("[models (%v)] error reading from parent: %v", slice, err)
-				buffers[i].Error(err)
-				break
-			}
-
-			if data.Type != skyhook.VideoType {
-				panic(fmt.Errorf("expected video type"))
-			}
-
-			completed += data.Length()
-			for _, im := range data.Images {
-				err := f(im, buffers[i])
-				if err != nil {
-					log.Printf("[models (%v)] func error: %v", slice, err)
-					buffers[i].Error(err)
-					stop = true
-					break
-				}
+				return err
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		log.Printf("[models (%v)] error reading: %v", slice, err)
+		buf.Error(err)
 	}
 }

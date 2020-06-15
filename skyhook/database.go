@@ -76,8 +76,9 @@ func init() {
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS queries (
 		id INTEGER PRIMARY KEY ASC,
-		name TEXT NOT NULL,
-		node_id INTEGER NOT NULL
+		name TEXT NOT NULL DEFAULT '',
+		node_id INTEGER NOT NULL DEFAULT 0,
+		outputs TEXT NOT NULL DEFAULT ''
 	)`)
 /*
 INSERT INTO videos VALUES (1, 'tokyo', 'jpeg');

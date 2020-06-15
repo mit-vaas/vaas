@@ -112,7 +112,7 @@ func (node *Node) Exec(query *Query) Executor {
 	if node.Ext == "python" {
 		return node.pythonExecutor(query)
 	} else if node.Ext == "model" {
-		//return node.modelExecutor(query)
+		return node.modelExecutor(query)
 	}
 	panic(fmt.Errorf("exec on node with unknown ext %s", node.Ext))
 }
@@ -230,26 +230,39 @@ type Query struct {
 	ID int
 	Name string
 	Plan *Plan
-	NodeID int
+	OutputsStr string
 
-	Node *Node
+	Outputs [][]*Node
 
 	Nodes map[int]*Node
 }
 
-
-
-const QueryQuery = "SELECT q.id, q.name, q.node_id FROM queries AS q"
+const QueryQuery = "SELECT q.id, q.name, q.outputs FROM queries AS q"
 
 func queryListHelper(rows *Rows) []*Query {
 	var queries []*Query
 	for rows.Next() {
 		var query Query
-		rows.Scan(&query.ID, &query.Name, &query.NodeID)
+		rows.Scan(&query.ID, &query.Name, &query.OutputsStr)
 		queries = append(queries, &query)
 	}
 	for _, query := range queries {
-		query.Node = GetNode(query.NodeID)
+		sections := strings.Split(query.OutputsStr, ";")
+		query.Outputs = make([][]*Node, len(sections))
+		for i, section := range sections {
+			parts := strings.Split(section, ",")
+			for _, part := range parts {
+				if part == "v" {
+					query.Outputs[i] = append(query.Outputs[i], nil)
+				} else {
+					node := GetNode(ParseInt(part))
+					if node == nil {
+						panic(fmt.Errorf("no node for query part %s", part))
+					}
+					query.Outputs[i] = append(query.Outputs[i], node)
+				}
+			}
+		}
 	}
 	return queries
 }
@@ -269,12 +282,30 @@ func ListQueries() []*Query {
 	return queryListHelper(rows)
 }
 
+func (query *Query) FlatOutputs() []*Node {
+	var flat []*Node
+	for _, output := range query.Outputs {
+		for _, node := range output {
+			if node == nil {
+				continue
+			}
+			flat = append(flat, node)
+		}
+	}
+	return flat
+}
+
 func (query *Query) Load() {
 	if len(query.Nodes) > 0 {
 		return
 	}
 	m := make(map[int]*Node)
-	query.Node.LoadMap(m)
+	for _, node := range query.FlatOutputs() {
+		m[node.ID] = node
+	}
+	for _, node := range query.FlatOutputs() {
+		node.LoadMap(m)
+	}
 	query.Nodes = m
 }
 
@@ -313,7 +344,7 @@ func NewQueryExecutor(query *Query) *QueryExecutor {
 	}
 }
 
-func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *BufferReader {
+func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) [][]*BufferReader {
 	/*
 	// check what the skip optimization says about it
 	skipBuffers := GetVNode(query.Plan.SkipOptimization, slices[0].Clip.Video).Test(query, slices)
@@ -350,7 +381,19 @@ func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *BufferRead
 	// create map (node ID -> outputs at that node) for caching outputs
 	// we will populate this either by loading label or by running node
 	cachedOutputs := make(map[int]*LabelBuffer)
+	var videoBuffer *LabelBuffer
 	var bufferList []*LabelBuffer
+
+	getVideoBuffer := func() *LabelBuffer {
+		if videoBuffer == nil {
+			rd := ReadVideo(slice, slice.Clip.Width, slice.Clip.Height)
+			videoBuffer = NewLabelBuffer(VideoType)
+			go videoBuffer.FromVideoReader(rd)
+			videoBuffer.SetPaused(true)
+			bufferList = append(bufferList, videoBuffer)
+		}
+		return videoBuffer
+	}
 
 	// unpause buffers before we return
 	defer func() {
@@ -358,6 +401,20 @@ func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *BufferRead
 			buf.SetPaused(false)
 		}
 	}()
+
+	collectOutputs := func() [][]*BufferReader {
+		outputs := make([][]*BufferReader, len(e.query.Outputs))
+		for i, output := range e.query.Outputs {
+			for _, node := range output {
+				if node == nil {
+					outputs[i] = append(outputs[i], getVideoBuffer().Reader())
+				} else {
+					outputs[i] = append(outputs[i], cachedOutputs[node.ID].Reader())
+				}
+			}
+		}
+		return outputs
+	}
 
 	// (1) load labels that we already have
 	loadLabels := func(node *Node) bool {
@@ -378,20 +435,11 @@ func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *BufferRead
 		bufferList = append(bufferList, buf)
 		return true
 	}
-	q := []*Node{e.query.Node}
+	q := e.query.FlatOutputs()
 	seen := make(map[int]bool)
 	needed := make(map[int]bool)
-	// first pass: load the query output nodes
-	haveAllOutputs := true
 	for _, node := range q {
 		seen[node.ID] = true
-		ok := loadLabels(node)
-		if !ok {
-			haveAllOutputs = false
-		}
-	}
-	if haveAllOutputs {
-		return cachedOutputs[e.query.Node.ID].Reader()
 	}
 	// second pass: go down graph to load the rest
 	for len(q) > 0 {
@@ -412,20 +460,15 @@ func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *BufferRead
 			q = append(q, parent.Node)
 		}
 	}
+	if len(needed) == 0 {
+		return collectOutputs()
+	}
 
-	var videoBuffer *LabelBuffer
 	collectParents := func(node *Node) []*BufferReader {
 		parents := []*BufferReader{}
 		for _, parent := range node.Parents {
 			if parent.Type == VideoParent {
-				if videoBuffer == nil {
-					rd := ReadVideo(slice, slice.Clip.Width, slice.Clip.Height)
-					videoBuffer = NewLabelBuffer(VideoType)
-					go videoBuffer.FromVideoReader(rd)
-					videoBuffer.SetPaused(true)
-					bufferList = append(bufferList, videoBuffer)
-				}
-				parents = append(parents, videoBuffer.Reader())
+				parents = append(parents, getVideoBuffer().Reader())
 			} else if parent.Type == NodeParent {
 				buf := cachedOutputs[parent.Node.ID]
 				if buf == nil {
@@ -497,17 +540,18 @@ func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *BufferRead
 		}
 	}
 
-	// split the output node so we can save it (and wait for it) and also output it
-	buf := cachedOutputs[e.query.Node.ID]
+	// for Wait support, read all the outputs
+	for _, output := range collectOutputs() {
+		for _, rd := range output {
+			e.wg.Add(1)
+			go func(rd *BufferReader) {
+				rd.Wait(slice.Length())
+				e.wg.Done()
+			}(rd)
+		}
+	}
 
-	e.wg.Add(1)
-	waitRd := buf.Reader()
-	go func() {
-		waitRd.Wait(slice.Length())
-		e.wg.Done()
-	}()
-
-	return buf.Reader()
+	return collectOutputs()
 }
 
 func (e *QueryExecutor) Close() {
@@ -673,13 +717,17 @@ func init() {
 			Query: query,
 			Slices: slices,
 		}
-		labelRds := tasks.Schedule(task)
-		log.Printf("[exec (%s) %v] test: got labelRds, loading previews", query.Name, slices)
+		allOutputs := tasks.Schedule(task)
+		log.Printf("[exec (%s) %v] test: got output readers, rendering videos", query.Name, slices)
 		var response []VisualizeResponse
-		for i, rd := range labelRds {
-			pc := CreatePreview(slices[i], rd)
-			uuid := cache.Add(pc)
-			log.Printf("[exec (%s) %v] test: cached preview with %d frames, uuid=%s", query.Name, slices[i], pc.Slice.Length(), uuid)
+		for i, outputs := range allOutputs {
+			r := RenderVideo(slices[i], outputs)
+			uuid := cache.Add(r)
+			log.Printf("[exec (%s) %v] test: cached renderer with %d frames, uuid=%s", query.Name, slices[i], slices[i].Length(), uuid)
+			var t DataType = VideoType
+			if len(outputs[0]) >= 2 {
+				t = outputs[0][1].Type()
+			}
 			response = append(response, VisualizeResponse{
 				PreviewURL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", uuid),
 				URL: fmt.Sprintf("/cache/view?id=%s", uuid),
@@ -687,16 +735,8 @@ func init() {
 				Height: slices[i].Clip.Height,
 				UUID: uuid,
 				Slice: slices[i],
-				Type: rd.Type(),
+				Type: t,
 			})
-
-			// we need to call pc.GetVideo so that the output label buffer doesn't get stuck.
-			// before, we would only call GetVideo when the user clicks on a preview image,
-			// but then if the query produces a large video output it would either eat up
-			// a lot of memory or get stuck writing to buffer due to capacity.
-			// so currently we begin reading the labels (and the source video) immediately
-			// to begin producing the preview.
-			pc.GetVideo()
 		}
 		JsonResponse(w, response)
 	})

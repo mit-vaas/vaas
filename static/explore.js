@@ -93,6 +93,10 @@ Vue.component('explore-tab', {
 				this.detailTool = 'explore-detail-detection';
 			}
 		},
+		detailBack: function() {
+			this.detailResult = null;
+			this.detailTool = '';
+		},
 	},
 	watch: {
 		tab: function() {
@@ -172,6 +176,9 @@ Vue.component('explore-tab', {
 		</div>
 	</template>
 	<template v-else>
+		<div>
+			<button type="button" v-on:click="detailBack" class="btn btn-primary">Back</button>
+		</div>
 		<component v-if="detailResult != null" v-bind:is="detailTool" v-bind:result="detailResult"></component>
 	</template>
 </div>

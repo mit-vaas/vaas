@@ -92,38 +92,14 @@ func (e *PythonExecutor) Run(parents []*BufferReader, slice ClipSlice) *LabelBuf
 
 	// write parent data asynchronously
 	go func() {
-		completed := 0
-		for completed < slice.Length() {
-			// peek each parent to see how much we can read
-			length := -1
-			for _, pbuf := range parents {
-				data, err := pbuf.Peek(1)
-				if err != nil {
-					buf.Error(err)
-					return
-				}
-				if length == -1 || data.Length() < length {
-					length = data.Length()
-				}
-			}
-
-			datas := make([]Data, len(parents))
-			for parentIdx, pbuf := range parents {
-				data, err := pbuf.Read(length)
-				if err != nil {
-					buf.Error(err)
-					return
-				}
-				datas[parentIdx] = data
-			}
-
+		f := func(index int, datas []Data) error {
 			var job struct {
 				SliceIdx int
 				Range [2]int
 				IsLast bool
 			}
 			job.SliceIdx = id
-			job.Range = [2]int{completed, completed+length}
+			job.Range = [2]int{index, index+datas[0].Length()}
 			job.IsLast = job.Range[1] == slice.Length()
 
 			e.writeLock.Lock()
@@ -136,9 +112,9 @@ func (e *PythonExecutor) Run(parents []*BufferReader, slice ClipSlice) *LabelBuf
 				}
 			}
 			e.writeLock.Unlock()
-
-			completed += length
+			return nil
 		}
+		ReadMultiple(slice.Length(), parents, f)
 	}()
 
 	return buf

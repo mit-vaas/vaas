@@ -54,7 +54,7 @@ Vue.component('explore-detail-detection', {
 				var rect = new Konva.Rect(cfg);
 				rect.myid = myid;
 				layer.add(rect);
-			});
+			}.bind(this));
 			layer.draw();
 			layer.on('mouseover', function(e) {
 				document.body.style.cursor = 'pointer';
@@ -63,7 +63,7 @@ Vue.component('explore-detail-detection', {
 					shape.stroke('yellow');
 					layer.draw();
 				}
-			});
+			}.bind(this));
 			layer.on('mouseout', function(e) {
 				document.body.style.cursor = 'default';
 				var shape = e.target;
@@ -71,19 +71,22 @@ Vue.component('explore-detail-detection', {
 					shape.stroke('red');
 					layer.draw();
 				}
-			});
+			}.bind(this));
 			layer.on('click', function(e) {
 				var shape = e.target;
 				if(this.selectedID == shape.myid) {
 					this.selectedID = null;
 					this.selection = null;
 					shape.stroke('red');
+					shape.strokeWidth(3);
 				} else {
 					stage.find('Rect').each(function(other) {
 						other.stroke('red');
+						other.strokeWidth(3);
 					});
 					this.selectedID = shape.myid;
 					shape.stroke('orange');
+					shape.strokeWidth(5);
 					this.updateSelection();
 				}
 				layer.draw();
@@ -156,7 +159,7 @@ Vue.component('explore-detail-detection', {
 				this.index = this.count-1;
 			}
 			if(this.mode == 'detection') {
-				this.selectedIdx = null;
+				this.selectedID = null;
 				this.selection = null;
 			}
 			Vue.nextTick(this.render);
@@ -176,7 +179,7 @@ Vue.component('explore-detail-detection', {
 			return this.result.Slice.End - this.result.Slice.Start;
 		},
 		selectionJSON: function() {
-			return JSON.stringify(this.selection.Data.Detections);
+			return JSON.stringify(this.selection[0].Data.Detections);
 		},
 	},
 	template: `

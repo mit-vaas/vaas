@@ -67,7 +67,7 @@ func init() {
 		case []Image:
 			w.Header().Set("Content-Type", "image/jpeg")
 			w.Write(v[0].AsJPG())
-		case *PreviewClip:
+		case *VideoRenderer:
 			im, err := v.GetPreview()
 			if err != nil {
 				log.Printf("[cache] preview: GetPreview: %v", err)
@@ -103,10 +103,14 @@ func init() {
 				}
 				cmd.Wait()
 			}
-		case *PreviewClip:
+		case *VideoRenderer:
 			if contentType == "labels" {
-				labels := v.GetLabels()
-				JsonResponse(w, labels.Get())
+				labels, err := v.GetLabels()
+				if err != nil {
+					http.Error(w, err.Error(), 400)
+					return
+				}
+				JsonResponse(w, labels[0][1].Get())
 			} else {
 				rd, err := v.GetVideo()
 				if err != nil {

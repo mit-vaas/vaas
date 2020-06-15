@@ -16,8 +16,23 @@ Vue.component('query-tab', {
 			if(!force && this.tab != '#query-panel') {
 				return;
 			}
-			$.get('/queries', function(data) {
-				this.queries = data;
+			$.get('/queries', function(queries) {
+				queries.forEach(function(query) {
+					outputsStr = [];
+					query.Outputs.forEach(function(nodes) {
+						nodesStr = [];
+						nodes.forEach(function(node) {
+							if(node) {
+								nodesStr.push(node.Name);
+							} else {
+								nodesStr.push('video');
+							}
+						});
+						outputsStr.push('[' + nodesStr.join(', ') + ']');
+					});
+					query.outputs = outputsStr.join('\n');
+				});
+				this.queries = queries;
 			}.bind(this));
 		},
 		showNewQueryModal: function() {
@@ -56,13 +71,13 @@ Vue.component('query-tab', {
 		<thead>
 			<tr>
 				<th>Name</th>
-				<th>Output Node</th>
+				<th>Outputs</th>
 			</tr>
 		</thead>
 		<tbody>
 			<tr v-for="query in queries">
 				<td>{{ query.Name }}</td>
-				<td>{{ query.Node.Name }}</td>
+				<td>{{ query.outputs }}</td>
 			</tr>
 		</tbody>
 	</table>

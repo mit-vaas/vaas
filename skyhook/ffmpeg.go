@@ -23,6 +23,14 @@ type Image struct {
 	Bytes []byte
 }
 
+func NewImage(width int, height int) Image {
+	return Image{
+		Width: width,
+		Height: height,
+		Bytes: make([]byte, 3*width*height),
+	}
+}
+
 func ImageFromBytes(width int, height int, bytes []byte) Image {
 	return Image{
 		Width: width,
@@ -111,6 +119,14 @@ func (im Image) Set(i int, j int, color [3]uint8) {
 	}
 }
 
+func (im Image) Get(i int, j int) [3]uint8 {
+	var color [3]uint8
+	for channel := 0; channel < 3; channel++ {
+		color[channel] = im.Bytes[(j*im.Width+i)*3+channel]
+	}
+	return color
+}
+
 func (im Image) FillRectangle(left, top, right, bottom int, color [3]uint8) {
 	for i := left; i < right; i++ {
 		for j := top; j < bottom; j++ {
@@ -119,11 +135,29 @@ func (im Image) FillRectangle(left, top, right, bottom int, color [3]uint8) {
 	}
 }
 
+func (im Image) Copy() Image {
+	bytes := make([]byte, len(im.Bytes))
+	copy(bytes, im.Bytes)
+	return Image{
+		Width: im.Width,
+		Height: im.Height,
+		Bytes: bytes,
+	}
+}
+
 func (im Image) DrawRectangle(left, top, right, bottom int, width int, color [3]uint8) {
 	im.FillRectangle(left-width, top, left+width, bottom, color)
 	im.FillRectangle(right-width, top, right+width, bottom, color)
 	im.FillRectangle(left, top-width, right, top+width, color)
 	im.FillRectangle(left, bottom-width, right, bottom+width, color)
+}
+
+func (im Image) DrawImage(left int, top int, other Image) {
+	for i := 0; i < other.Width; i++ {
+		for j := 0; j < other.Height; j++ {
+			im.Set(left+i, top+j, other.Get(i, j))
+		}
+	}
 }
 
 type VideoReader interface {
@@ -205,7 +239,6 @@ type sliceReader struct {
 	images []Image
 	pos int
 }
-
 func (rd *sliceReader) Read() (Image, error) {
 	if rd.pos >= len(rd.images) {
 		return Image{}, io.EOF
@@ -215,6 +248,22 @@ func (rd *sliceReader) Read() (Image, error) {
 	return im, nil
 }
 func (rd *sliceReader) Close() {}
+
+type chanReader struct {
+	ch chan Image
+}
+func (rd *chanReader) Read() (Image, error) {
+	im, ok := <- rd.ch
+	if !ok {
+		return Image{}, io.EOF
+	}
+	return im, nil
+}
+func (rd *chanReader) Close() {
+	go func() {
+		for _ = range rd.ch {}
+	}()
+}
 
 func ReadVideo(slice ClipSlice, width int, height int) VideoReader {
 	if slice.Clip.Video.Ext == "jpeg" {
