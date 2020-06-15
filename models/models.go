@@ -9,7 +9,7 @@ import (
 
 type PerFrameFunc func(im skyhook.Image, outBuf *skyhook.LabelBuffer) error
 
-func PerFrame(parents [][]*skyhook.LabelBuffer, slices []skyhook.ClipSlice, buffers []*skyhook.LabelBuffer, f PerFrameFunc) {
+func PerFrame(parents [][]*skyhook.BufferReader, slices []skyhook.ClipSlice, buffers []*skyhook.LabelBuffer, f PerFrameFunc) {
 	for i, slice := range slices {
 		completed := 0
 		stop := false

@@ -31,7 +31,7 @@ func (parent Parent) DataType() DataType {
 }
 
 type Executor interface {
-	Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuffer
+	Run(parents []*BufferReader, slice ClipSlice) *LabelBuffer
 	Close()
 }
 
@@ -313,7 +313,7 @@ func NewQueryExecutor(query *Query) *QueryExecutor {
 	}
 }
 
-func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuffer {
+func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *BufferReader {
 	/*
 	// check what the skip optimization says about it
 	skipBuffers := GetVNode(query.Plan.SkipOptimization, slices[0].Clip.Video).Test(query, slices)
@@ -350,6 +350,14 @@ func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuffe
 	// create map (node ID -> outputs at that node) for caching outputs
 	// we will populate this either by loading label or by running node
 	cachedOutputs := make(map[int]*LabelBuffer)
+	var bufferList []*LabelBuffer
+
+	// unpause buffers before we return
+	defer func() {
+		for _, buf := range bufferList {
+			buf.SetPaused(false)
+		}
+	}()
 
 	// (1) load labels that we already have
 	loadLabels := func(node *Node) bool {
@@ -364,7 +372,10 @@ func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuffe
 		if label == nil {
 			return false
 		}
-		cachedOutputs[node.ID] = label.Load(slice)
+		buf := label.Load(slice)
+		buf.SetPaused(true)
+		cachedOutputs[node.ID] = buf
+		bufferList = append(bufferList, buf)
 		return true
 	}
 	q := []*Node{e.query.Node}
@@ -380,7 +391,7 @@ func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuffe
 		}
 	}
 	if haveAllOutputs {
-		return cachedOutputs[e.query.Node.ID]
+		return cachedOutputs[e.query.Node.ID].Reader()
 	}
 	// second pass: go down graph to load the rest
 	for len(q) > 0 {
@@ -403,22 +414,24 @@ func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuffe
 	}
 
 	var videoBuffer *LabelBuffer
-	collectParents := func(node *Node) []*LabelBuffer {
-		parents := []*LabelBuffer{}
+	collectParents := func(node *Node) []*BufferReader {
+		parents := []*BufferReader{}
 		for _, parent := range node.Parents {
 			if parent.Type == VideoParent {
 				if videoBuffer == nil {
 					rd := ReadVideo(slice, slice.Clip.Width, slice.Clip.Height)
 					videoBuffer = NewLabelBuffer(VideoType)
 					go videoBuffer.FromVideoReader(rd)
+					videoBuffer.SetPaused(true)
+					bufferList = append(bufferList, videoBuffer)
 				}
-				parents = append(parents, videoBuffer)
+				parents = append(parents, videoBuffer.Reader())
 			} else if parent.Type == NodeParent {
 				buf := cachedOutputs[parent.Node.ID]
 				if buf == nil {
 					return nil
 				}
-				parents = append(parents, buf)
+				parents = append(parents, buf.Reader())
 			}
 		}
 		return parents
@@ -435,75 +448,66 @@ func (e *QueryExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuffe
 			if e.executors[nodeID] == nil {
 				e.executors[nodeID] = node.Exec(e.query)
 			}
-			cachedOutputs[nodeID] = e.executors[nodeID].Run(parents, slice)
+			buf := e.executors[nodeID].Run(parents, slice)
+			buf.SetPaused(true)
+			cachedOutputs[node.ID] = buf
+			bufferList = append(bufferList, buf)
 			delete(needed, nodeID)
-		}
-	}
 
-	save := func(node *Node, buf *LabelBuffer) {
-		// if no label set, create one to store the exec outputs
-		vn := GetOrCreateVNode(node, slice.Clip.Video)
-		if vn.LabelSet == nil {
-			db.Transaction(func(tx Tx) {
-				var lsID *int
-				tx.QueryRow("SELECT ls_id FROM vnodes WHERE id = ?", vn.ID).Scan(&lsID)
-				if lsID != nil {
-					vn.LabelSetID = lsID
+			// save it unless it is video
+			if node.Type == VideoType {
+				continue
+			}
+
+			// if no label set, create one to store the exec outputs
+			vn := GetOrCreateVNode(node, slice.Clip.Video)
+			if vn.LabelSet == nil {
+				db.Transaction(func(tx Tx) {
+					var lsID *int
+					tx.QueryRow("SELECT ls_id FROM vnodes WHERE id = ?", vn.ID).Scan(&lsID)
+					if lsID != nil {
+						vn.LabelSetID = lsID
+						return
+					}
+					name := fmt.Sprintf("exec-%v-%d", vn.Node.Name, vn.ID)
+					res := tx.Exec(
+						"INSERT INTO label_sets (name, unit, src_video, video_id, label_type) VALUES (?, ?, ?, ?, ?)",
+						name, 1, vn.Video.ID, vn.Video.ID, vn.Node.Type,
+					)
+					vn.LabelSetID = new(int)
+					*vn.LabelSetID = res.LastInsertId()
+					tx.Exec("UPDATE vnodes SET ls_id = ? WHERE id = ?", vn.LabelSetID, vn.ID)
+				})
+				vn.LabelSet = GetLabelSet(*vn.LabelSetID)
+			}
+
+			// persist the outputs
+			rd := buf.Reader()
+			go func() {
+				start := time.Now()
+				data, err := rd.Read(slice.Length())
+				if err != nil {
 					return
 				}
-				name := fmt.Sprintf("exec-%v-%d", vn.Node.Name, vn.ID)
-				res := tx.Exec(
-					"INSERT INTO label_sets (name, unit, src_video, video_id, label_type) VALUES (?, ?, ?, ?, ?)",
-					name, 1, vn.Video.ID, vn.Video.ID, vn.Node.Type,
-				)
-				vn.LabelSetID = new(int)
-				*vn.LabelSetID = res.LastInsertId()
-				tx.Exec("UPDATE vnodes SET ls_id = ? WHERE id = ?", vn.LabelSetID, vn.ID)
-			})
-			vn.LabelSet = GetLabelSet(*vn.LabelSetID)
+				vn.LabelSet.AddLabel(slice, data)
+				e.stats[vn.Node.ID] = NodeStats{
+					samples: append(e.stats[vn.Node.ID].samples, time.Now().Sub(start)),
+				}
+			}()
 		}
-
-		// persist the outputs
-		go func() {
-			start := time.Now()
-			data, err := buf.Read(slice.Length())
-			if err != nil {
-				return
-			}
-			vn.LabelSet.AddLabel(slice, data)
-			e.stats[vn.Node.ID] = NodeStats{
-				samples: append(e.stats[vn.Node.ID].samples, time.Now().Sub(start)),
-			}
-		}()
-	}
-
-	// save the non-outputs
-	for nodeID, buf := range cachedOutputs {
-		if nodeID == e.query.Node.ID {
-			continue
-		} else if e.query.Node.Type == VideoType {
-			continue
-		}
-		save(e.query.Nodes[nodeID], buf)
 	}
 
 	// split the output node so we can save it (and wait for it) and also output it
 	buf := cachedOutputs[e.query.Node.ID]
-	output := NewLabelBuffer(e.query.Node.Type)
-	splitBufs := []*LabelBuffer{output}
-	if e.query.Node.Type != VideoType {
-		saveBuf := NewLabelBuffer(e.query.Node.Type)
-		save(e.query.Node, saveBuf)
-		splitBufs = append(splitBufs, saveBuf)
-	}
 
 	e.wg.Add(1)
+	waitRd := buf.Reader()
 	go func() {
-		buf.Split(slice.Length(), splitBufs)
+		waitRd.Wait(slice.Length())
 		e.wg.Done()
 	}()
 
-	return output
+	return buf.Reader()
 }
 
 func (e *QueryExecutor) Close() {
@@ -669,20 +673,21 @@ func init() {
 			Query: query,
 			Slices: slices,
 		}
-		labelBufs := tasks.Schedule(task)
-		log.Printf("[exec (%s) %v] test: got labelBufs, loading previews", query.Name, slices)
+		labelRds := tasks.Schedule(task)
+		log.Printf("[exec (%s) %v] test: got labelRds, loading previews", query.Name, slices)
 		var response []VisualizeResponse
-		for i, buf := range labelBufs {
-			pc := CreatePreview(slices[i], buf)
+		for i, rd := range labelRds {
+			pc := CreatePreview(slices[i], rd)
 			uuid := cache.Add(pc)
 			log.Printf("[exec (%s) %v] test: cached preview with %d frames, uuid=%s", query.Name, slices[i], pc.Slice.Length(), uuid)
 			response = append(response, VisualizeResponse{
 				PreviewURL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", uuid),
-				URL: fmt.Sprintf("/cache/view?id=%s&type=mp4", uuid),
+				URL: fmt.Sprintf("/cache/view?id=%s", uuid),
 				Width: slices[i].Clip.Width,
 				Height: slices[i].Clip.Height,
 				UUID: uuid,
 				Slice: slices[i],
+				Type: rd.Type(),
 			})
 
 			// we need to call pc.GetVideo so that the output label buffer doesn't get stuck.

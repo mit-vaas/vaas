@@ -187,7 +187,7 @@ Vue.component('annotate-default-detection', {
 	},
 	template: `
 <div>
-	<div v-on:click="click($event)" v-on:mousemove="mousemove($event)" id="a-d-container">
+	<div v-on:click="click($event)" v-on:mousemove="mousemove($event)" class="canvas-container">
 		<template v-if="image != null">
 			<div :style="{
 					width: image.Width + 'px',

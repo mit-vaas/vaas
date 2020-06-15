@@ -12,20 +12,20 @@ html, body, #app, #nodes-panel {
 	flex-grow: 1;
 }
 
-/* annotate panel */
-#a-d-container {
+/* canvas on image */
+.canvas-container {
 	display: inline-block;
 	margin: 0;
 	position: relative;
 }
-
-#a-d-container img {
+.canvas-container img {
 	position: absolute;
 }
-
-#a-d-container canvas {
+.canvas-container canvas {
 	position: absolute;
-
+}
+.canvas-container .konva {
+	position: absolute;
 }
 
 /* nodes panel */
@@ -95,7 +95,7 @@ html, body, #app, #nodes-panel {
 	background-color: lightblue;
 }
 .explore-results-col.selected:hover {
-	background-color: blue;
+	background-color: #0099FF;
 }
 
 .explore-result-img {

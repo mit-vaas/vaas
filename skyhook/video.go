@@ -2,6 +2,7 @@ package skyhook
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net/http"
@@ -206,11 +207,38 @@ func init() {
 	http.HandleFunc("/clips/get", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 		id, _ := strconv.Atoi(r.Form.Get("id"))
+		start, _ := strconv.Atoi(r.Form.Get("start"))
+		end, _ := strconv.Atoi(r.Form.Get("end"))
+		contentType := r.Form.Get("type")
 		clip := GetClip(id)
 		if clip == nil {
 			w.WriteHeader(404)
 			return
 		}
-		http.ServeFile(w, r, clip.Fname(0))
+		if end == 0 {
+			http.ServeFile(w, r, clip.Fname(0))
+			return
+		}
+		slice := ClipSlice{*clip, start, end}
+		rd := ReadVideo(slice, slice.Clip.Width, slice.Clip.Height)
+		defer rd.Close()
+		if contentType == "jpeg" {
+			// return image
+			im, err := rd.Read()
+			if err != nil {
+				log.Printf("[/clips/get] error reading frame (%v): %v", slice, err)
+				http.Error(w, "error reading frame", 400)
+				return
+			}
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Write(im.AsJPG())
+		} else if contentType == "mp4" {
+			vout, cmd := MakeVideo(rd, slice.Clip.Width, slice.Clip.Height)
+			_, err := io.Copy(w, vout)
+			if err != nil {
+				log.Printf("[/clips/get] error reading video (%v): %v", slice, err)
+			}
+			cmd.Wait()
+		}
 	})
 }

@@ -167,11 +167,29 @@ func (d Data) Discard(n int) Data {
 
 type LabelBuffer struct {
 	buf Data
+
+	// # frames that were discarded
+	// (data is discarded once all readers read it)
+	pos int
+
+	// reader positions
+	rdpos []int
+
 	mu sync.Mutex
 	cond *sync.Cond
 	err error
 	done bool
+
+	// soft maximum on the # frames in the buffer
 	capacity int
+
+	// are we paused (waiting to register readers)
+	paused bool
+}
+
+type BufferReader struct {
+	buf *LabelBuffer
+	id int
 }
 
 func NewLabelBuffer(t DataType) *LabelBuffer {
@@ -185,11 +203,36 @@ func NewLabelBuffer(t DataType) *LabelBuffer {
 	return buf
 }
 
+// caller must have lock
+func (buf *LabelBuffer) length() int {
+	return buf.pos + buf.buf.Length()
+}
+
+// caller must have lock
+func (buf *LabelBuffer) discard() {
+	npos := buf.rdpos[0]
+	for _, x := range buf.rdpos {
+		if x < npos {
+			npos = x
+		}
+	}
+	if npos <= buf.pos {
+		return
+	}
+	buf.buf = buf.buf.Discard(npos - buf.pos)
+	buf.pos = npos
+	buf.cond.Broadcast()
+}
+
 // Read exactly n frames, or any non-zero amount if n<=0
-func (buf *LabelBuffer) Read(n int) (Data, error) {
+func (buf *LabelBuffer) read(id int, n int) (Data, error) {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
-	for (buf.buf.Length() == 0 || buf.buf.Length() < n) && buf.err == nil && !buf.done {
+	wait := n
+	if wait <= 0 {
+		wait = 1
+	}
+	for (buf.length() < buf.rdpos[id]+wait || buf.paused) && buf.err == nil && !buf.done {
 		buf.cond.Wait()
 	}
 	if buf.err != nil {
@@ -201,38 +244,40 @@ func (buf *LabelBuffer) Read(n int) (Data, error) {
 	}
 
 	if n <= 0 {
-		n = buf.buf.Length()
+		n = buf.length()-buf.rdpos[id]
 	}
+	offset := buf.rdpos[id] - buf.pos
 	data := Data{
 		Type: buf.Type(),
-	}.Append(buf.buf.Slice(0, n))
-	buf.buf = buf.buf.Discard(n)
-	buf.cond.Broadcast()
+	}.Append(buf.buf.Slice(offset, offset+n))
+	buf.rdpos[id] += n
+	buf.discard()
 	return data, nil
 }
 
 // Wait for at least n to complete, and read them without removing from the buffer.
-func (buf *LabelBuffer) Peek(n int) (Data, error) {
+func (buf *LabelBuffer) peek(id int, n int) (Data, error) {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
 	if n > 0 {
-		for buf.buf.Length() < n && buf.err == nil && !buf.done {
+		for buf.length() < buf.rdpos[id]+n && buf.err == nil && !buf.done {
 			buf.cond.Wait()
 		}
 	}
 	if buf.err != nil {
 		return Data{}, buf.err
 	}
+	offset := buf.rdpos[id] - buf.pos
 	data := Data{
 		Type: buf.Type(),
-	}.Append(buf.buf)
+	}.Append(buf.buf.Slice(offset, buf.buf.Length()))
 	return data, nil
 }
 
 func (buf *LabelBuffer) Write(data Data) {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
-	for buf.buf.Length() > 0 && buf.buf.Length()+data.Length() > buf.capacity && buf.err == nil && !buf.done {
+	for buf.capacity > 0 && buf.buf.Length() > 0 && buf.buf.Length()+data.Length() > buf.capacity && buf.err == nil && !buf.done {
 		buf.cond.Wait()
 	}
 	if buf.err != nil || buf.done {
@@ -256,19 +301,6 @@ func (buf *LabelBuffer) Error(err error) {
 	buf.mu.Unlock()
 }
 
-func (buf *LabelBuffer) Wait(length int) error {
-	completed := 0
-	for completed < length {
-		data, err := buf.Read(0)
-		if err != nil {
-			return err
-		}
-		completed += data.Length()
-	}
-	buf.Close()
-	return nil
-}
-
 func (buf *LabelBuffer) FromVideoReader(rd VideoReader) {
 	for {
 		im, err := rd.Read()
@@ -282,43 +314,66 @@ func (buf *LabelBuffer) FromVideoReader(rd VideoReader) {
 			Images: []Image{im},
 		})
 	}
+	buf.Close()
 }
 
 func (buf *LabelBuffer) Type() DataType {
 	return buf.buf.Type
 }
 
-func (buf *LabelBuffer) Split(length int, others []*LabelBuffer) {
-	completed := 0
-	for completed < length {
-		data, err := buf.Read(0)
-		if err != nil {
-			for _, other := range others {
-				other.Error(err)
-			}
-			return
-		}
-		for _, other := range others {
-			other.Write(data)
-		}
-		completed += data.Length()
-	}
-	buf.Close()
-	for _, other := range others {
-		other.Close()
-	}
-}
-
-func (buf *LabelBuffer) CopyFrom(length int, other *LabelBuffer) error {
+func (buf *LabelBuffer) CopyFrom(length int, rd *BufferReader) error {
 	cur := 0
 	for cur < length {
-		data, err := other.Read(0)
+		data, err := rd.Read(0)
 		if err != nil {
 			buf.Error(err)
 			return err
 		}
 		cur += data.Length()
 		buf.Write(data)
+	}
+	buf.Close()
+	return nil
+}
+
+func (buf *LabelBuffer) SetPaused(paused bool) {
+	buf.mu.Lock()
+	buf.paused = paused
+	buf.cond.Broadcast()
+	buf.mu.Unlock()
+}
+
+func (buf *LabelBuffer) Reader() *BufferReader {
+	buf.mu.Lock()
+	if buf.pos > 0 {
+		panic(fmt.Errorf("tried to add reader when reading already started"))
+	}
+	id := len(buf.rdpos)
+	buf.rdpos = append(buf.rdpos, 0)
+	buf.mu.Unlock()
+	return &BufferReader{buf, id}
+}
+
+func (rd *BufferReader) Type() DataType {
+	return rd.buf.Type()
+}
+
+func (rd *BufferReader) Read(n int) (Data, error) {
+	return rd.buf.read(rd.id, n)
+}
+
+func (rd *BufferReader) Peek(n int) (Data, error) {
+	return rd.buf.peek(rd.id, n)
+}
+
+func (rd *BufferReader) Wait(length int) error {
+	completed := 0
+	for completed < length {
+		data, err := rd.Read(0)
+		if err != nil {
+			return err
+		}
+		completed += data.Length()
 	}
 	return nil
 }

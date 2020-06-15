@@ -14,7 +14,7 @@ import (
 
 type pendingSlice struct {
 	slice ClipSlice
-	parents []*LabelBuffer
+	parents []*BufferReader
 	buf *LabelBuffer
 }
 
@@ -69,7 +69,7 @@ func (e *PythonExecutor) Init() {
 	e.writeLock.Unlock()
 }
 
-func (e *PythonExecutor) Run(parents []*LabelBuffer, slice ClipSlice) *LabelBuffer {
+func (e *PythonExecutor) Run(parents []*BufferReader, slice ClipSlice) *LabelBuffer {
 	// prepare pendingSlice
 	e.mu.Lock()
 	id := e.counter

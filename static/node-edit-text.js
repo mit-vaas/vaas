@@ -18,15 +18,18 @@ Vue.component('node-edit-text', {
 				var prefix = this.node.Code.substring(0, start);
 				var suffix = this.node.Code.substring(el.selectionEnd);
 				this.node.Code = prefix + '\t' + suffix;
-				el.selectionStart = start+1;
-				el.selectionEnd = start+1;
+
+				Vue.nextTick(function() {
+					el.selectionStart = start+1;
+					el.selectionEnd = start+1;
+				});
 			} else if(e.keyCode == 13) {
 				// enter
 				e.preventDefault();
 				var start = el.selectionStart;
 				var prefix = this.node.Code.substring(0, start);
 				var suffix = this.node.Code.substring(el.selectionEnd);
-				var prevLine = this.node.Code.lastIndexOf('\n', start);
+				var prevLine = prefix.lastIndexOf('\n');
 
 				var spacing = '';
 				if(prevLine != -1) {
@@ -38,10 +41,11 @@ Vue.component('node-edit-text', {
 						spacing += char;
 					}
 				}
-
 				this.node.Code = prefix + '\n' + spacing + suffix;
-				el.selectionStart = start+1+spacing.length;
-				el.selectionEnd = el.selectionStart;
+				Vue.nextTick(function() {
+					el.selectionStart = start+1+spacing.length;
+					el.selectionEnd = el.selectionStart;
+				});
 			}
 		},
 		save: function() {

@@ -35,7 +35,6 @@ Vue.component('nodes-tab', {
 		editNode: function(node) {
 			this.editor = '';
 			Vue.nextTick(function() {
-				console.log('update');
 				this.selectedNode = node;
 				if(this.selectedNode.Ext == 'python' || this.selectedNode.Ext == 'model') {
 					this.editor = 'node-edit-text';

@@ -38,10 +38,11 @@ type PreviewClip struct {
 
 	mu *sync.Mutex
 	cond *sync.Cond
-	labelBuf *LabelBuffer
+	labelRd *BufferReader
 	preview *Image
 	images []Image
 	videoBytes []byte
+	labels Data
 
 	// Error while reading images from video source.
 	// Or reading labels from labelFunc.
@@ -73,10 +74,11 @@ func DrawLabels(data Data, labelOffset int, images []Image) {
 	}
 }
 
-func CreatePreview(slice ClipSlice, labelBuf *LabelBuffer) *PreviewClip {
+func CreatePreview(slice ClipSlice, rd *BufferReader) *PreviewClip {
 	pc := &PreviewClip{
 		Slice: slice,
-		labelBuf: labelBuf,
+		labelRd: rd,
+		labels: Data{Type: rd.Type()},
 	}
 	pc.mu = new(sync.Mutex)
 	pc.cond = sync.NewCond(pc.mu)
@@ -109,7 +111,7 @@ func (pc *PreviewClip) GetPreview() (Image, error) {
 				pc.mu.Unlock()
 			}
 
-			data, err := pc.labelBuf.Peek(1)
+			data, err := pc.labelRd.Peek(1)
 			if err != nil {
 				pc.setErr(err)
 				return
@@ -198,7 +200,7 @@ func (rd *PCVideoReader) Read(p []byte) (int, error) {
 // Helper background thread to load video frames.
 // Called by GetVideo.
 func (pc *PreviewClip) loadFrames() {
-	if pc.labelBuf.Type() == VideoType {
+	if pc.labelRd.Type() == VideoType {
 		return
 	}
 
@@ -251,7 +253,7 @@ func (pc *PreviewClip) loadLabels() {
 	}
 
 	for myReady < pc.Slice.Length() {
-		data, err := pc.labelBuf.Read(0)
+		data, err := pc.labelRd.Read(0)
 		n := data.Length()
 		if err != nil {
 			pc.setErr(err)
@@ -269,6 +271,10 @@ func (pc *PreviewClip) loadLabels() {
 			pc.cond.Broadcast()
 			pc.mu.Unlock()
 		} else {
+			pc.mu.Lock()
+			pc.labels = pc.labels.Append(data)
+			pc.mu.Unlock()
+
 			oldReady := myReady
 			for myReady < oldReady+n {
 				images, err := getSomeImages(myReady, oldReady+n)
@@ -285,6 +291,11 @@ func (pc *PreviewClip) loadLabels() {
 }
 
 func (pc *PreviewClip) GetVideo() (io.Reader, error) {
+	im, err := pc.GetPreview()
+	if err != nil {
+		return nil, err
+	}
+
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
 	if pc.videoBytes != nil && !pc.loadingVideo {
@@ -300,11 +311,6 @@ func (pc *PreviewClip) GetVideo() (io.Reader, error) {
 	go pc.loadLabels()
 
 	go func() {
-		im, err := pc.GetPreview()
-		if err != nil {
-			return
-		}
-
 		rd, cmd := MakeVideo(&PCReader{pc, 0}, im.Width, im.Height)
 		buf := make([]byte, 4096)
 		for {
@@ -331,4 +337,11 @@ func (pc *PreviewClip) GetVideo() (io.Reader, error) {
 	}()
 
 	return &PCVideoReader{pc, 0}, nil
+}
+
+func (pc *PreviewClip) GetLabels() Data {
+	// wait for processing to complete
+	pc.GetVideo()
+
+	return pc.labels
 }

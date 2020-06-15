@@ -3,6 +3,7 @@ package skyhook
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"

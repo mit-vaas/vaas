@@ -104,16 +104,21 @@ func init() {
 				cmd.Wait()
 			}
 		case *PreviewClip:
-			rd, err := v.GetVideo()
-			if err != nil {
-				log.Printf("[cache] view: GetVideo: %v", err)
-				w.WriteHeader(400)
-				return
-			}
-			w.Header().Set("Content-Type", "video/mp4")
-			_, err = io.Copy(w, rd)
-			if err != nil {
-				log.Printf("[cache] view: read from GetVideo: %v", err)
+			if contentType == "labels" {
+				labels := v.GetLabels()
+				JsonResponse(w, labels.Get())
+			} else {
+				rd, err := v.GetVideo()
+				if err != nil {
+					log.Printf("[cache] view: GetVideo: %v", err)
+					w.WriteHeader(400)
+					return
+				}
+				w.Header().Set("Content-Type", "video/mp4")
+				_, err = io.Copy(w, rd)
+				if err != nil {
+					log.Printf("[cache] view: read from GetVideo: %v", err)
+				}
 			}
 		}
 	})

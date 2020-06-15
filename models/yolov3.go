@@ -18,7 +18,7 @@ type Yolov3Config struct {
 }
 
 func init() {
-	skyhook.Models["yolov3"] = func(cfgBytes []byte, parents [][]*skyhook.LabelBuffer, slices []skyhook.ClipSlice) []*skyhook.LabelBuffer {
+	skyhook.Models["yolov3"] = func(cfgBytes []byte, parents [][]*skyhook.BufferReader, slices []skyhook.ClipSlice) []*skyhook.LabelBuffer {
 		var cfg Yolov3Config
 		skyhook.JsonUnmarshal(cfgBytes, &cfg)
 

@@ -18,7 +18,7 @@ type Task struct {
 	Slices []ClipSlice
 }
 
-func (m *TaskManager) Schedule(task Task) []*LabelBuffer {
+func (m *TaskManager) Schedule(task Task) []*BufferReader {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.activeQueries[task.Query.ID] == nil {
@@ -28,7 +28,7 @@ func (m *TaskManager) Schedule(task Task) []*LabelBuffer {
 		}
 		m.activeQueries[task.Query.ID] = NewQueryExecutor(task.Query)
 	}
-	var outputs []*LabelBuffer
+	var outputs []*BufferReader
 	for _, slice := range task.Slices {
 		outputs = append(outputs, m.activeQueries[task.Query.ID].Run(nil, slice))
 	}

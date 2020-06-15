@@ -298,6 +298,7 @@ type VisualizeResponse struct {
 	Height int
 	UUID string
 	Slice ClipSlice
+	Type DataType
 }
 
 func init() {
@@ -335,7 +336,7 @@ func init() {
 
 		label := ls.Get(index)
 		if label != nil {
-			data, err := label.Load(label.Slice).Read(label.Slice.Length())
+			data, err := label.Load(label.Slice).Reader().Read(label.Slice.Length())
 			if err != nil {
 				panic(err)
 			}
@@ -471,7 +472,7 @@ func init() {
 		}
 		log.Printf("[annotate] visualize: loading preview for slice %v", slice)
 		buf := label.Load(slice)
-		pc := CreatePreview(slice, buf)
+		pc := CreatePreview(slice, buf.Reader())
 		uuid := cache.Add(pc)
 		log.Printf("[annotate] visualize: cached preview with %d frames, uuid=%s", pc.Slice.Length(), uuid)
 		JsonResponse(w, VisualizeResponse{
@@ -481,6 +482,7 @@ func init() {
 			Height: slice.Clip.Height,
 			UUID: uuid,
 			Slice: slice,
+			Type: buf.Type(),
 		})
 	})
 
