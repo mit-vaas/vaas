@@ -69,7 +69,7 @@ Vue.component('explore-tab', {
 						el.clicked = false;
 						el.selected = false;
 					});
-					Vue.set(this.resultRows, i, data)
+					Vue.set(this.resultRows, i, data);
 				}.bind(this),
 			});
 		},

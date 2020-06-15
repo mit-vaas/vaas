@@ -105,27 +105,52 @@ func NewLabelSet(name string, srcVideoID int, labelType DataType) (*LabelSet, er
 	return ls, nil
 }
 
-func (ls LabelSet) ListLabels() []Label {
-	rows := db.Query(
-		`SELECT l.id, c.id, c.nframes, c.width, c.height, v.id, v.name, v.ext, l.start, l.end, l.out_clip_id
-		FROM labels AS l, clips AS c, videos AS v
-		WHERE c.id = l.clip_id AND v.id = c.video_id
-		AND l.set_id = ?
-		ORDER BY c.id`,
-		ls.ID,
-	)
+var LabelQuery = `
+	SELECT l.id, c.id, c.nframes, c.width, c.height, v.id, v.name, v.ext, l.start, l.end, l.out_clip_id, l.set_id
+	FROM labels AS l, clips AS c, videos AS v
+	WHERE c.id = l.clip_id AND v.id = c.video_id
+`
+
+func labelListHelper(rows *Rows, sets []LabelSet) []Label {
+	setMap := make(map[int]LabelSet)
+	for _, ls := range sets {
+		setMap[ls.ID] = ls
+	}
+
 	var labels []Label
 	for rows.Next() {
 		var label Label
+		var setID int
 		rows.Scan(
 			&label.ID, &label.Slice.Clip.ID, &label.Slice.Clip.Frames, &label.Slice.Clip.Width, &label.Slice.Clip.Height,
 			&label.Slice.Clip.Video.ID, &label.Slice.Clip.Video.Name, &label.Slice.Clip.Video.Ext,
 			&label.Slice.Start, &label.Slice.End, &label.OutClipID,
+			&setID,
 		)
-		label.LabelSet = ls
+		label.LabelSet = setMap[setID]
 		labels = append(labels, label)
 	}
 	return labels
+}
+
+func GetLabel(id int) *Label {
+	sets := ListLabelSets()
+	rows := db.Query(LabelQuery + " AND l.id = ?", id)
+	labels := labelListHelper(rows, sets)
+	if len(labels) == 1 {
+		l := labels[0]
+		return &l
+	} else {
+		return nil
+	}
+}
+
+func (ls LabelSet) ListLabels() []Label {
+	rows := db.Query(
+		LabelQuery + " AND l.set_id = ? ORDER BY c.id",
+		ls.ID,
+	)
+	return labelListHelper(rows, []LabelSet{ls})
 }
 
 func (ls LabelSet) Next() []Image {

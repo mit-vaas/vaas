@@ -102,15 +102,19 @@ func (im Image) ToBytes() []byte {
 	return im.Bytes
 }
 
+func (im Image) Set(i int, j int, color [3]uint8) {
+	if i < 0 || i >= im.Width || j < 0 || j >= im.Height {
+		return
+	}
+	for channel := 0; channel < 3; channel++ {
+		im.Bytes[(j*im.Width+i)*3+channel] = color[channel]
+	}
+}
+
 func (im Image) FillRectangle(left, top, right, bottom int, color [3]uint8) {
 	for i := left; i < right; i++ {
 		for j := top; j < bottom; j++ {
-			if i < 0 || i >= im.Width || j < 0 || j >= im.Height {
-				continue
-			}
-			for channel := 0; channel < 3; channel++ {
-				im.Bytes[(j*im.Width+i)*3+channel] = color[channel]
-			}
+			im.Set(i, j, color)
 		}
 	}
 }
