@@ -317,7 +317,7 @@ func (series Series) AddItem(slice Slice, format string, videoDims [2]int) *Item
 }
 
 func (series Series) GetItem(slice Slice) *Item {
-	rows := db.Query(ItemQuery + " WHERE segment_id = ? AND start <= ? AND end >= ? LIMIT 1", slice.Segment.ID, slice.Start, slice.End)
+	rows := db.Query(ItemQuery + " WHERE series_id = ? AND segment_id = ? AND start <= ? AND end >= ? LIMIT 1", series.ID, slice.Segment.ID, slice.Start, slice.End)
 	items := itemListHelper(rows)
 	if len(items) == 1 {
 		item := items[0]

@@ -42,31 +42,33 @@ func NewYolov3(cfgBytes []byte) skyhook.Executor {
 		"./darknet", "detect", "cfg/yolov3.cfg", "yolov3.weights", "-thresh", fmt.Sprintf("%v", cfg.Threshold),
 	)
 	rd := bufio.NewReader(cmd.Stdout())
-	return &Yolov3{
+	m := &Yolov3{
 		threshold: cfg.Threshold,
 		stdin: cmd.Stdin(),
 		rd: rd,
 		cmd: cmd,
 	}
+	m.getLines()
+	return m
+}
+
+func (m *Yolov3) getLines() []string {
+	var output string
+	for {
+		line, err := m.rd.ReadString(':')
+		if err != nil {
+			panic(err)
+		}
+		output += line
+		if strings.Contains(line, "Enter") {
+			break
+		}
+	}
+	return strings.Split(output, "\n")
 }
 
 func (m *Yolov3) Run(parents []*skyhook.BufferReader, slice skyhook.Slice) *skyhook.DataBuffer {
 	buf := skyhook.NewDataBuffer(skyhook.DetectionType)
-
-	getLines := func() []string {
-		var output string
-		for {
-			line, err := m.rd.ReadString(':')
-			if err != nil {
-				panic(err)
-			}
-			output += line
-			if strings.Contains(line, "Enter") {
-				break
-			}
-		}
-		return strings.Split(output, "\n")
-	}
 
 	parseLines := func(lines []string) []skyhook.Detection {
 		var boxes []skyhook.Detection
@@ -115,7 +117,7 @@ func (m *Yolov3) Run(parents []*skyhook.BufferReader, slice skyhook.Slice) *skyh
 			}
 			m.mu.Lock()
 			m.stdin.Write([]byte(fname + "\n"))
-			lines := getLines()
+			lines := m.getLines()
 			boxes := parseLines(lines)
 			m.mu.Unlock()
 			buf.Write(skyhook.Data{

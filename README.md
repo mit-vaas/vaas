@@ -3,6 +3,7 @@ To run:
 	mkdir items
 	go get github.com/google/uuid
 	go get github.com/mattn/go-sqlite3
+	go get github.com/mitroadmaps/gomapinfer/common
 	go run main.go
 
 Go 1.11+ may be required. On most versions of Ubuntu you can use this PPA:

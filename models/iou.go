@@ -38,6 +38,7 @@ func (m IOU) Run(parents []*skyhook.BufferReader, slice skyhook.Slice) *skyhook.
 		activeTracks := make(map[int]*TrackWithID)
 		PerFrame(parents, slice, buf, skyhook.DetectionType, func(idx int, data skyhook.Data, buf *skyhook.DataBuffer) error {
 			detections := data.Detections[0]
+			var out []skyhook.Detection
 
 			matches := hungarianMatcher(activeTracks, detections)
 			unmatched := make(map[int]skyhook.Detection)
@@ -50,6 +51,7 @@ func (m IOU) Run(parents []*skyhook.BufferReader, slice skyhook.Slice) *skyhook.
 				detection.TrackID = trackID
 				activeTracks[trackID].Detections = append(activeTracks[trackID].Detections, detection)
 				activeTracks[trackID].LastFrame = idx
+				out = append(out, detection)
 			}
 			for _, detection := range unmatched {
 				trackID := nextID
@@ -61,6 +63,7 @@ func (m IOU) Run(parents []*skyhook.BufferReader, slice skyhook.Slice) *skyhook.
 					LastFrame: idx,
 				}
 				activeTracks[track.ID] = track
+				out = append(out, detection)
 			}
 			for _, track := range activeTracks {
 				// TODO: make 10 a maxAge configurable parameter
@@ -72,7 +75,7 @@ func (m IOU) Run(parents []*skyhook.BufferReader, slice skyhook.Slice) *skyhook.
 
 			buf.Write(skyhook.Data{
 				Type: skyhook.TrackType,
-				Detections: [][]skyhook.Detection{detections},
+				Detections: [][]skyhook.Detection{out},
 			})
 			return nil
 		})
@@ -105,9 +108,7 @@ func hungarianMatcher(activeTracks map[int]*TrackWithID, detections []skyhook.De
 
 		for j, detection := range detections {
 			curRect := DetectionToRectangle(detection)
-			iou := trackRect.Min.X + curRect.Min.X
-			iou = 1.0
-			//iou := trackRect.IOU(curRect)
+			iou := trackRect.IOU(curRect)
 			var cost float64
 			if iou > 0.99 {
 				cost = 0.01
