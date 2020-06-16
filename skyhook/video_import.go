@@ -8,11 +8,12 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
 
-func progressUpdater(video Video, initialPercent int, targetPercent int) func(frac float64, msg string) {
+func progressUpdater(series Series, initialPercent int, targetPercent int) func(frac float64, msg string) {
 	var lastUpdate time.Time
 	return func(frac float64, msg string) {
 		if time.Now().Sub(lastUpdate) < 2*time.Second {
@@ -25,19 +26,20 @@ func progressUpdater(video Video, initialPercent int, targetPercent int) func(fr
 		} else if percent > targetPercent {
 			percent = targetPercent-1
 		}
-		log.Printf("[video_import (%s)] update progress %d (%s)", video.Name, percent, msg)
-		db.Exec("UPDATE videos SET percent = ? WHERE id = ?", percent, video.ID)
+		log.Printf("[video_import (%s)] update progress %d (%s)", series.Name, percent, msg)
+		db.Exec("UPDATE series SET percent = ? WHERE id = ?", percent, series.ID)
 	}
 }
 
-func Transcode(src string, dst string, video Video, initialPercent int) error {
-	log.Printf("[video_import (%s)] transcode [%s] -> [%s]", video.Name, src, dst)
+func Transcode(src string, dst string, series Series, initialPercent int) error {
+	log.Printf("[video_import (%s)] transcode [%s] -> [%s]", series.Name, src, dst)
 
 	opts := CommandOptions{
 		NoStdin: true,
-		Stderr: new(io.ReadCloser),
+		NoStdout: true,
+		NoPrintStderr: true,
 	}
-	cmd, _, _ := Command(
+	cmd := Command(
 		"ffmpeg-transcode", opts,
 		"ffmpeg",
 		"-progress", "pipe:2",
@@ -47,9 +49,9 @@ func Transcode(src string, dst string, video Video, initialPercent int) error {
 		"-f", "mp4",
 		dst,
 	)
-	stderr := *opts.Stderr
+	stderr := cmd.Stderr()
 
-	updateProgress := progressUpdater(video, initialPercent, 100)
+	updateProgress := progressUpdater(series, initialPercent, 100)
 
 	rd := bufio.NewReader(stderr)
 	var duration int
@@ -84,49 +86,52 @@ func Transcode(src string, dst string, video Video, initialPercent int) error {
 	if err != nil {
 		return fmt.Errorf("ffmpeg: %v (last line: %s)", err, lastLine)
 	}
-	db.Exec("UPDATE videos SET percent = 100 WHERE id = ?", video.ID)
 	return nil
 }
 
-// run ffprobe on a clip and fix it's frames, width, height
-func ProbeClip(clip *Clip) {
-	width, height, duration, err := Ffprobe(clip.Fname(0))
+// run ffprobe on a video and fix it's frames, width, height
+func ProbeVideo(item *Item) {
+	width, height, duration, err := Ffprobe(item.Fname(0))
 	if err != nil {
 		log.Printf("[video_import] probe failed: %v", err)
 		return
 	}
-	nframes := int(duration * float64(FPS))
-	db.Exec("UPDATE clips SET nframes = ?, width = ?, height = ? WHERE id = ?", nframes, width, height, clip.ID)
+	frames := int(duration * float64(FPS))
+	db.Exec("UPDATE items SET start = 0, end = ?, width = ?, height = ? WHERE id = ?", frames, width, height, item.ID)
+	db.Exec("UPDATE segments SET frames = ? WHERE id = ?", frames, item.Slice.Segment.ID)
 }
 
-func ImportLocal(fname string) func(video Video) error {
-	return func(video Video) error {
+func ImportLocal(fname string) func(series Series) error {
+	return func(series Series) error {
 		// we will fix the frames/width/height later
-		clip := video.AddClip(1, 1920, 1080)
-		err := Transcode(fname, clip.Fname(0), video, 0)
+		segment := series.Timeline.AddSegment(filepath.Base(fname), 1, FPS)
+		item := series.AddItem(segment.ToSlice(), "mp4", [2]int{1920, 1080})
+		err := Transcode(fname, item.Fname(0), series, 0)
 		if err != nil {
 			return err
 		}
-		ProbeClip(clip)
+		ProbeVideo(item)
 		return nil
 	}
 }
 
-func ImportYoutube(url string) func(video Video) error {
-	return func(video Video) error {
-		clip := video.AddClip(1, 1920, 1080)
+func ImportYoutube(url string) func(series Series) error {
+	return func(series Series) error {
+		segment := series.Timeline.AddSegment(url, 1, FPS)
+		item := series.AddItem(segment.ToSlice(), "mp4", [2]int{1920, 1080})
 
 		// download the video
-		log.Printf("[video_import (%s)] youtube: download video from %s", video.Name, url)
+		log.Printf("[video_import (%s)] youtube: download video from %s", series.Name, url)
 		tmpFname := fmt.Sprintf("%s/%d.mp4", os.TempDir(), rand.Int63())
 		defer os.Remove(tmpFname)
-		cmd, _, stdout := Command(
+		cmd := Command(
 			"youtube-dl", CommandOptions{NoStdin: true},
 			"youtube-dl",
 			"-o", tmpFname, "--newline",
 			url,
 		)
-		updateProgress := progressUpdater(video, 0, 50)
+		stdout := cmd.Stdout()
+		updateProgress := progressUpdater(series, 0, 50)
 		rd := bufio.NewReader(stdout)
 		for {
 			line, err := rd.ReadString('\n')
@@ -140,32 +145,39 @@ func ImportYoutube(url string) func(video Video) error {
 			}
 			str := strings.Split(line, "%")[0]
 			str = strings.Split(str, "[download] ")[1]
+			str = strings.TrimSpace(str)
 			percent := ParseFloat(str)
 			updateProgress(percent/100, line)
 		}
 
-		cmd.Wait()
-		log.Printf("[video_import (%s)] youtube: download complete, begin transcode", video.Name)
-		err := Transcode(tmpFname, clip.Fname(0), video, 50)
+		if err := cmd.Wait(); err != nil {
+			log.Printf("[video_import (%s)] youtube: download failed", series.Name)
+			return err
+		}
+		log.Printf("[video_import (%s)] youtube: download complete, begin transcode", series.Name)
+		err := Transcode(tmpFname, item.Fname(0), series, 50)
 		if err != nil {
 			return err
 		}
-		ProbeClip(clip)
+		ProbeVideo(item)
 		return nil
 	}
 }
 
-func ImportVideo(name string, f func(Video) error) {
-	res := db.Exec("INSERT INTO videos (name, ext, percent) VALUES (?, 'mp4', 0)", name)
-	video := GetVideo(res.LastInsertId())
-	os.Mkdir(fmt.Sprintf("clips/%d", video.ID), 0755)
-	log.Printf("[video_import (%s)] import id=%d", name, video.ID)
-	err := f(*video)
+func ImportVideo(name string, f func(Series) error) {
+	res := db.Exec("INSERT INTO timelines (name) VALUES (?)", name)
+	timeline := GetTimeline(res.LastInsertId())
+	res = db.Exec("INSERT INTO series (timeline_id, name, type, data_type, percent) VALUES (?, ?, 'data', 'video', 0)", timeline.ID, name)
+	series := GetSeries(res.LastInsertId())
+	os.Mkdir(fmt.Sprintf("items/%d", series.ID), 0755)
+	log.Printf("[video_import (%s)] import id=%d", name, series.ID)
+	err := f(*series)
 	if err != nil {
-		log.Printf("[video_import (%s)] import error: %v", video.Name, err)
-		video.Delete()
+		log.Printf("[video_import (%s)] import error: %v", series.Name, err)
+		series.Delete()
 		return
 	}
+	db.Exec("UPDATE series SET percent = 100 WHERE id = ?", series.ID)
 }
 
 func init() {

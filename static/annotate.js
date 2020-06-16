@@ -2,63 +2,70 @@ Vue.component('annotate-tab', {
 	data: function() {
 		return {
 			mode: 'list',
-			labelSets: [],
+			labelSeries: [],
 
-			videos: [],
+			dataSeries: [],
 			newSetFields: {},
 
 			annotateTool: '',
 			visualizeTool: '',
-			selectedSet: null,
+			selectedSeries: null,
 		};
 	},
 	props: ['tab'],
 	created: function() {
-		this.fetchLabelSets(true);
-		setInterval(this.fetchLabelSets(), 5000);
+		this.fetchLabelSeries(true);
+		setInterval(this.fetchLabelSeries(), 5000);
 	},
 	methods: {
-		fetchLabelSets: function(force) {
+		fetchLabelSeries: function(force) {
 			if(!force && this.tab != '#annotate-panel') {
 				return;
 			}
-			$.get('/labelsets', function(data) {
-				this.labelSets = data;
+			$.get('/labelseries', function(data) {
+				this.labelSeries = data;
 			}.bind(this));
 		},
-		showNewLabelSetModal: function() {
-			$.get('/videos', function(data) {
-				this.videos = data;
+		showNewLabelSeriesModal: function() {
+			$.get('/datasets', function(data) {
+				this.dataSeries = data;
 				this.newSetFields = {
 					name: '',
 					type: 'detection',
-					video: '',
+					series: '',
 				};
-				$('#a-new-ls-modal').modal('show');
+				$('#a-new-series-modal').modal('show');
 			}.bind(this));
 		},
-		createLabelSet: function() {
+		createSeries: function() {
 			var params = {
 				name: this.newSetFields.name,
 				type: this.newSetFields.type,
-				src: this.newSetFields.video,
+				src: this.newSetFields.series,
 			};
-			$.post('/labelsets', params, function(ls) {
-				$('#a-new-ls-modal').modal('hide');
-				this.selectedSet = ls;
-				this.annotateTool = 'annotate-default-' + ls.Type;
+			$.post('/labelseries', params, function(series) {
+				$('#a-new-series-modal').modal('hide');
+				this.selectedSeries = series;
+				this.annotateTool = 'annotate-default-' + series.DataType;
 				this.mode = 'annotate';
 			}.bind(this));
 		},
-		annotateLabels: function(ls) {
-			this.selectedSet = ls;
-			this.annotateTool = 'annotate-default-' + ls.Type;
+		annotateLabels: function(series) {
+			this.selectedSeries = series;
+			this.annotateTool = 'annotate-default-' + series.DataType;
 			this.mode = 'annotate';
 		},
-		visualizeLabels: function(ls) {
-			this.selectedSet = ls;
+		visualizeLabels: function(series) {
+			this.selectedSeries = series;
 			this.visualizeTool = 'annotate-visualize';
 			this.mode = 'visualize';
+		},
+		prettyVector: function(vector) {
+			var parts = [];
+			vector.forEach(function(series) {
+				parts.push(series.Name);
+			});
+			return '[' + parts.join(', ') + ']';
 		},
 	},
 	watch: {
@@ -67,44 +74,44 @@ Vue.component('annotate-tab', {
 				return;
 			}
 			this.mode = 'list';
-			this.fetchLabelSets(true);
+			this.fetchLabelSeries(true);
 		},
 	},
 	template: `
 <div>
 	<template v-if="mode == 'list'">
 		<div class="my-1">
-			<h3>Label Sets</h3>
+			<h3>Label Series</h3>
 		</div>
 		<div class="my-1">
-			<button v-on:click="showNewLabelSetModal" class="btn btn-primary">New Label Set</button>
+			<button v-on:click="showNewLabelSeriesModal" class="btn btn-primary">New Label Series</button>
 		</div>
 		<table class="table">
 			<thead>
 				<tr>
 					<th>Name</th>
-					<th>Source Video</th>
+					<th>Source</th>
 					<th>Type</th>
 					<th></th>
 				</tr>
 			</thead>
 			<tbody>
-				<tr v-for="ls in labelSets">
-					<td>{{ ls.Name }}</td>
-					<td>{{ ls.SrcVideo.Name }}</td>
-					<td>{{ ls.Type }}</td>
+				<tr v-for="series in labelSeries">
+					<td>{{ series.Name }}</td>
+					<td>{{ prettyVector(series.SrcVector) }}</td>
+					<td>{{ series.DataType }}</td>
 					<td>
-						<button v-on:click="annotateLabels(ls)" class="btn btn-primary btn-sm">Annotate</button>
-						<button v-on:click="visualizeLabels(ls)" class="btn btn-primary btn-sm">Visualize</button>
+						<button v-on:click="annotateLabels(series)" class="btn btn-primary btn-sm">Annotate</button>
+						<button v-on:click="visualizeLabels(series)" class="btn btn-primary btn-sm">Visualize</button>
 					</td>
 				</tr>
 			</tbody>
 		</table>
-		<div class="modal" tabindex="-1" role="dialog" id="a-new-ls-modal">
+		<div class="modal" tabindex="-1" role="dialog" id="a-new-series-modal">
 			<div class="modal-dialog" role="document">
 				<div class="modal-content">
 					<div class="modal-body">
-						<form v-on:submit.prevent="createLabelSet">
+						<form v-on:submit.prevent="createSeries">
 							<div class="form-group row">
 								<label class="col-sm-2 col-form-label">Name</label>
 								<div class="col-sm-10">
@@ -123,16 +130,16 @@ Vue.component('annotate-tab', {
 								</div>
 							</div>
 							<div class="form-group row">
-								<label class="col-sm-2 col-form-label">Source Video</label>
+								<label class="col-sm-2 col-form-label">Source</label>
 								<div class="col-sm-10">
-									<select v-model="newSetFields.video" class="form-control">
-										<option v-for="video in videos" :value="video.ID">{{ video.Name }}</option>
+									<select v-model="newSetFields.series" class="form-control">
+										<option v-for="series in dataSeries" :value="series.ID">{{ series.Name }}</option>
 									</select>
 								</div>
 							</div>
 							<div class="form-group row">
 								<div class="col-sm-10">
-									<button type="submit" class="btn btn-primary">Create Label Set</button>
+									<button type="submit" class="btn btn-primary">Create Series</button>
 								</div>
 							</div>
 						</form>
@@ -142,10 +149,10 @@ Vue.component('annotate-tab', {
 		</div>
 	</template>
 	<template v-else-if="mode == 'annotate'">
-		<component v-bind:is="annotateTool" v-bind:ls="selectedSet"></component>
+		<component v-bind:is="annotateTool" v-bind:series="selectedSeries"></component>
 	</template>
 	<template v-else-if="mode == 'visualize'">
-		<component v-bind:is="visualizeTool" v-bind:ls="selectedSet"></component>
+		<component v-bind:is="visualizeTool" v-bind:series="selectedSeries"></component>
 	</template>
 </div>
 	`,

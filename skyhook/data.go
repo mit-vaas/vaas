@@ -165,7 +165,7 @@ func (d Data) Discard(n int) Data {
 	panic(fmt.Errorf("bad type %v", d.Type))
 }
 
-type LabelBuffer struct {
+type DataBuffer struct {
 	buf Data
 
 	// # frames that were discarded
@@ -188,12 +188,12 @@ type LabelBuffer struct {
 }
 
 type BufferReader struct {
-	buf *LabelBuffer
+	buf *DataBuffer
 	id int
 }
 
-func NewLabelBuffer(t DataType) *LabelBuffer {
-	buf := &LabelBuffer{buf: Data{Type: t}}
+func NewDataBuffer(t DataType) *DataBuffer {
+	buf := &DataBuffer{buf: Data{Type: t}}
 	buf.cond = sync.NewCond(&buf.mu)
 	if t == VideoType {
 		// ideally this would be set somewhere else
@@ -204,12 +204,12 @@ func NewLabelBuffer(t DataType) *LabelBuffer {
 }
 
 // caller must have lock
-func (buf *LabelBuffer) length() int {
+func (buf *DataBuffer) length() int {
 	return buf.pos + buf.buf.Length()
 }
 
 // caller must have lock
-func (buf *LabelBuffer) discard() {
+func (buf *DataBuffer) discard() {
 	npos := buf.rdpos[0]
 	for _, x := range buf.rdpos {
 		if x < 0 {
@@ -229,7 +229,7 @@ func (buf *LabelBuffer) discard() {
 }
 
 // Read exactly n frames, or any non-zero amount if n<=0
-func (buf *LabelBuffer) read(id int, n int) (Data, error) {
+func (buf *DataBuffer) read(id int, n int) (Data, error) {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
 	wait := n
@@ -260,7 +260,7 @@ func (buf *LabelBuffer) read(id int, n int) (Data, error) {
 }
 
 // Wait for at least n to complete, and read them without removing from the buffer.
-func (buf *LabelBuffer) peek(id int, n int) (Data, error) {
+func (buf *DataBuffer) peek(id int, n int) (Data, error) {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
 	if n > 0 {
@@ -278,7 +278,7 @@ func (buf *LabelBuffer) peek(id int, n int) (Data, error) {
 	return data, nil
 }
 
-func (buf *LabelBuffer) Write(data Data) {
+func (buf *DataBuffer) Write(data Data) {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
 	for buf.capacity > 0 && buf.buf.Length() > 0 && buf.buf.Length()+data.Length() > buf.capacity && buf.err == nil && !buf.done {
@@ -291,21 +291,21 @@ func (buf *LabelBuffer) Write(data Data) {
 	buf.cond.Broadcast()
 }
 
-func (buf *LabelBuffer) Close() {
+func (buf *DataBuffer) Close() {
 	buf.mu.Lock()
 	buf.done = true
 	buf.cond.Broadcast()
 	buf.mu.Unlock()
 }
 
-func (buf *LabelBuffer) Error(err error) {
+func (buf *DataBuffer) Error(err error) {
 	buf.mu.Lock()
 	buf.err = err
 	buf.cond.Broadcast()
 	buf.mu.Unlock()
 }
 
-func (buf *LabelBuffer) FromVideoReader(rd VideoReader) {
+func (buf *DataBuffer) FromVideoReader(rd VideoReader) {
 	for {
 		im, err := rd.Read()
 		if err == io.EOF {
@@ -321,11 +321,11 @@ func (buf *LabelBuffer) FromVideoReader(rd VideoReader) {
 	buf.Close()
 }
 
-func (buf *LabelBuffer) Type() DataType {
+func (buf *DataBuffer) Type() DataType {
 	return buf.buf.Type
 }
 
-func (buf *LabelBuffer) CopyFrom(length int, rd *BufferReader) error {
+func (buf *DataBuffer) CopyFrom(length int, rd *BufferReader) error {
 	cur := 0
 	for cur < length {
 		data, err := rd.Read(0)
@@ -340,14 +340,14 @@ func (buf *LabelBuffer) CopyFrom(length int, rd *BufferReader) error {
 	return nil
 }
 
-func (buf *LabelBuffer) SetPaused(paused bool) {
+func (buf *DataBuffer) SetPaused(paused bool) {
 	buf.mu.Lock()
 	buf.paused = paused
 	buf.cond.Broadcast()
 	buf.mu.Unlock()
 }
 
-func (buf *LabelBuffer) Reader() *BufferReader {
+func (buf *DataBuffer) Reader() *BufferReader {
 	buf.mu.Lock()
 	if buf.pos > 0 {
 		panic(fmt.Errorf("tried to add reader when reading already started"))
@@ -435,38 +435,3 @@ func ReadMultiple(length int, inputs []*BufferReader, callback func(int, []Data)
 
 	return nil
 }
-
-// Returns a new buffer that reads from this buffer without removing the read
-// content. This allows single-writer multi-reader mode, where all the readers
-// read from different splits of the original buffer.
-// This also optionally slices the buffer so that it only yields data in [start, end).
-/*func (buf *LabelBuffer) Slice(start int, end int) *LabelBuffer {
-	nbuf := NewLabelBuffer(buf.unread.Type)
-	go func() {
-		cur := start
-		iter := func() bool {
-			buf.mu.Lock()
-			defer buf.mu.Unlock()
-			for buf.unread.Length() <= cur && buf.err == nil && !buf.done {
-				buf.cond.Wait()
-			}
-			if buf.err != nil {
-				nbuf.Error(fmt.Errorf("passing error to downstream split buffer: %v", buf.err))
-				return true
-			} else if buf.unread.Length() <= cur && buf.done {
-				nbuf.mu.Lock()
-				nbuf.done = true
-				nbuf.mu.Unlock()
-				return true
-			}
-
-		}
-		for cur < end {
-			quit := iter()
-			if quit {
-				break
-			}
-		}
-	}()
-	return nbuf
-}*/

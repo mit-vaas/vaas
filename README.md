@@ -1,6 +1,6 @@
 To run:
 
-	mkdir labels clips
+	mkdir items
 	go get github.com/google/uuid
 	go get github.com/mattn/go-sqlite3
 	go run main.go

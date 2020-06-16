@@ -26,7 +26,6 @@ Vue.component('nodes-tab', {
 			this.newNodeFields = {
 				name: '',
 				parents: '',
-				unit: 750,
 				type: '',
 				ext: '',
 			};
@@ -96,12 +95,6 @@ Vue.component('nodes-tab', {
 							<label class="col-sm-2 col-form-label">Parents</label>
 							<div class="col-sm-10">
 								<input v-model="newNodeFields.parents" class="form-control" type="text" />
-							</div>
-						</div>
-						<div class="form-group row">
-							<label class="col-sm-2 col-form-label">Unit</label>
-							<div class="col-sm-10">
-								<input v-model="newNodeFields.unit" class="form-control" type="text" />
 							</div>
 						</div>
 						<div class="form-group row">

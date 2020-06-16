@@ -19,16 +19,18 @@ Vue.component('query-tab', {
 			$.get('/queries', function(queries) {
 				queries.forEach(function(query) {
 					outputsStr = [];
-					query.Outputs.forEach(function(nodes) {
-						nodesStr = [];
-						nodes.forEach(function(node) {
-							if(node) {
-								nodesStr.push(node.Name);
+					query.Outputs.forEach(function(row) {
+						rowStr = [];
+						row.forEach(function(output) {
+							if(output.Type == 'n') {
+								rowStr.push(output.Node.Name);
+							} else if(output.Type) {
+								rowStr.push('Input[' + output.SeriesIdx + ']');
 							} else {
-								nodesStr.push('video');
+								rowStr.push('unknown');
 							}
 						});
-						outputsStr.push('[' + nodesStr.join(', ') + ']');
+						outputsStr.push('[' + rowStr.join(', ') + ']');
 					});
 					query.outputs = outputsStr.join('\n');
 				});
@@ -37,7 +39,7 @@ Vue.component('query-tab', {
 		},
 		showNewQueryModal: function() {
 			this.newQueryFields.name = '';
-			this.newQueryFields.node = '';
+			this.newQueryFields.outputs = '';
 			$.get('/nodes', function(nodes) {
 				this.nodes = nodes;
 				$('#q-new-query-modal').modal('show');
@@ -46,7 +48,7 @@ Vue.component('query-tab', {
 		createQuery: function() {
 			var params = {
 				name: this.newQueryFields.name,
-				node_id: this.newQueryFields.node,
+				outputs: this.newQueryFields.outputs,
 			};
 			$.post('/queries', params, function() {
 				$('#q-new-query-modal').modal('hide');
@@ -93,12 +95,9 @@ Vue.component('query-tab', {
 							</div>
 						</div>
 						<div class="form-group row">
-							<label class="col-sm-2 col-form-label">Node</label>
+							<label class="col-sm-2 col-form-label">Outputs</label>
 							<div class="col-sm-10">
-								<select v-model="newQueryFields.node" class="form-control">
-									<option value=""></option>
-									<option v-for="node in nodes" :value="node.ID">{{ node.Name }}</option>
-								</select>
+								<input v-model="newQueryFields.outputs" class="form-control" type="text" placeholder="e.g. 's0,n1'" />
 							</div>
 						</div>
 						<div class="form-group row">

@@ -10,14 +10,14 @@ Vue.component('annotate-default-detection', {
 			state: 'idle',
 		};
 	},
-	props: ['ls'],
+	props: ['series'],
 	created: function() {
 		app.$on('keypress', function(e) {
 			if(e.key == 'x') {
 				this.cancelWorking();
 			}
 		}.bind(this));
-		$.get('/labelsets/labels?id='+this.ls.ID+'&index=-1', this.updateImage, 'json');
+		$.get('/series/labels?id='+this.series.ID+'&index=-1', this.updateImage, 'json');
 	},
 	methods: {
 		cancelWorking: function() {
@@ -139,38 +139,38 @@ Vue.component('annotate-default-detection', {
 		},
 		prev: function() {
 			if(this.image.Index < 0) {
-				$.get('/labelsets/labels?id='+this.ls.ID+'&index=0', this.updateImage, 'json');
+				$.get('/series/labels?id='+this.series.ID+'&index=0', this.updateImage, 'json');
 			} else {
 				var i = this.image.Index - 1;
-				$.get('/labelsets/labels?id='+this.ls.ID+'&index='+i, this.updateImage, 'json');
+				$.get('/series/labels?id='+this.series.ID+'&index='+i, this.updateImage, 'json');
 			}
 		},
 		next: function() {
 			if(this.image.Index < 0) {
-				$.get('/labelsets/labels?id='+this.ls.ID+'&index=-1', this.updateImage, 'json');
+				$.get('/series/labels?id='+this.series.ID+'&index=-1', this.updateImage, 'json');
 			} else {
 				var i = this.image.Index+1;
-				$.get('/labelsets/labels?id='+this.ls.ID+'&index='+i, this.updateImage, 'json');
+				$.get('/series/labels?id='+this.series.ID+'&index='+i, this.updateImage, 'json');
 			}
 		},
 		done: function() {
 			var params = {
-				id: this.ls.ID,
+				id: this.series.ID,
 				index: this.image.Index,
-				uuid: this.image.UUID,
+				slice: this.image.Slice,
 				labels: this.labels,
 			};
 			$.ajax({
 				type: "POST",
-				url: '/labelsets/detection-label',
+				url: '/series/detection-label',
 				data: JSON.stringify(params),
 				processData: false,
 				success: function() {
 					if(this.image.Index < 0) {
-						$.get('/labelsets/labels?id='+this.ls.ID+'&index=-1', this.updateImage, 'json');
+						$.get('/series/labels?id='+this.series.ID+'&index=-1', this.updateImage, 'json');
 					} else {
 						var i = this.image.Index+1;
-						$.get('/labelsets/labels?id='+this.ls.ID+'&index='+i, this.updateImage, 'json');
+						$.get('/series/labels?id='+this.series.ID+'&index='+i, this.updateImage, 'json');
 					}
 				}.bind(this),
 			});
@@ -194,7 +194,7 @@ Vue.component('annotate-default-detection', {
 					height: image.Height + 'px',
 				}"
 				>
-				<img :src="image.URL" />
+				<img :src="image.URL + '&type=jpeg'" />
 				<canvas :width="image.Width" :height="image.Height" ref="layer1"></canvas>
 				<canvas :width="image.Width" :height="image.Height" ref="layer2"></canvas>
 			</div>

@@ -6,15 +6,15 @@ import (
 )
 
 type jpegReader struct {
-	clip Clip
+	item Item
 	start int
 	end int
 	pos int
 }
 
-func ReadJpeg(clip Clip, start int, end int) *jpegReader {
+func ReadJpeg(item Item, start int, end int) *jpegReader {
 	return &jpegReader{
-		clip: clip,
+		item: item,
 		start: start,
 		end: end,
 		pos: start,
@@ -25,14 +25,14 @@ func (rd *jpegReader) Read() (Image, error) {
 	if rd.pos >= rd.end {
 		return Image{}, io.EOF
 	}
-	im := ImageFromFile(rd.clip.Fname(rd.pos))
+	im := ImageFromFile(rd.item.Fname(rd.pos))
 	rd.pos++
 	return im, nil
 }
 func (rd *jpegReader) Close() {}
 
 type parallelJpegReader struct {
-	clip Clip
+	item Item
 	start int
 	end int
 	pos int
@@ -43,9 +43,9 @@ type parallelJpegReader struct {
 	next int
 }
 
-func ReadJpegParallel(clip Clip, start int, end int, nthreads int) *parallelJpegReader {
+func ReadJpegParallel(item Item, start int, end int, nthreads int) *parallelJpegReader {
 	rd := &parallelJpegReader{
-		clip: clip,
+		item: item,
 		start: start,
 		end: end,
 		pos: start,
@@ -66,7 +66,7 @@ func ReadJpegParallel(clip Clip, start int, end int, nthreads int) *parallelJpeg
 				}
 				rd.next++
 				rd.mu.Unlock()
-				im := ImageFromFile(rd.clip.Fname(next))
+				im := ImageFromFile(rd.item.Fname(next))
 				rd.mu.Lock()
 				rd.buffer[next] = &im
 				rd.cond.Broadcast()

@@ -12,7 +12,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -170,7 +169,7 @@ type VideoReader interface {
 }
 
 type ffmpegReader struct {
-	cmd *exec.Cmd
+	cmd Cmd
 	stdout io.ReadCloser
 	width int
 	height int
@@ -199,7 +198,7 @@ func parseFfmpegTime(str string) int {
 func ReadFfmpeg(fname string, start int, end int, width int, height int) ffmpegReader {
 	log.Printf("[ffmpeg] from %s extract frames [%d:%d) %dx%d", fname, start, end, width, height)
 
-	cmd, _, stdout := Command(
+	cmd := Command(
 		"ffmpeg", CommandOptions{NoStdin: true, OnlyDebug: true},
 		"ffmpeg",
 		"-ss", ffmpegTime(start),
@@ -212,7 +211,7 @@ func ReadFfmpeg(fname string, start int, end int, width int, height int) ffmpegR
 
  	return ffmpegReader{
  		cmd: cmd,
- 		stdout: stdout,
+ 		stdout: cmd.Stdout(),
  		width: width,
  		height: height,
  		buf: make([]byte, width*height*3),
@@ -265,16 +264,16 @@ func (rd *chanReader) Close() {
 	}()
 }
 
-func ReadVideo(slice ClipSlice, width int, height int) VideoReader {
-	if slice.Clip.Video.Ext == "jpeg" {
-		return ReadJpegParallel(slice.Clip, slice.Start, slice.End, 4)
+func ReadVideo(item Item, slice Slice) VideoReader {
+	if item.Format == "jpeg" {
+		return ReadJpegParallel(item, slice.Start - item.Slice.Start, slice.End - item.Slice.Start, 4)
 	} else {
-		return ReadFfmpeg(slice.Clip.Fname(slice.Start), slice.Start, slice.End, width, height)
+		return ReadFfmpeg(item.Fname(0), slice.Start - item.Slice.Start, slice.End - item.Slice.Start, item.Width, item.Height)
 	}
 }
 
-func GetFrames(slice ClipSlice, width int, height int) ([]Image, error) {
-	rd := ReadVideo(slice, width, height)
+func GetFrames(item Item, slice Slice) ([]Image, error) {
+	rd := ReadVideo(item, slice)
 	var frames []Image
 	for {
 		im, err := rd.Read()
@@ -288,10 +287,10 @@ func GetFrames(slice ClipSlice, width int, height int) ([]Image, error) {
 	return frames, nil
 }
 
-func MakeVideo(rd VideoReader, width int, height int) (io.ReadCloser, *exec.Cmd) {
+func MakeVideo(rd VideoReader, width int, height int) (io.ReadCloser, Cmd) {
 	log.Printf("[ffmpeg] make video (%dx%d)", width, height)
 
-	cmd, stdin, stdout := Command(
+	cmd := Command(
 		"ffmpeg", CommandOptions{OnlyDebug: true},
 		"ffmpeg", "-f", "rawvideo",
 		"-s", fmt.Sprintf("%dx%d", width, height),
@@ -306,6 +305,7 @@ func MakeVideo(rd VideoReader, width int, height int) (io.ReadCloser, *exec.Cmd)
 	)
 
 	go func() {
+		stdin := cmd.Stdin()
 		for {
 			im, err := rd.Read()
 			if err == io.EOF {
@@ -323,11 +323,11 @@ func MakeVideo(rd VideoReader, width int, height int) (io.ReadCloser, *exec.Cmd)
 		stdin.Close()
 	}()
 
-	return stdout, cmd
+	return cmd.Stdout(), cmd
 }
 
 func Ffprobe(fname string) (width int, height int, duration float64, err error) {
-	cmd, _, stdout := Command(
+	cmd := Command(
 		"ffprobe", CommandOptions{NoStdin: true},
 		"ffprobe",
 		"-v", "error", "-select_streams", "v:0",
@@ -335,7 +335,7 @@ func Ffprobe(fname string) (width int, height int, duration float64, err error) 
 		"-of", "csv=s=,:p=0",
 		fname,
 	)
-	rd := bufio.NewReader(stdout)
+	rd := bufio.NewReader(cmd.Stdout())
 	var line string
 	line, err = rd.ReadString('\n')
 	if err != nil {

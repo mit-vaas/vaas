@@ -23,7 +23,7 @@ type Yolov3 struct {
 	threshold float64
 	stdin io.WriteCloser
 	rd *bufio.Reader
-	cmd *exec.Cmd
+	cmd skyhook.Cmd
 	mu sync.Mutex
 }
 
@@ -34,35 +34,24 @@ func NewYolov3(cfgBytes []byte) skyhook.Executor {
 	var cfg Config
 	skyhook.JsonUnmarshal(cfgBytes, &cfg)
 
-	cmd := exec.Command("./darknet", "detect", "cfg/yolov3.cfg", "yolov3.weights", "-thresh", fmt.Sprintf("%v", cfg.Threshold))
-	cmd.Dir = "darknet/"
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		panic(err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		panic(err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		panic(err)
-	}
-	if err := cmd.Start(); err != nil {
-		panic(err)
-	}
-	go skyhook.PrintStderr("darknet", stderr, false)
-	rd := bufio.NewReader(stdout)
+	cmd := skyhook.Command(
+		"darknet",
+		skyhook.CommandOptions{F: func(cmd *exec.Cmd) {
+			cmd.Dir = "darknet/"
+		}},
+		"./darknet", "detect", "cfg/yolov3.cfg", "yolov3.weights", "-thresh", fmt.Sprintf("%v", cfg.Threshold),
+	)
+	rd := bufio.NewReader(cmd.Stdout())
 	return &Yolov3{
 		threshold: cfg.Threshold,
-		stdin: stdin,
+		stdin: cmd.Stdin(),
 		rd: rd,
 		cmd: cmd,
 	}
 }
 
-func (m *Yolov3) Run(parents []*skyhook.BufferReader, slice skyhook.ClipSlice) *skyhook.LabelBuffer {
-	buf := skyhook.NewLabelBuffer(skyhook.DetectionType)
+func (m *Yolov3) Run(parents []*skyhook.BufferReader, slice skyhook.Slice) *skyhook.DataBuffer {
+	buf := skyhook.NewDataBuffer(skyhook.DetectionType)
 
 	getLines := func() []string {
 		var output string
@@ -119,7 +108,7 @@ func (m *Yolov3) Run(parents []*skyhook.BufferReader, slice skyhook.ClipSlice) *
 	go func() {
 		fname := fmt.Sprintf("%s/%d.jpg", os.TempDir(), rand.Int63())
 		defer os.Remove(fname)
-		PerFrame(parents, slice, buf, skyhook.VideoType, func(idx int, data skyhook.Data, buf *skyhook.LabelBuffer) error {
+		PerFrame(parents, slice, buf, skyhook.VideoType, func(idx int, data skyhook.Data, buf *skyhook.DataBuffer) error {
 			im := data.Images[0]
 			if err := ioutil.WriteFile(fname, im.AsJPG(), 0644); err != nil {
 				return err

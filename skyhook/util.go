@@ -86,31 +86,77 @@ func ParseFloat(str string) float64 {
 
 const Debug bool = false
 
-func PrintStderr(prefix string, stderr io.ReadCloser, onlyDebug bool) {
-	rd := bufio.NewReader(stderr)
+type Cmd struct {
+	prefix string
+	cmd *exec.Cmd
+	stdin io.WriteCloser
+	stdout io.ReadCloser
+	stderr io.ReadCloser
+	// if not nil, means PrintStderr will send last line it got before exiting
+	stderrCh chan string
+}
+
+func (cmd Cmd) Stdin() io.WriteCloser {
+	return cmd.stdin
+}
+
+func (cmd Cmd) Stdout() io.ReadCloser {
+	return cmd.stdout
+}
+
+func (cmd Cmd) Stderr() io.ReadCloser {
+	return cmd.stderr
+}
+
+func (cmd Cmd) Wait() error {
+	if cmd.stdin != nil {
+		cmd.stdin.Close()
+	}
+	if cmd.stdout != nil {
+		cmd.stdout.Close()
+	}
+	var lastLine string
+	if cmd.stderrCh != nil {
+		lastLine = <- cmd.stderrCh
+	}
+	err := cmd.cmd.Wait()
+	if err != nil {
+		log.Printf("[%s] exit error: %v (%s)", cmd.prefix, err, lastLine)
+	}
+	return err
+}
+
+func (cmd Cmd) printStderr(onlyDebug bool) {
+	rd := bufio.NewReader(cmd.stderr)
+	var lastLine string
 	for {
 		line, err := rd.ReadString('\n')
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			// sometimes the cmd.Wait() may call before we finish reading stderr
-			// to fix this we would need to have whoever calls cmd.Wait to wait for this
-			//  function to exit before actually calling it
-			break
+			panic(err)
 		}
+		line = strings.TrimSpace(line)
+		lastLine = line
 		if !onlyDebug || Debug {
-			log.Printf("[%s] %s", prefix, strings.TrimSpace(line))
+			log.Printf("[%s] %s", cmd.prefix, line)
 		}
+	}
+	if cmd.stderrCh != nil {
+		cmd.stderrCh <- lastLine
 	}
 }
 
 type CommandOptions struct {
 	NoStdin bool
+	NoStdout bool
+	NoStderr bool
+	NoPrintStderr bool
+	F func(*exec.Cmd)
 	OnlyDebug bool
-	Stderr *io.ReadCloser
 }
 
-func Command(prefix string, opts CommandOptions, command string, args ...string) (*exec.Cmd, io.WriteCloser, io.ReadCloser) {
+func Command(prefix string, opts CommandOptions, command string, args ...string) Cmd {
 	log.Printf("[util] %s %v", command, args)
 	cmd := exec.Command(command, args...)
 	var stdin io.WriteCloser
@@ -121,23 +167,40 @@ func Command(prefix string, opts CommandOptions, command string, args ...string)
 			panic(err)
 		}
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		panic(err)
+	var stdout io.ReadCloser
+	if !opts.NoStdout {
+		var err error
+		stdout, err = cmd.StdoutPipe()
+		if err != nil {
+			panic(err)
+		}
 	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		panic(err)
+	var stderr io.ReadCloser
+	if !opts.NoStderr {
+		var err error
+		stderr, err = cmd.StderrPipe()
+		if err != nil {
+			panic(err)
+		}
+	}
+	if opts.F != nil {
+		opts.F(cmd)
 	}
 	if err := cmd.Start(); err != nil {
 		panic(err)
 	}
-	if opts.Stderr == nil {
-		go PrintStderr(prefix, stderr, opts.OnlyDebug)
-	} else {
-		*opts.Stderr = stderr
+	mycmd := Cmd{
+		prefix: prefix,
+		cmd: cmd,
+		stdin: stdin,
+		stdout: stdout,
+		stderr: stderr,
 	}
-	return cmd, stdin, stdout
+	if stderr != nil && !opts.NoPrintStderr {
+		mycmd.stderrCh = make(chan string)
+		go mycmd.printStderr(opts.OnlyDebug)
+	}
+	return mycmd
 }
 
 func Mod(a, b int) int {

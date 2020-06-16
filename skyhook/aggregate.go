@@ -9,17 +9,21 @@ import (
 )
 
 type LabeledSlice struct {
-	Slice ClipSlice
+	Slice Slice
+	Background *Series
 	Data Data
 }
 
 // specifier/reference for where we can get one or more LabeledSlices
 type LabeledSliceRef struct {
-	LabelSet *LabelSet // reference an entire label set
-	Label *Label // reference a specific label
+	Background Series
 
-	// the remaining references require Slice
-	Slice ClipSlice
+	Series *Series // reference an entire series
+	Item *Item // reference a specific item
+
+	// the remaining references require Slice and Vector
+	Slice Slice
+	Vector string
 
 	Node *Node // reference the output of a node on Slice
 	Data *Data // include the label data directly
@@ -27,55 +31,70 @@ type LabeledSliceRef struct {
 
 // yield LabeledSlices from this ref until we exhaust them or encounter an error
 func (r LabeledSliceRef) Resolve(f func(l LabeledSlice) error) error {
-	if r.LabelSet != nil {
-		ls := GetLabelSet(r.LabelSet.ID)
-		if ls == nil {
-			return fmt.Errorf("no such label set")
+	background := GetSeries(r.Background.ID)
+
+	if r.Series != nil {
+		series := GetSeries(r.Series.ID)
+		if series == nil {
+			return fmt.Errorf("no such series")
 		}
-		for _, label := range ls.ListLabels() {
-			err := LabeledSliceRef{Label: &label}.Resolve(f)
+		for _, item := range series.ListItems() {
+			err := LabeledSliceRef{Item: &item}.Resolve(f)
 			if err != nil {
 				return err
 			}
 		}
 		return nil
-	} else if r.Label != nil {
-		label := GetLabel(r.Label.ID)
-		if label == nil {
-			return fmt.Errorf("no such label")
+	} else if r.Item != nil {
+		item := GetItem(r.Item.ID)
+		if item == nil {
+			return fmt.Errorf("no such item")
 		}
-		data, err := label.Load(label.Slice).Reader().Read(label.Slice.Length())
+		data, err := item.Load(item.Slice).Reader().Read(item.Slice.Length())
 		if err != nil {
-			return fmt.Errorf("error reading label %d: %v", label.ID, err)
+			return fmt.Errorf("error reading item %d: %v", item.ID, err)
 		}
-		return f(LabeledSlice{label.Slice, data})
+		return f(LabeledSlice{
+			Slice: item.Slice,
+			Background: background,
+			Data: data,
+		})
 	} else if r.Node != nil {
-		clip := GetClip(r.Slice.Clip.ID)
-		slice := ClipSlice{*clip, r.Slice.Start, r.Slice.End}
+		segment := GetSegment(r.Slice.Segment.ID)
+		slice := Slice{*segment, r.Slice.Start, r.Slice.End}
+		vector := ParseVector(r.Vector)
 		node := GetNode(r.Node.ID)
 		if node == nil {
 			return fmt.Errorf("no such node")
 		}
-		vn := GetVNode(node, clip.Video)
+		vn := GetVNode(node, vector)
 		if vn == nil {
 			return fmt.Errorf("no saved vnode")
 		}
 		vn.Load()
-		label := vn.LabelSet.GetBySlice(slice)
-		if label == nil {
-			return fmt.Errorf("no saved label")
+		item := vn.Series.GetItem(slice)
+		if item == nil {
+			return fmt.Errorf("no saved item")
 		}
-		data, err := label.Load(slice).Reader().Read(slice.Length())
+		data, err := item.Load(slice).Reader().Read(slice.Length())
 		if err != nil {
-			return fmt.Errorf("error reading label %d: %v", label.ID, err)
+			return fmt.Errorf("error reading item %d: %v", item.ID, err)
 		}
-		return f(LabeledSlice{slice, data})
+		return f(LabeledSlice{
+			Slice: slice,
+			Background: background,
+			Data: data,
+		})
 	} else if r.Data != nil {
-		clip := GetClip(r.Slice.Clip.ID)
-		slice := ClipSlice{*clip, r.Slice.Start, r.Slice.End}
+		segment := GetSegment(r.Slice.Segment.ID)
+		slice := Slice{*segment, r.Slice.Start, r.Slice.End}
 		data := *r.Data
 		data = data.EnsureLength(slice.Length())
-		return f(LabeledSlice{slice, data})
+		return f(LabeledSlice{
+			Slice: slice,
+			Background: background,
+			Data: data,
+		})
 	}
 	panic(fmt.Errorf("bad LabeledSliceSpec"))
 }
@@ -99,8 +118,9 @@ func init() {
 
 		f := func(l LabeledSlice) error {
 			if im == nil {
-				slice := ClipSlice{l.Slice.Clip, l.Slice.Start, l.Slice.Start+1}
-				rd := ReadVideo(slice, slice.Clip.Width, slice.Clip.Height)
+				slice := Slice{l.Slice.Segment, l.Slice.Start, l.Slice.Start+1}
+				bgItem := l.Background.GetItem(slice)
+				rd := ReadVideo(*bgItem,  slice)
 				x, err := rd.Read()
 				rd.Close()
 				if err != nil {

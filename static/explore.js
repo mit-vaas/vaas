@@ -7,7 +7,7 @@ Vue.component('explore-tab', {
 			videos: [],
 
 			mode: 'random',
-			sequentialClip: '',
+			sequentialSegment: '',
 
 			resultRows: [],
 			detailResult: null,
@@ -20,7 +20,7 @@ Vue.component('explore-tab', {
 	},
 	methods: {
 		fetch: function() {
-			$.get('/videos', function(data) {
+			$.get('/datasets', function(data) {
 				this.videos = data;
 				if(!this.selectedVideoID) {
 					this.selectedVideoID = this.videos[0].ID;
@@ -35,15 +35,15 @@ Vue.component('explore-tab', {
 		},
 		addMore: function() {
 			var params = {
-				VideoID: this.selectedVideoID,
+				Vector: this.selectedVideoID+'',
 				QueryID: this.query,
 				Mode: this.mode,
 				Count: 4,
 			};
 			if(this.mode == 'sequential') {
-				var parts = this.sequentialClip.split(']')[0].split('[');
+				var parts = this.sequentialSegment.split(']')[0].split('[');
 				params.StartSlice = {
-					Clip: {ID: parseInt(parts[0])},
+					Segment: {ID: parseInt(parts[0])},
 				}
 				if(parts.length >= 2) {
 					var idx = parts[1].split(':')[0];
@@ -84,7 +84,7 @@ Vue.component('explore-tab', {
 			var r = this.resultRows[i][j];
 			r.selected = !r.selected;
 			if(r.selected) {
-				this.sequentialClip = r.Slice.Clip.ID + '[' + r.Slice.Start + ']';
+				this.sequentialSegment = r.Slice.Segment.ID + '[' + r.Slice.Start + ']';
 			}
 		},
 		viewDetails: function(i, j) {
@@ -143,9 +143,9 @@ Vue.component('explore-tab', {
 					<label class="form-check-label">Sequential</label>
 				</div>
 				<div class="form-group row">
-					<label class="col-sm-4">From Clip</label>
+					<label class="col-sm-4">From Segment</label>
 					<div class="col-sm-8">
-						<input type="text" class="form-control" v-model="sequentialClip" />
+						<input type="text" class="form-control" v-model="sequentialSegment" />
 					</div>
 				</div>
 			</div>
@@ -155,7 +155,7 @@ Vue.component('explore-tab', {
 				<div v-for="(result, j) in row" v-on:click.stop="toggleResult(i, j)" class="explore-results-col" :class="{selected: result.selected}">
 					<template v-if="result.ready">
 						<div>
-							<span>{{ result.Slice.Clip.ID }}[{{ result.Slice.Start }}:{{ result.Slice.End }}]</span>
+							<span>{{ result.Slice.Segment.ID }}[{{ result.Slice.Start }}:{{ result.Slice.End }}]</span>
 							<span v-on:click.stop="viewDetails(i, j)">
 								<button type="button" class="btn btn-outline-dark">
 									<svg class="bi bi-arrow-bar-right" width="1em" height="1em" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -166,7 +166,7 @@ Vue.component('explore-tab', {
 							</span>
 						</div>
 						<img v-if="!result.clicked" v-on:click.stop="onClick(i, j)" :src="result.PreviewURL" class="explore-result-img" />
-						<video v-if="result.clicked" :width="result.Width" class="explore-result-img" controls autoplay>
+						<video v-if="result.clicked" class="explore-result-img" controls autoplay>
 							<source :src="result.URL + '&type=mp4'" type="video/mp4"></source>
 						</video>
 					</template>

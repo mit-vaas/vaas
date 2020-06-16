@@ -15,7 +15,8 @@ var tasks = &TaskManager{
 
 type Task struct {
 	Query *Query
-	Slices []ClipSlice
+	Vector []*Series
+	Slices []Slice
 }
 
 func (m *TaskManager) Schedule(task Task) [][][]*BufferReader {
@@ -30,7 +31,7 @@ func (m *TaskManager) Schedule(task Task) [][][]*BufferReader {
 	}
 	var outputs [][][]*BufferReader
 	for _, slice := range task.Slices {
-		outputs = append(outputs, m.activeQueries[task.Query.ID].Run(nil, slice))
+		outputs = append(outputs, m.activeQueries[task.Query.ID].Run(task.Vector, slice))
 	}
 	return outputs
 }

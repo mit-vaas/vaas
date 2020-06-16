@@ -7,22 +7,21 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 )
 
 type pendingSlice struct {
-	slice ClipSlice
+	slice Slice
 	parents []*BufferReader
-	buf *LabelBuffer
+	buf *DataBuffer
 }
 
 type PythonExecutor struct {
 	query *Query
 	node *Node
 	tempFile *os.File
-	cmd *exec.Cmd
+	cmd Cmd
 	stdin io.WriteCloser
 	stdout io.ReadCloser
 	pending map[int]*pendingSlice
@@ -69,12 +68,12 @@ func (e *PythonExecutor) Init() {
 	e.writeLock.Unlock()
 }
 
-func (e *PythonExecutor) Run(parents []*BufferReader, slice ClipSlice) *LabelBuffer {
+func (e *PythonExecutor) Run(parents []*BufferReader, slice Slice) *DataBuffer {
 	// prepare pendingSlice
 	e.mu.Lock()
 	id := e.counter
 	e.counter++
-	buf := NewLabelBuffer(e.node.Type)
+	buf := NewDataBuffer(e.node.Type)
 	ps := &pendingSlice{slice, parents, buf}
 	e.pending[id] = ps
 	e.mu.Unlock()
@@ -205,7 +204,7 @@ func (node *Node) pythonExecutor(query *Query) Executor {
 	if err := tempFile.Close(); err != nil {
 		panic(err)
 	}
-	cmd, stdin, stdout := Command(
+	cmd := Command(
 		fmt.Sprintf("exec-python-%s", node.Name), CommandOptions{},
 		"/usr/bin/python3", tempFile.Name(),
 	)
@@ -215,8 +214,8 @@ func (node *Node) pythonExecutor(query *Query) Executor {
 		node: node,
 		tempFile: tempFile,
 		cmd: cmd,
-		stdin: stdin,
-		stdout: stdout,
+		stdin: cmd.Stdin(),
+		stdout: cmd.Stdout(),
 		pending: make(map[int]*pendingSlice),
 	}
 	e.Init()

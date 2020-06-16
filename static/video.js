@@ -14,12 +14,12 @@ Vue.component('video-tab', {
 			if(!force && this.tab != '#video-panel') {
 				return;
 			}
-			$.get('/videos', function(data) {
+			$.get('/datasets', function(data) {
 				this.videos = data;
 			}.bind(this));
 		},
-		deleteVideo: function(video_id) {
-			$.post('/videos/delete', {'video_id': video_id}, function() {
+		deleteVideo: function(series_id) {
+			$.post('/series/delete', {'series_id': series_id}, function() {
 				this.fetchVideos();
 			}.bind(this));
 		},

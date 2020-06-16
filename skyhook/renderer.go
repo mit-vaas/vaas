@@ -6,12 +6,11 @@ import (
 	"bytes"
 	"io"
 	"log"
-	"os/exec"
 	"sync"
 )
 
 type VideoRenderer struct {
-	slice ClipSlice
+	slice Slice
 	inputs [][]*BufferReader
 
 	// store the non-video labels for inspection
@@ -26,7 +25,7 @@ type VideoRenderer struct {
 	done bool
 }
 
-func RenderVideo(slice ClipSlice, inputs [][]*BufferReader) *VideoRenderer {
+func RenderVideo(slice Slice, inputs [][]*BufferReader) *VideoRenderer {
 	r := &VideoRenderer{
 		slice: slice,
 		inputs: inputs,
@@ -84,8 +83,8 @@ func RenderFrames(canvas Image, datas [][]Data, f func(int)) {
 
 func (r *VideoRenderer) render() {
 	ch := make(chan Image)
+	var cmd Cmd
 	var stdout io.ReadCloser
-	var cmd *exec.Cmd
 	var canvas *Image
 
 	labels := make([][]Data, len(r.inputs))

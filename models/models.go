@@ -7,9 +7,9 @@ import (
 	"log"
 )
 
-type PerFrameFunc func(idx int, data skyhook.Data, outBuf *skyhook.LabelBuffer) error
+type PerFrameFunc func(idx int, data skyhook.Data, outBuf *skyhook.DataBuffer) error
 
-func PerFrame(parents []*skyhook.BufferReader, slice skyhook.ClipSlice, buf *skyhook.LabelBuffer, t skyhook.DataType, f PerFrameFunc) {
+func PerFrame(parents []*skyhook.BufferReader, slice skyhook.Slice, buf *skyhook.DataBuffer, t skyhook.DataType, f PerFrameFunc) {
 	err := skyhook.ReadMultiple(slice.Length(), parents, func(index int, datas []skyhook.Data) error {
 		if len(datas) != 1 {
 			panic(fmt.Errorf("expected exactly one input, but got %d", len(datas)))

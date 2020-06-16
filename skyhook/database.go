@@ -24,18 +24,46 @@ func init() {
 	}
 	db = &Database{db: sdb}
 
-	db.Exec(`CREATE TABLE IF NOT EXISTS videos (
+	db.Exec(`CREATE TABLE IF NOT EXISTS timelines (
 		id INTEGER PRIMARY KEY ASC,
-		name TEXT NOT NULL,
-		ext TEXT,
+		name TEXT
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS segments (
+		id INTEGER PRIMARY KEY ASC,
+		timeline_id INTEGER REFERENCES timelines(id),
+		name TEXT,
+		frames INTEGER,
+		fps REAL
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS series (
+		id INTEGER PRIMARY KEY ASC,
+		timeline_id INTEGER REFERENCES timelines(id),
+		name TEXT,
+		-- possible types:
+		-- 'data': raw data
+		-- 'labels': hand-labeled annotations
+		-- 'outputs': query outputs
+		type TEXT,
+		data_type TEXT,
+		-- set if type is 'labels' or 'outputs'
+		src_vector TEXT,
+		-- set if type is 'outputs'
+		node_id INTEGER REFERENCES nodes(id),
+		-- set if type is 'data' during ingestion
 		percent INTEGER NOT NULL DEFAULT 100
 	)`)
-	db.Exec(`CREATE TABLE IF NOT EXISTS clips (
+	db.Exec(`CREATE TABLE IF NOT EXISTS items (
 		id INTEGER PRIMARY KEY ASC,
-		video_id INTEGER REFERENCES videos(id),
-		nframes INTEGER,
-		width INTEGER,
-		height INTEGER
+		segment_id INTEGER REFERENCES segments(id),
+		series_id INTEGER REFERENCES series(id),
+		start INTEGER,
+		end INTEGER,
+		-- video: 'mp4' or 'jpeg'
+		-- others: 'json'
+		format TEXT,
+		-- set if video
+		width INTEGER NOT NULL DEFAULT 0,
+		height INTEGER NOT NULL DEFAULT 0
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS nodes (
 		id INTEGER PRIMARY KEY ASC,
@@ -48,50 +76,16 @@ func init() {
 	db.Exec(`CREATE TABLE IF NOT EXISTS vnodes (
 		id INTEGER PRIMARY KEY ASC,
 		node_id INTEGER REFERENCES nodes(id),
-		video_id INTEGER REFERENCES videos(id),
-		ls_id INTEGER REFERENCES label_sets(id)
-	)`)
-	db.Exec(`CREATE TABLE IF NOT EXISTS label_sets (
-		id INTEGER PRIMARY KEY ASC,
-		name TEXT NOT NULL,
-		unit INTEGER NOT NULL,
-		-- annotation system should sample clips from src_video
-		src_video INTEGER REFERENCES videos(id),
-		-- labels.clip_id/start/end reference clips in video_id
-		-- for query outputs, video_id = src_video
-		-- but when annotating, we create a new video that just has the images/clips
-		--     that we asked the human to label
-		video_id INTEGER REFERENCES videos(id),
-		label_type TEXT
-	)`)
-	db.Exec(`CREATE TABLE IF NOT EXISTS labels (
-		id INTEGER PRIMARY KEY ASC,
-		set_id INTEGER REFERENCES label_sets(id),
-		clip_id INTEGER REFERENCES clips(id),
-		start INTEGER NOT NULL,
-		end INTEGER NOT NULL,
-		-- out_clip_id is only set if label_sets.label_type=video
-		-- it refers to clip containing the output corresponding to input clip_id above
-		out_clip_id INTEGER REFERENCES clips(id)
+		-- input
+		vector TEXT,
+		-- persisted outputs
+		series_id INTEGER REFERENCES series(id)
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS queries (
 		id INTEGER PRIMARY KEY ASC,
 		name TEXT NOT NULL DEFAULT '',
-		node_id INTEGER NOT NULL DEFAULT 0,
 		outputs TEXT NOT NULL DEFAULT ''
 	)`)
-/*
-INSERT INTO videos VALUES (1, 'tokyo', 'jpeg');
-INSERT INTO clips VALUES (1, 1, 30000, 960, 540);
-INSERT INTO ops VALUES (1, 'tracker', 'v', 'track', 'python', 'TODO', 750);
-INSERT INTO ops VALUES (2, 'left-to-right', 'o1', 'track', 'python', 'TODO', 750);
-INSERT INTO label_sets VALUES (1, 'tokyo', 750, 1, 1, 'detection');
-INSERT INTO label_sets VALUES (2, 'tracker', 750, 1, 1, 'track');
-INSERT INTO labels VALUES (1, 1, 1, 0, 30000);
-INSERT INTO labels VALUES (2, 2, 1, 0, 30000);
-INSERT INTO nodes VALUES (1, 'o1', 1, 2, 'track');
-INSERT INTO nodes VALUES (2, 'o2', 1, NULL, 'track');
-*/
 }
 
 func (this *Database) Query(q string, args ...interface{}) *Rows {
