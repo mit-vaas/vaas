@@ -139,6 +139,7 @@ type VisualizeResponse struct {
 	UUID string
 	Slice Slice
 	Type DataType
+	Vectors [][]*Series
 }
 
 func init() {

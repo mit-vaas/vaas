@@ -111,6 +111,17 @@ func init() {
 					return
 				}
 				JsonResponse(w, labels[0][1].Get())
+			} else if contentType == "meta" {
+				type MetaResponse struct {
+					Width int
+					Height int
+				}
+				im, err := v.GetPreview()
+				if err != nil {
+					http.Error(w, err.Error(), 400)
+					return
+				}
+				JsonResponse(w, MetaResponse{im.Width, im.Height})
 			} else {
 				rd, err := v.GetVideo()
 				if err != nil {

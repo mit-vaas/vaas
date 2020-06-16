@@ -3,6 +3,7 @@ Vue.component('explore-detail-detection', {
 		return {
 			index: 0,
 			labels: [],
+			meta: null,
 			mode: '', // detection or track
 
 			// detection: index of detection in labels[index] that was selected
@@ -18,43 +19,49 @@ Vue.component('explore-detail-detection', {
 	props: ['result'],
 	created: function() {
 		this.mode = this.result.Type;
-		$.get(this.result.URL + '&type=labels', function(labels) {
-			this.labels = labels;
-			this.render();
-		}.bind(this), 'json');
+		Promise.all([
+			$.get(this.result.URL + '&type=labels', function(labels) {
+				this.labels = labels;
+			}.bind(this), 'json'),
+			$.get(this.result.URL + '&type=meta', function(meta) {
+				this.meta = meta;
+			}.bind(this), 'json'),
+		]).then(this.render);
 	},
 	methods: {
 		render: function() {
 			var stage = new Konva.Stage({
 				container: '#konva',
-				width: this.result.Width,
-				height: this.result.Height,
+				width: this.meta.Width,
+				height: this.meta.Height,
 			});
 			var layer = new Konva.Layer();
 			stage.add(layer);
-			this.labels[this.index].forEach(function(el, i) {
-				var cfg = {
-					x: el.left,
-					y: el.top,
-					width: el.right-el.left,
-					height: el.bottom-el.top,
-					stroke: 'red',
-					strokeWidth: 3,
-				};
-				var myid;
-				if(this.mode == 'detection') {
-					myid = i;
-				} else {
-					myid = el.track_id;
-				}
-				if(myid == this.selectedID) {
-					cfg.stroke = 'orange';
-					cfg.strokeWidth = 5;
-				}
-				var rect = new Konva.Rect(cfg);
-				rect.myid = myid;
-				layer.add(rect);
-			}.bind(this));
+			if(this.labels[this.index]) {
+				this.labels[this.index].forEach(function(el, i) {
+					var cfg = {
+						x: el.left,
+						y: el.top,
+						width: el.right-el.left,
+						height: el.bottom-el.top,
+						stroke: 'red',
+						strokeWidth: 3,
+					};
+					var myid;
+					if(this.mode == 'detection') {
+						myid = i;
+					} else {
+						myid = el.track_id;
+					}
+					if(myid == this.selectedID) {
+						cfg.stroke = 'orange';
+						cfg.strokeWidth = 5;
+					}
+					var rect = new Konva.Rect(cfg);
+					rect.myid = myid;
+					layer.add(rect);
+				}.bind(this));
+			}
 			layer.draw();
 			layer.on('mouseover', function(e) {
 				document.body.style.cursor = 'pointer';
@@ -96,10 +103,11 @@ Vue.component('explore-detail-detection', {
 			if(this.mode == 'detection') {
 				var origSlice = this.result.Slice;
 				this.selection = [{
+					Background: this.result.Vectors[0][0],
 					Slice: {
 						Start: origSlice.Start + this.index,
 						End: origSlice.Start + this.index + 1,
-						Clip: {ID: origSlice.Clip.ID},
+						Segment: {ID: origSlice.Segment.ID},
 					},
 					Data: {
 						Type: 'detection',
@@ -130,10 +138,11 @@ Vue.component('explore-detail-detection', {
 				});
 				var origSlice = this.result.Slice;
 				this.selection = [{
+					Background: this.result.Vectors[0][0],
 					Slice: {
 						Start: origSlice.Start + firstFrame,
 						End: origSlice.Start + firstFrame + detections.length,
-						Clip: {ID: origSlice.Clip.ID},
+						Segment: {ID: origSlice.Segment.ID},
 					},
 					Data: {
 						Type: 'track',
@@ -170,10 +179,11 @@ Vue.component('explore-detail-detection', {
 	},
 	computed: {
 		imageURL: function() {
-			var clipID = this.result.Slice.Clip.ID;
+			var bgSeries = this.result.Vectors[0][0];
+			var segmentID = this.result.Slice.Segment.ID;
 			var start = this.result.Slice.Start+this.index;
 			var end = start+1;
-			return '/clips/get?type=jpeg&id='+clipID+'&start='+start+'&end='+end;
+			return '/series/get-item?series_id='+bgSeries.ID+'&segment_id='+segmentID+'&start='+start+'&end='+end+'&type=jpeg';
 		},
 		count: function() {
 			return this.result.Slice.End - this.result.Slice.Start;
@@ -185,14 +195,13 @@ Vue.component('explore-detail-detection', {
 	template: `
 <div>
 	<div class="canvas-container">
-		<template v-if="imageURL != ''">
+		<template v-if="imageURL != '' && meta != null">
 			<div :style="{
-					width: result.Width + 'px',
-					height: result.Height + 'px',
+					width: meta.Width + 'px',
+					height: meta.Height + 'px',
 				}"
 				>
 				<img :src="imageURL" />
-				<!--<canvas :width="result.Width" :height="result.Height" ref="layer"></canvas>-->
 				<div id="konva" class="konva" ref="layer"></div>
 			</div>
 		</template>

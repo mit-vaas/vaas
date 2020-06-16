@@ -285,6 +285,22 @@ func (query *Query) Load() {
 	query.Nodes = m
 }
 
+func (query *Query) GetOutputVectors(inputs []*Series) [][]*Series {
+	query.Load()
+	outputs := make([][]*Series, len(query.Outputs))
+	for i, l := range query.Outputs {
+		for _, output := range l {
+			if output.Type == NodeParent {
+				vn := GetVNode(output.Node, inputs)
+				outputs[i] = append(outputs[i], vn.Series)
+			} else if output.Type == SeriesParent {
+				outputs[i] = append(outputs[i], inputs[output.SeriesIdx])
+			}
+		}
+	}
+	return outputs
+}
+
 type NodeStats struct {
 	samples []time.Duration
 }
@@ -698,6 +714,7 @@ func init() {
 			Slices: slices,
 		}
 		allOutputs := tasks.Schedule(task)
+		renderVectors := query.GetOutputVectors(vector)
 		log.Printf("[exec (%s) %v] test: got output readers, rendering videos", query.Name, slices)
 		var response []VisualizeResponse
 		for i, outputs := range allOutputs {
@@ -714,6 +731,7 @@ func init() {
 				UUID: uuid,
 				Slice: slices[i],
 				Type: t,
+				Vectors: renderVectors,
 			})
 		}
 		JsonResponse(w, response)
