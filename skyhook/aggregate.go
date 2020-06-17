@@ -26,7 +26,8 @@ type LabeledSliceRef struct {
 	Vector string
 
 	Node *Node // reference the output of a node on Slice
-	Data *Data // include the label data directly
+	DataType DataType
+	Data string // include the label data directly
 }
 
 // yield LabeledSlices from this ref until we exhaust them or encounter an error
@@ -85,11 +86,10 @@ func (r LabeledSliceRef) Resolve(f func(l LabeledSlice) error) error {
 			Background: background,
 			Data: data,
 		})
-	} else if r.Data != nil {
+	} else if len(r.Data) > 0 {
 		segment := GetSegment(r.Slice.Segment.ID)
 		slice := Slice{*segment, r.Slice.Start, r.Slice.End}
-		data := *r.Data
-		data = data.EnsureLength(slice.Length())
+		data := DecodeData(r.DataType, []byte(r.Data)).EnsureLength(slice.Length())
 		return f(LabeledSlice{
 			Slice: slice,
 			Background: background,
@@ -136,15 +136,17 @@ func init() {
 				}
 			}
 
-			if l.Data.Type == DetectionType {
-				for _, dlist := range l.Data.Detections {
+			if l.Data.Type() == DetectionType {
+				detections := l.Data.(DetectionData)
+				for _, dlist := range detections {
 					for _, d := range dlist {
 						center := getCenter(d)
 						im.FillRectangle(center[0]-1, center[1]-1, center[0]+1, center[1]+1, [3]uint8{255, 0, 0})
 					}
 				}
-			} else if l.Data.Type == TrackType {
-				for _, track := range DetectionsToTracks(l.Data.Detections) {
+			} else if l.Data.Type() == TrackType {
+				detections := l.Data.(TrackData)
+				for _, track := range DetectionsToTracks(detections) {
 					for i := 1; i < len(track); i++ {
 						c1 := getCenter(track[i-1])
 						c2 := getCenter(track[i])

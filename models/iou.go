@@ -30,14 +30,14 @@ func NewIOU(cfgBytes []byte) skyhook.Executor {
 	return IOU{}
 }
 
-func (m IOU) Run(parents []*skyhook.BufferReader, slice skyhook.Slice) *skyhook.DataBuffer {
-	buf := skyhook.NewDataBuffer(skyhook.TrackType)
+func (m IOU) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
+	buf := skyhook.NewSimpleBuffer(skyhook.TrackType)
 
 	go func() {
 		var nextID int = 1
 		activeTracks := make(map[int]*TrackWithID)
-		PerFrame(parents, slice, buf, skyhook.DetectionType, func(idx int, data skyhook.Data, buf *skyhook.DataBuffer) error {
-			detections := data.Detections[0]
+		PerFrame(parents, slice, buf, skyhook.DetectionType, func(idx int, data skyhook.Data, buf skyhook.DataBuffer) error {
+			detections := data.(skyhook.DetectionData)[0]
 			var out []skyhook.Detection
 
 			matches := hungarianMatcher(activeTracks, detections)
@@ -73,10 +73,7 @@ func (m IOU) Run(parents []*skyhook.BufferReader, slice skyhook.Slice) *skyhook.
 				delete(activeTracks, track.ID)
 			}
 
-			buf.Write(skyhook.Data{
-				Type: skyhook.TrackType,
-				Detections: [][]skyhook.Detection{out},
-			})
+			buf.Write(skyhook.TrackData{out})
 			return nil
 		})
 	}()

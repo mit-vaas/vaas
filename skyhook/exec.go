@@ -40,7 +40,7 @@ func ParseParents(str string) []Parent {
 }
 
 type Executor interface {
-	Run(parents []*BufferReader, slice Slice) *DataBuffer
+	Run(parents []DataReader, slice Slice) DataBuffer
 	Close()
 }
 
@@ -208,19 +208,21 @@ type Query struct {
 	Name string
 	Plan *Plan
 	OutputsStr string
+	SelectorID *int
 
 	Outputs [][]Parent
+	Selector *Node
 
 	Nodes map[int]*Node
 }
 
-const QueryQuery = "SELECT q.id, q.name, q.outputs FROM queries AS q"
+const QueryQuery = "SELECT id, name, outputs, selector FROM queries"
 
 func queryListHelper(rows *Rows) []*Query {
 	queries := []*Query{}
 	for rows.Next() {
 		var query Query
-		rows.Scan(&query.ID, &query.Name, &query.OutputsStr)
+		rows.Scan(&query.ID, &query.Name, &query.OutputsStr, &query.SelectorID)
 		queries = append(queries, &query)
 	}
 	for _, query := range queries {
@@ -244,7 +246,7 @@ func queryListHelper(rows *Rows) []*Query {
 }
 
 func GetQuery(queryID int) *Query {
-	rows := db.Query(QueryQuery + " WHERE q.id = ?", queryID)
+	rows := db.Query(QueryQuery + " WHERE id = ?", queryID)
 	queries := queryListHelper(rows)
 	if len(queries) == 1 {
 		return queries[0]
@@ -281,6 +283,13 @@ func (query *Query) Load() {
 	}
 	for _, node := range query.FlatOutputs() {
 		node.LoadMap(m)
+	}
+	if query.SelectorID != nil {
+		if m[*query.SelectorID] == nil {
+			node := GetNode(*query.SelectorID)
+			node.LoadMap(m)
+		}
+		query.Selector = m[*query.SelectorID]
 	}
 	query.Nodes = m
 }
@@ -336,7 +345,7 @@ func NewQueryExecutor(query *Query) *QueryExecutor {
 	}
 }
 
-func (e *QueryExecutor) Run(vector []*Series, slice Slice) [][]*BufferReader {
+func (e *QueryExecutor) Run(vector []*Series, slice Slice, callback func([][]DataReader, error)) {
 	/*
 	// check what the skip optimization says about it
 	skipBuffers := GetVNode(query.Plan.SkipOptimization, slices[0].Clip.Video).Test(query, slices)
@@ -372,39 +381,22 @@ func (e *QueryExecutor) Run(vector []*Series, slice Slice) [][]*BufferReader {
 
 	// create map (node ID -> outputs at that node) for caching outputs
 	// we will populate this either by loading label or by running node
-	cachedInputs := make([]*DataBuffer, len(vector))
-	cachedOutputs := make(map[int]*DataBuffer)
+	cachedInputs := make([]DataBuffer, len(vector))
+	cachedOutputs := make(map[int]DataBuffer)
 
-	getInputBuffer := func(idx int) *DataBuffer {
+	getInputBuffer := func(idx int) DataBuffer {
 		if cachedInputs[idx] == nil {
 			item := vector[idx].GetItem(slice)
 			if item == nil {
 				panic(fmt.Errorf("no item for vector input %s", vector[idx].Name))
 			}
-			rd := ReadVideo(*item, slice)
-			buf := NewDataBuffer(VideoType)
-			go buf.FromVideoReader(rd)
-			buf.SetPaused(true)
-			cachedInputs[idx] = buf
+			cachedInputs[idx] = &VideoFileBuffer{*item, slice}
 		}
 		return cachedInputs[idx]
 	}
 
-	// unpause buffers before we return
-	defer func() {
-		for _, buf := range cachedInputs {
-			if buf == nil {
-				continue;
-			}
-			buf.SetPaused(false)
-		}
-		for _, buf := range cachedOutputs {
-			buf.SetPaused(false)
-		}
-	}()
-
-	collectOutputs := func() [][]*BufferReader {
-		outputs := make([][]*BufferReader, len(e.query.Outputs))
+	collectOutputs := func() [][]DataReader {
+		outputs := make([][]DataReader, len(e.query.Outputs))
 		for i := range e.query.Outputs {
 			for _, output := range e.query.Outputs[i] {
 				if output.Type == NodeParent {
@@ -430,127 +422,143 @@ func (e *QueryExecutor) Run(vector []*Series, slice Slice) [][]*BufferReader {
 		if item == nil {
 			return false
 		}
-		buf := item.Load(slice)
-		buf.SetPaused(true)
-		cachedOutputs[node.ID] = buf
+		cachedOutputs[node.ID] = item.Load(slice)
 		return true
 	}
-	q := e.query.FlatOutputs()
-	seen := make(map[int]bool)
-	needed := make(map[int]bool)
-	for _, node := range q {
-		seen[node.ID] = true
-	}
-	// second pass: go down graph to load the rest
-	for len(q) > 0 {
-		node := q[0]
-		q = q[1:]
-		ok := loadLabels(node)
-		if ok {
-			continue
+
+	run := func(targets []*Node) {
+		q := targets
+		seen := make(map[int]bool)
+		needed := make(map[int]bool)
+		for _, node := range q {
+			seen[node.ID] = true
 		}
-		needed[node.ID] = true
-		for _, parent := range node.Parents {
-			if parent.Type != NodeParent {
-				continue
-			} else if seen[parent.Node.ID] {
+		for len(q) > 0 {
+			node := q[0]
+			q = q[1:]
+			ok := loadLabels(node)
+			if ok {
 				continue
 			}
-			seen[parent.Node.ID] = true
-			q = append(q, parent.Node)
-		}
-	}
-	if len(needed) == 0 {
-		return collectOutputs()
-	}
-
-	collectParents := func(node *Node) []*BufferReader {
-		parents := []*BufferReader{}
-		for _, parent := range node.Parents {
-			if parent.Type == SeriesParent {
-				parents = append(parents, getInputBuffer(parent.SeriesIdx).Reader())
-			} else if parent.Type == NodeParent {
-				buf := cachedOutputs[parent.Node.ID]
-				if buf == nil {
-					return nil
+			needed[node.ID] = true
+			for _, parent := range node.Parents {
+				if parent.Type != NodeParent {
+					continue
+				} else if seen[parent.Node.ID] {
+					continue
 				}
-				parents = append(parents, buf.Reader())
+				seen[parent.Node.ID] = true
+				q = append(q, parent.Node)
 			}
 		}
-		return parents
-	}
+		if len(needed) == 0 {
+			return
+		}
 
-	// (2) repeatedly run nodes where parents are all there, until no more needed
-	for len(needed) > 0 {
-		for nodeID := range needed {
-			node := e.query.Nodes[nodeID]
-			parents := collectParents(node)
-			if parents == nil {
-				continue
+		collectParents := func(node *Node) []DataReader {
+			parents := []DataReader{}
+			for _, parent := range node.Parents {
+				if parent.Type == SeriesParent {
+					parents = append(parents, getInputBuffer(parent.SeriesIdx).Reader())
+				} else if parent.Type == NodeParent {
+					buf := cachedOutputs[parent.Node.ID]
+					if buf == nil {
+						return nil
+					}
+					parents = append(parents, buf.Reader())
+				}
 			}
-			if e.executors[nodeID] == nil {
-				e.executors[nodeID] = node.Exec(e.query)
-			}
-			buf := e.executors[nodeID].Run(parents, slice)
-			buf.SetPaused(true)
-			cachedOutputs[node.ID] = buf
-			delete(needed, nodeID)
+			return parents
+		}
 
-			// save it unless it is video
-			if node.Type == VideoType {
-				continue
-			}
+		// (2) repeatedly run nodes where parents are all there, until no more needed
+		for len(needed) > 0 {
+			for nodeID := range needed {
+				node := e.query.Nodes[nodeID]
+				parents := collectParents(node)
+				if parents == nil {
+					continue
+				}
+				if e.executors[nodeID] == nil {
+					e.executors[nodeID] = node.Exec(e.query)
+				}
+				buf := e.executors[nodeID].Run(parents, slice)
+				cachedOutputs[node.ID] = buf
+				delete(needed, nodeID)
 
-			// if no outputs series, create one to store the exec outputs
-			vn := GetOrCreateVNode(node, vector)
-			if vn.Series == nil {
-				db.Transaction(func(tx Tx) {
-					var seriesID *int
-					tx.QueryRow("SELECT series_id FROM vnodes WHERE id = ?", vn.ID).Scan(&seriesID)
-					if seriesID != nil {
-						vn.SeriesID = seriesID
+				// save it unless it is video
+				if node.Type == VideoType {
+					continue
+				}
+
+				// if no outputs series, create one to store the exec outputs
+				vn := GetOrCreateVNode(node, vector)
+				if vn.Series == nil {
+					db.Transaction(func(tx Tx) {
+						var seriesID *int
+						tx.QueryRow("SELECT series_id FROM vnodes WHERE id = ?", vn.ID).Scan(&seriesID)
+						if seriesID != nil {
+							vn.SeriesID = seriesID
+							return
+						}
+						name := fmt.Sprintf("exec-%v-%d", vn.Node.Name, vn.ID)
+						res := tx.Exec(
+							"INSERT INTO series (timeline_id, name, type, data_type, src_vector, node_id) VALUES (?, ?, 'outputs', ?, ?, ?)",
+							vector[0].Timeline.ID, name, vn.Node.Type, Vector(vector).String(), vn.Node.ID,
+						)
+						vn.SeriesID = new(int)
+						*vn.SeriesID = res.LastInsertId()
+						tx.Exec("UPDATE vnodes SET series_id = ? WHERE id = ?", vn.SeriesID, vn.ID)
+					})
+					vn.Series = GetSeries(*vn.SeriesID)
+				}
+
+				// persist the outputs
+				rd := buf.Reader()
+				go func() {
+					start := time.Now()
+					data, err := rd.Read(slice.Length())
+					if err != nil {
 						return
 					}
-					name := fmt.Sprintf("exec-%v-%d", vn.Node.Name, vn.ID)
-					res := tx.Exec(
-						"INSERT INTO series (timeline_id, name, type, data_type, src_vector, node_id) VALUES (?, ?, 'outputs', ?, ?, ?)",
-						vector[0].Timeline.ID, name, vn.Node.Type, Vector(vector).String(), vn.Node.ID,
-					)
-					vn.SeriesID = new(int)
-					*vn.SeriesID = res.LastInsertId()
-					tx.Exec("UPDATE vnodes SET series_id = ? WHERE id = ?", vn.SeriesID, vn.ID)
-				})
-				vn.Series = GetSeries(*vn.SeriesID)
+					vn.Series.WriteItem(slice, data)
+					e.stats[vn.Node.ID] = NodeStats{
+						samples: append(e.stats[vn.Node.ID].samples, time.Now().Sub(start)),
+					}
+				}()
 			}
-
-			// persist the outputs
-			rd := buf.Reader()
-			go func() {
-				start := time.Now()
-				data, err := rd.Read(slice.Length())
-				if err != nil {
-					return
-				}
-				vn.Series.WriteItem(slice, data)
-				e.stats[vn.Node.ID] = NodeStats{
-					samples: append(e.stats[vn.Node.ID].samples, time.Now().Sub(start)),
-				}
-			}()
 		}
 	}
 
-	// for Wait support, read all the outputs
-	for _, output := range collectOutputs() {
-		for _, rd := range output {
-			e.wg.Add(1)
-			go func(rd *BufferReader) {
-				rd.Wait(slice.Length())
-				e.wg.Done()
-			}(rd)
+	e.wg.Add(1)
+	go func() {
+		// if a selector is provided, first check it
+		if e.query.Selector != nil {
+			run([]*Node{e.query.Selector})
+			rd := cachedOutputs[e.query.Selector.ID].Reader()
+			data, err := rd.Read(slice.Length())
+			if err != nil {
+				callback(nil, err)
+				return
+			}
+			if data.IsEmpty() {
+				callback(nil, fmt.Errorf("selector reject"))
+				return
+			}
 		}
-	}
 
-	return collectOutputs()
+		run(e.query.FlatOutputs())
+		callback(collectOutputs(), nil)
+
+		// for QueryExecutor.Wait support
+		for _, buf := range cachedInputs {
+			buf.Wait()
+		}
+		for _, buf := range cachedOutputs {
+			buf.Wait()
+		}
+		e.wg.Done()
+	}()
 }
 
 func (e *QueryExecutor) Close() {

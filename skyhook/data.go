@@ -3,6 +3,7 @@ package skyhook
 import (
 	"fmt"
 	"io"
+	"log"
 	"sync"
 )
 
@@ -14,388 +15,171 @@ const (
 	VideoType = "video"
 )
 
-type Detection struct {
-	Left int `json:"left"`
-	Top int `json:"top"`
-	Right int `json:"right"`
-	Bottom int `json:"bottom"`
-	Score float64 `json:"score,omitempty"`
-	Class string `json:"class,omitempty"`
-	TrackID int `json:"track_id"`
+type DataImpl struct {
+	New func() Data
+	Decode func([]byte) Data
 }
 
-func DetectionsToTracks(detections [][]Detection) [][]Detection {
-	tracks := make(map[int][]Detection)
-	for frameIdx := range detections {
-		for _, detection := range detections[frameIdx] {
-			if detection.TrackID < 0 {
-				continue
-			}
-			tracks[detection.TrackID] = append(tracks[detection.TrackID], detection)
-		}
-	}
-	var trackList [][]Detection
-	for _, track := range tracks {
-		trackList = append(trackList, track)
-	}
-	return trackList
+var dataImpls = make(map[DataType]DataImpl)
+
+type Data interface {
+	IsEmpty() bool
+	Length() int
+	EnsureLength(length int) Data
+	Slice(i, j int) Data
+	Append(other Data) Data
+	Encode() []byte
+	Type() DataType
 }
 
-type Data struct {
-	Type DataType
-	Detections [][]Detection
-	Classes []int
-	Images []Image
+func NewData(t DataType) Data {
+	return dataImpls[t].New()
 }
 
-func (d Data) Nil() bool {
-	return d.Type == ""
+func DecodeData(t DataType, bytes []byte) Data {
+	return dataImpls[t].Decode(bytes)
 }
 
-func (d Data) Length() int {
-	if d.Type == DetectionType || d.Type == TrackType {
-		return len(d.Detections)
-	} else if d.Type == ClassType {
-		return len(d.Classes)
-	} else if d.Type == VideoType {
-		return len(d.Images)
-	}
-	panic(fmt.Errorf("bad type %v", d.Type))
+type DataReader interface {
+	Type() DataType
+	Read(n int) (Data, error)
+	Peek(n int) (Data, error)
+	Close()
 }
 
-func (d Data) EnsureLength(length int) Data {
-	if d.Type == DetectionType || d.Type == TrackType {
-		for i := len(d.Detections); i < length; i++ {
-			d.Detections = append(d.Detections, nil)
-		}
-	} else if d.Type == ClassType {
-		for i := len(d.Classes); i < length; i++ {
-			d.Classes = append(d.Classes, 0)
-		}
-	}
-	return d
+type DataBuffer interface {
+	Type() DataType
+	Write(data Data)
+	Close()
+	Error(err error)
+	Reader() DataReader
+	Wait() error
 }
 
-func (d Data) Slice(i, j int) Data {
-	if d.Type == DetectionType || d.Type == TrackType {
-		return Data{
-			Type: d.Type,
-			Detections: d.Detections[i:j],
-		}
-	} else if d.Type == ClassType {
-		return Data{
-			Type: d.Type,
-			Classes: d.Classes[i:j],
-		}
-	} else if d.Type == VideoType {
-		return Data{
-			Type: d.Type,
-			Images: d.Images[i:j],
-		}
-	}
-	panic(fmt.Errorf("bad type %v", d.Type))
-}
-
-func (d Data) Append(other Data) Data {
-	if d.Type == DetectionType || d.Type == TrackType {
-		return Data{
-			Type: d.Type,
-			Detections: append(d.Detections, other.Detections...),
-		}
-	} else if d.Type == ClassType {
-		return Data{
-			Type: d.Type,
-			Classes: append(d.Classes, other.Classes...),
-		}
-	} else if d.Type == VideoType {
-		return Data{
-			Type: d.Type,
-			Images: append(d.Images, other.Images...),
-		}
-	}
-	panic(fmt.Errorf("bad type %v", d.Type))
-}
-
-func (d Data) Get() interface{} {
-	if d.Type == DetectionType || d.Type == TrackType {
-		return d.Detections
-	} else if d.Type == ClassType {
-		return d.Classes
-	} else if d.Type == VideoType {
-		return d.Images
-	}
-	panic(fmt.Errorf("bad type %v", d.Type))
-}
-
-func (d Data) IsEmpty() bool {
-	if d.Type == DetectionType || d.Type == TrackType {
-		for _, dlist := range d.Detections {
-			if len(dlist) > 0 {
-				return false
-			}
-		}
-		return true
-	} else if d.Type == ClassType {
-		for _, class := range d.Classes {
-			if class > 0 {
-				return false
-			}
-		}
-		return true
-	} else if d.Type == VideoType {
-		return false
-	}
-	panic(fmt.Errorf("bad type %v", d.Type))
-}
-
-func (d Data) Discard(n int) Data {
-	if d.Type == DetectionType || d.Type == TrackType {
-		copy(d.Detections[0:], d.Detections[n:])
-		d.Detections = d.Detections[0:len(d.Detections)-n]
-		return d
-	} else if d.Type == ClassType {
-		copy(d.Classes[0:], d.Classes[n:])
-		d.Classes = d.Classes[0:len(d.Classes)-n]
-		return d
-	} else if d.Type == VideoType {
-		copy(d.Images[0:], d.Images[n:])
-		d.Images = d.Images[0:len(d.Images)-n]
-		return d
-	}
-	panic(fmt.Errorf("bad type %v", d.Type))
-}
-
-type DataBuffer struct {
+type SimpleBuffer struct {
 	buf Data
-
-	// # frames that were discarded
-	// (data is discarded once all readers read it)
-	pos int
-
-	// reader positions
-	rdpos []int
-
 	mu sync.Mutex
 	cond *sync.Cond
 	err error
 	done bool
-
-	// soft maximum on the # frames in the buffer
-	capacity int
-
-	// are we paused (waiting to register readers)
-	paused bool
 }
 
-type BufferReader struct {
-	buf *DataBuffer
-	id int
+type SimpleReader struct {
+	buf *SimpleBuffer
+	pos int
 }
 
-func NewDataBuffer(t DataType) *DataBuffer {
-	buf := &DataBuffer{buf: Data{Type: t}}
-	buf.cond = sync.NewCond(&buf.mu)
+func NewSimpleBuffer(t DataType) *SimpleBuffer {
 	if t == VideoType {
-		// ideally this would be set somewhere else
-		// but we set a cap so the frames don't eat up all the memory
-		buf.capacity = FPS
+		panic(fmt.Errorf("SimpleBuffer should not be used for video"))
 	}
+	buf := &SimpleBuffer{buf: NewData(t)}
+	buf.cond = sync.NewCond(&buf.mu)
 	return buf
 }
 
-// caller must have lock
-func (buf *DataBuffer) length() int {
-	return buf.pos + buf.buf.Length()
-}
-
-// caller must have lock
-func (buf *DataBuffer) discard() {
-	npos := buf.rdpos[0]
-	for _, x := range buf.rdpos {
-		if x < 0 {
-			// this reader closed
-			continue
-		}
-		if x < npos {
-			npos = x
-		}
-	}
-	if npos <= buf.pos {
-		return
-	}
-	buf.buf = buf.buf.Discard(npos - buf.pos)
-	buf.pos = npos
-	buf.cond.Broadcast()
+func (buf *SimpleBuffer) Type() DataType {
+	return buf.buf.Type()
 }
 
 // Read exactly n frames, or any non-zero amount if n<=0
-func (buf *DataBuffer) read(id int, n int) (Data, error) {
+func (buf *SimpleBuffer) read(pos int, n int) (Data, error) {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
 	wait := n
 	if wait <= 0 {
 		wait = 1
 	}
-	for (buf.length() < buf.rdpos[id]+wait || buf.paused) && buf.err == nil && !buf.done {
+	for buf.buf.Length() < pos+wait && buf.err == nil && !buf.done {
 		buf.cond.Wait()
 	}
 	if buf.err != nil {
-		return Data{}, buf.err
+		return nil, buf.err
 	} else if buf.buf.Length() == 0 && buf.done {
-		return Data{}, io.EOF
+		return nil, io.EOF
 	} else if buf.buf.Length() < n {
-		return Data{}, io.ErrUnexpectedEOF
+		return nil, io.ErrUnexpectedEOF
 	}
 
 	if n <= 0 {
-		n = buf.length()-buf.rdpos[id]
+		n = buf.buf.Length()-pos
 	}
-	offset := buf.rdpos[id] - buf.pos
-	data := Data{
-		Type: buf.Type(),
-	}.Append(buf.buf.Slice(offset, offset+n))
-	buf.rdpos[id] += n
-	buf.discard()
+	data := NewData(buf.Type()).Append(buf.buf.Slice(pos, pos+n))
 	return data, nil
 }
 
 // Wait for at least n to complete, and read them without removing from the buffer.
-func (buf *DataBuffer) peek(id int, n int) (Data, error) {
+func (buf *SimpleBuffer) peek(pos int, n int) (Data, error) {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
 	if n > 0 {
-		for buf.length() < buf.rdpos[id]+n && buf.err == nil && !buf.done {
+		for buf.buf.Length() < pos+n && buf.err == nil && !buf.done {
 			buf.cond.Wait()
 		}
 	}
 	if buf.err != nil {
-		return Data{}, buf.err
+		return nil, buf.err
 	}
-	offset := buf.rdpos[id] - buf.pos
-	data := Data{
-		Type: buf.Type(),
-	}.Append(buf.buf.Slice(offset, buf.buf.Length()))
+	data := NewData(buf.Type()).Append(buf.buf.Slice(pos, buf.buf.Length()))
 	return data, nil
 }
 
-func (buf *DataBuffer) Write(data Data) {
+func (buf *SimpleBuffer) Write(data Data) {
 	buf.mu.Lock()
-	defer buf.mu.Unlock()
-	for buf.capacity > 0 && buf.buf.Length() > 0 && buf.buf.Length()+data.Length() > buf.capacity && buf.err == nil && !buf.done {
-		buf.cond.Wait()
-	}
-	if buf.err != nil || buf.done {
-		return
-	}
 	buf.buf = buf.buf.Append(data)
 	buf.cond.Broadcast()
+	buf.mu.Unlock()
 }
 
-func (buf *DataBuffer) Close() {
+func (buf *SimpleBuffer) Close() {
 	buf.mu.Lock()
 	buf.done = true
 	buf.cond.Broadcast()
 	buf.mu.Unlock()
 }
 
-func (buf *DataBuffer) Error(err error) {
+func (buf *SimpleBuffer) Error(err error) {
 	buf.mu.Lock()
 	buf.err = err
 	buf.cond.Broadcast()
 	buf.mu.Unlock()
 }
 
-func (buf *DataBuffer) FromVideoReader(rd VideoReader) {
-	for {
-		im, err := rd.Read()
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			panic(err)
-		}
-		buf.Write(Data{
-			Type: VideoType,
-			Images: []Image{im},
-		})
+func (buf *SimpleBuffer) Wait() error {
+	buf.mu.Lock()
+	defer buf.mu.Unlock()
+	for !buf.done && buf.err == nil {
+		buf.cond.Wait()
 	}
-	buf.Close()
-}
-
-func (buf *DataBuffer) Type() DataType {
-	return buf.buf.Type
-}
-
-func (buf *DataBuffer) CopyFrom(length int, rd *BufferReader) error {
-	cur := 0
-	for cur < length {
-		data, err := rd.Read(0)
-		if err != nil {
-			buf.Error(err)
-			return err
-		}
-		cur += data.Length()
-		buf.Write(data)
+	if buf.err != nil {
+		return buf.err
 	}
-	buf.Close()
 	return nil
 }
 
-func (buf *DataBuffer) SetPaused(paused bool) {
-	buf.mu.Lock()
-	buf.paused = paused
-	buf.cond.Broadcast()
-	buf.mu.Unlock()
+func (buf *SimpleBuffer) Reader() DataReader {
+	return &SimpleReader{buf, 0}
 }
 
-func (buf *DataBuffer) Reader() *BufferReader {
-	buf.mu.Lock()
-	if buf.pos > 0 {
-		panic(fmt.Errorf("tried to add reader when reading already started"))
-	}
-	id := len(buf.rdpos)
-	buf.rdpos = append(buf.rdpos, 0)
-	buf.mu.Unlock()
-	return &BufferReader{buf, id}
-}
-
-func (rd *BufferReader) Type() DataType {
+func (rd *SimpleReader) Type() DataType {
 	return rd.buf.Type()
 }
 
-func (rd *BufferReader) Read(n int) (Data, error) {
-	return rd.buf.read(rd.id, n)
-}
-
-func (rd *BufferReader) Peek(n int) (Data, error) {
-	return rd.buf.peek(rd.id, n)
-}
-
-func (rd *BufferReader) Wait(length int) error {
-	completed := 0
-	for completed < length {
-		data, err := rd.Read(0)
-		if err != nil {
-			return err
-		}
-		completed += data.Length()
+func (rd *SimpleReader) Read(n int) (Data, error) {
+	data, err := rd.buf.read(rd.pos, n)
+	if data != nil {
+		rd.pos += data.Length()
 	}
-	return nil
+	return data, err
 }
 
-func (rd *BufferReader) Close() {
-	// tell buffer that we read everything so that it doesn't wait on us
-	rd.buf.mu.Lock()
-	rd.buf.rdpos[rd.id] = -1
-	rd.buf.discard()
-	rd.buf.mu.Unlock()
+func (rd *SimpleReader) Peek(n int) (Data, error) {
+	return rd.buf.peek(rd.pos, n)
 }
 
-// TODO: there could be issues due to buffer capacity if inputs have mutual dependencies
-// e.g. inputs[0] is video and inputs[1] depends on inputs[0]
-// additionally, suppose inputs[1] is NOT streaming (waits for entire inputs[0] before outputting data)
-// then below we would get stuck since inputs[0] is capacity limited and inputs[1] isn't producing anything
-// probably solution is to cache the video (either as images or video) if a descendant operation is not streaming
-func ReadMultiple(length int, inputs []*BufferReader, callback func(int, []Data) error) error {
+func (rd *SimpleReader) Close() {}
+
+func ReadMultiple(length int, inputs []DataReader, callback func(int, []Data) error) error {
 	defer func() {
 		for _, input := range inputs {
 			input.Close()
@@ -434,4 +218,273 @@ func ReadMultiple(length int, inputs []*BufferReader, callback func(int, []Data)
 	}
 
 	return nil
+}
+
+type VideoBuffer struct {
+	videoBytes []byte
+	mu sync.Mutex
+	cond *sync.Cond
+	err error
+	done bool
+
+	started bool
+	dims [2]int
+	cmd Cmd
+	stdin io.WriteCloser
+}
+
+func NewVideoBuffer() *VideoBuffer {
+	buf := &VideoBuffer{}
+	buf.cond = sync.NewCond(&buf.mu)
+	return buf
+}
+
+func (buf *VideoBuffer) Type() DataType {
+	return VideoType
+}
+
+func (buf *VideoBuffer) Write(data Data) {
+	images := data.(VideoData)
+	buf.mu.Lock()
+	defer buf.mu.Unlock()
+
+	if !buf.started {
+		buf.dims = [2]int{images[0].Width, images[0].Height}
+		buf.cmd = Command(
+			"ffmpeg", CommandOptions{OnlyDebug: true},
+			"ffmpeg", "-f", "rawvideo",
+			"-s", fmt.Sprintf("%dx%d", buf.dims[0], buf.dims[1]),
+			"-pix_fmt", "rgb24", "-i", "-",
+			"-vcodec", "libx264",
+			"-vf", fmt.Sprintf("fps=%v", FPS),
+			"-f", "mp4", "-movflags", "faststart+frag_keyframe+empty_moov",
+			"-",
+		)
+		buf.started = true
+		buf.stdin = buf.cmd.Stdin()
+
+		go func() {
+			stdout := buf.cmd.Stdout()
+			b := make([]byte, 4096)
+			for {
+				n, err := stdout.Read(b)
+				buf.mu.Lock()
+				if n > 0 {
+					buf.videoBytes = append(buf.videoBytes, b[0:n]...)
+				}
+				buf.cond.Broadcast()
+				buf.mu.Unlock()
+				if err == io.EOF {
+					break
+				} else if err != nil {
+					log.Printf("[VideoBuffer] warning: error encoding video: %v", err)
+					break
+				}
+			}
+			stdout.Close()
+			buf.cmd.Wait()
+
+			buf.mu.Lock()
+			buf.done = true
+			buf.cond.Broadcast()
+			buf.mu.Unlock()
+		}()
+	}
+
+	for _, im := range images {
+		buf.stdin.Write(im.ToBytes())
+	}
+}
+
+func (buf *VideoBuffer) Close() {
+	buf.stdin.Close()
+	buf.mu.Lock()
+	for buf.started && !buf.done && buf.err == nil {
+		buf.cond.Wait()
+	}
+	buf.mu.Unlock()
+}
+
+func (buf *VideoBuffer) Error(err error) {
+	buf.stdin.Close()
+	buf.mu.Lock()
+	buf.err = err
+	buf.cond.Broadcast()
+	buf.mu.Unlock()
+}
+
+func (buf *VideoBuffer) Wait() error {
+	buf.mu.Lock()
+	defer buf.mu.Unlock()
+	for !buf.done && buf.err == nil {
+		buf.cond.Wait()
+	}
+	if buf.err != nil {
+		return buf.err
+	}
+	return nil
+}
+
+func (buf *VideoBuffer) read(pos int, b []byte) (int, error) {
+	buf.mu.Lock()
+	defer buf.mu.Unlock()
+	for len(buf.videoBytes) <= pos && buf.err == nil && !buf.done {
+		buf.cond.Wait()
+	}
+	if buf.err != nil {
+		return 0, buf.err
+	} else if len(buf.videoBytes) <= pos && buf.done {
+		return 0, io.EOF
+	}
+	n := copy(b, buf.videoBytes[pos:])
+	return n, nil
+}
+
+func (buf *VideoBuffer) waitForStarted() error {
+	buf.mu.Lock()
+	defer buf.mu.Unlock()
+	for buf.err == nil && !buf.started {
+		buf.cond.Wait()
+	}
+	if buf.err != nil {
+		return buf.err
+	}
+	return nil
+}
+
+func (buf *VideoBuffer) Reader() DataReader {
+	return &VideoBufferReader{buf: buf}
+}
+
+type VideoFileBuffer struct {
+	item Item
+	slice Slice
+}
+func (buf VideoFileBuffer) Type() DataType {
+	return VideoType
+}
+func (buf VideoFileBuffer) Write(data Data) {
+	panic(fmt.Errorf("not supported"))
+}
+func (buf VideoFileBuffer) Close() {}
+func (buf VideoFileBuffer) Error(err error) {
+	panic(fmt.Errorf("not supported"))
+}
+func (buf VideoFileBuffer) Wait() error {
+	return nil
+}
+func (buf VideoFileBuffer) Reader() DataReader {
+	return &VideoBufferReader{
+		item: buf.item,
+		slice: buf.slice,
+	}
+}
+
+type VideoBufferReader struct {
+	// either (item, slice) or (buf) must be set
+	item Item
+	slice Slice
+	buf *VideoBuffer
+
+	cache *Image
+	err error
+	rd VideoReader
+}
+
+func (rd *VideoBufferReader) Type() DataType {
+	return VideoType
+}
+
+func (rd *VideoBufferReader) start() {
+	if rd.buf != nil {
+		err := rd.buf.waitForStarted()
+		if err != nil {
+			rd.err = err
+			return
+		}
+		width := rd.buf.dims[0]
+		height := rd.buf.dims[1]
+
+		cmd := Command(
+			"ffmpeg", CommandOptions{OnlyDebug: true},
+			"ffmpeg",
+			"-f", "mp4", "-i", "-",
+			"-c:v", "rawvideo", "-pix_fmt", "rgb24", "-f", "rawvideo",
+			"-vf", fmt.Sprintf("scale=%dx%d", width, height),
+			"-",
+		)
+
+		go func() {
+			stdin := cmd.Stdin()
+			b := make([]byte, 4096)
+			pos := 0
+			for {
+				n, err := rd.buf.read(pos, b)
+				if err != nil {
+					break
+				}
+				if _, err := stdin.Write(b[0:n]); err != nil {
+					break
+				}
+				pos += n
+			}
+			stdin.Close()
+		}()
+
+		rd.rd = ffmpegReader{
+			cmd: cmd,
+			stdout: cmd.Stdout(),
+			width: width,
+			height: height,
+			buf: make([]byte, width*height*3),
+		}
+	} else {
+		rd.rd = ReadVideo(rd.item, rd.slice)
+	}
+}
+
+func (rd *VideoBufferReader) get(n int, peek bool) (Data, error) {
+	if n > 1 {
+		panic(fmt.Errorf("n must be <=1"))
+	}
+	if rd.err != nil {
+		return nil, rd.err
+	}
+	if rd.rd == nil {
+		rd.start()
+		if rd.err != nil {
+			return nil, rd.err
+		}
+	}
+	if rd.cache != nil {
+		im := *rd.cache
+		if !peek {
+			rd.cache = nil
+		}
+		return VideoData{im}, nil
+	}
+	im, err := rd.rd.Read()
+	if err != nil {
+		rd.err = err
+		return nil, err
+	}
+	if peek {
+		rd.cache = &im
+	}
+	return VideoData{im}, nil
+}
+
+func (rd *VideoBufferReader) Read(n int) (Data, error) {
+	return rd.get(n, false)
+}
+
+func (rd *VideoBufferReader) Peek(n int) (Data, error) {
+	return rd.get(n, true)
+}
+
+func (rd *VideoBufferReader) Close() {
+	rd.err = fmt.Errorf("closed")
+	if rd.rd != nil {
+		rd.rd.Close()
+	}
 }

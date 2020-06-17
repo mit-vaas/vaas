@@ -38,31 +38,24 @@ func (series *Series) Next() Slice {
 	return series.Timeline.Uniform(1)
 }
 
-func (item Item) Load(slice Slice) *DataBuffer {
+func (item Item) Load(slice Slice) DataBuffer {
 	if slice.Segment.ID != item.Slice.Segment.ID || slice.Start < item.Slice.Start || slice.End > item.Slice.End {
 		return nil
 	}
-	buf := NewDataBuffer(item.Series.DataType)
+	if item.Series.DataType == VideoType {
+		return VideoFileBuffer{item, slice}
+	}
+	buf := NewSimpleBuffer(item.Series.DataType)
 	go func() {
-		if buf.Type() == VideoType {
-			rd := ReadVideo(item, slice)
-			buf.FromVideoReader(rd)
-		} else {
-			bytes, err := ioutil.ReadFile(item.Fname(0))
-			if err != nil {
-				log.Printf("[annotate] error loading %d/%d: %v", item.Series.ID, item.ID, err)
-				buf.Error(err)
-				return
-			}
-			data := Data{Type: buf.Type()}
-			if buf.Type() == DetectionType || buf.Type() == TrackType {
-				JsonUnmarshal(bytes, &data.Detections)
-			} else if buf.Type() == ClassType {
-				JsonUnmarshal(bytes, &data.Classes)
-			}
-			data = data.Slice(slice.Start - item.Slice.Start, slice.End - item.Slice.Start)
-			buf.Write(data)
+		bytes, err := ioutil.ReadFile(item.Fname(0))
+		if err != nil {
+			log.Printf("[annotate] error loading %d/%d: %v", item.Series.ID, item.ID, err)
+			buf.Error(err)
+			return
 		}
+		data := DecodeData(item.Series.DataType, bytes)
+		data = data.Slice(slice.Start - item.Slice.Start, slice.End - item.Slice.Start)
+		buf.Write(data)
 	}()
 	return buf
 }
@@ -91,8 +84,7 @@ func (series Series) WriteItem(slice Slice, data Data) *Item {
 }
 
 func (item Item) UpdateData(data Data) {
-	bytes := JsonMarshal(data.Get())
-	if err := ioutil.WriteFile(item.Fname(0), bytes, 0644); err != nil {
+	if err := ioutil.WriteFile(item.Fname(0), data.Encode(), 0644); err != nil {
 		panic(err)
 	}
 }
@@ -194,7 +186,7 @@ func init() {
 				Width: bgItem.Width,
 				Height: bgItem.Height,
 				Index: index,
-				Labels: data.Get(),
+				Labels: data,
 			})
 			return
 		}
@@ -226,10 +218,7 @@ func init() {
 		if request.Index == -1 {
 			segment := GetSegment(request.Slice.Segment.ID)
 			slice := Slice{*segment, request.Slice.Start, request.Slice.End}
-			series.WriteItem(slice, Data{
-				Type: DetectionType,
-				Detections: request.Labels,
-			})
+			series.WriteItem(slice, DetectionData(request.Labels))
 			log.Printf("[annotate] add new label item to series %d", series.ID)
 			w.WriteHeader(200)
 			return
@@ -242,10 +231,7 @@ func init() {
 			return
 		}
 		log.Printf("[annotate] update item for %v in series %d", item.Slice, series.ID)
-		item.UpdateData(Data{
-			Type: DetectionType,
-			Detections: request.Labels,
-		})
+		item.UpdateData(DetectionData(request.Labels))
 	})
 
 	http.HandleFunc("/series/class-label", func(w http.ResponseWriter, r *http.Request) {
@@ -264,10 +250,7 @@ func init() {
 		if request.Index == -1 {
 			segment := GetSegment(request.Slice.Segment.ID)
 			slice := Slice{*segment, request.Slice.Start, request.Slice.End}
-			series.WriteItem(slice, Data{
-				Type: ClassType,
-				Classes: request.Labels,
-			})
+			series.WriteItem(slice, ClassData(request.Labels))
 			log.Printf("[annotate] add new label item to series %d", series.ID)
 			w.WriteHeader(200)
 			return
@@ -280,10 +263,7 @@ func init() {
 			return
 		}
 		log.Printf("[annotate] update item for %v in series %d", item.Slice, series.ID)
-		item.UpdateData(Data{
-			Type: ClassType,
-			Classes: request.Labels,
-		})
+		item.UpdateData(ClassData(request.Labels))
 	})
 
 	http.HandleFunc("/labelsets/visualize", func(w http.ResponseWriter, r *http.Request) {
@@ -314,11 +294,8 @@ func init() {
 		}
 		log.Printf("[annotate] visualize: rendering video for slice %v", slice)
 		bgItem := background.GetItem(slice)
-		videoRd := ReadVideo(*bgItem, slice)
-		videoBuf := NewDataBuffer(VideoType)
-		go videoBuf.FromVideoReader(videoRd)
-		inputs := [][]*BufferReader{{
-			videoBuf.Reader(),
+		inputs := [][]DataReader{{
+			VideoFileBuffer{*bgItem, slice}.Reader(),
 			item.Load(slice).Reader(),
 		}}
 		renderer := RenderVideo(slice, inputs)

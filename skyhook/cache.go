@@ -110,7 +110,7 @@ func init() {
 					http.Error(w, err.Error(), 400)
 					return
 				}
-				JsonResponse(w, labels[0][1].Get())
+				JsonResponse(w, labels[0][1])
 			} else if contentType == "meta" {
 				type MetaResponse struct {
 					Width int

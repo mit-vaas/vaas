@@ -19,7 +19,7 @@ type Task struct {
 	Slices []Slice
 }
 
-func (m *TaskManager) Schedule(task Task) [][][]*BufferReader {
+func (m *TaskManager) Schedule(task Task) [][][]DataReader {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.activeQueries[task.Query.ID] == nil {
@@ -29,11 +29,19 @@ func (m *TaskManager) Schedule(task Task) [][][]*BufferReader {
 		}
 		m.activeQueries[task.Query.ID] = NewQueryExecutor(task.Query)
 	}
-	var outputs [][][]*BufferReader
-	for _, slice := range task.Slices {
-		outputs = append(outputs, m.activeQueries[task.Query.ID].Run(task.Vector, slice))
+	donech := make(chan bool)
+	taskOutputs := make([][][]DataReader, len(task.Slices))
+	for i, slice := range task.Slices {
+		idx := i
+		m.activeQueries[task.Query.ID].Run(task.Vector, slice, func(outputs [][]DataReader, err error) {
+			taskOutputs[idx] = outputs
+			donech <- true
+		})
 	}
-	return outputs
+	for _ = range task.Slices {
+		<- donech
+	}
+	return taskOutputs
 }
 
 func (m *TaskManager) nodeUpdated(node *Node) {

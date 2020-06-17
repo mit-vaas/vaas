@@ -84,7 +84,8 @@ func init() {
 	db.Exec(`CREATE TABLE IF NOT EXISTS queries (
 		id INTEGER PRIMARY KEY ASC,
 		name TEXT NOT NULL DEFAULT '',
-		outputs TEXT NOT NULL DEFAULT ''
+		outputs TEXT NOT NULL DEFAULT '',
+		selector INTEGER REFERENCES nodes(id)
 	)`)
 }
 

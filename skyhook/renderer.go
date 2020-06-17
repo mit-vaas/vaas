@@ -11,7 +11,7 @@ import (
 
 type VideoRenderer struct {
 	slice Slice
-	inputs [][]*BufferReader
+	inputs [][]DataReader
 
 	// store the non-video labels for inspection
 	labels [][]Data
@@ -25,7 +25,7 @@ type VideoRenderer struct {
 	done bool
 }
 
-func RenderVideo(slice Slice, inputs [][]*BufferReader) *VideoRenderer {
+func RenderVideo(slice Slice, inputs [][]DataReader) *VideoRenderer {
 	r := &VideoRenderer{
 		slice: slice,
 		inputs: inputs,
@@ -44,10 +44,16 @@ func (r *VideoRenderer) setErr(err error) {
 
 func RenderFrames(canvas Image, datas [][]Data, f func(int)) {
 	renderOne := func(im Image, data Data, idx int) {
-		if data.Type == DetectionType || data.Type == TrackType {
-			for _, detection := range data.Detections[idx] {
+		if data.Type() == DetectionType || data.Type() == TrackType {
+			var detections [][]Detection
+			if data.Type() == DetectionType {
+				detections = [][]Detection(data.(DetectionData))
+			} else {
+				detections = [][]Detection(data.(TrackData))
+			}
+			for _, detection := range detections[idx] {
 				var color [3]uint8
-				if data.Type == DetectionType {
+				if data.Type() == DetectionType {
 					color = [3]uint8{255, 0, 0}
 				} else {
 					color = Colors[Mod(detection.TrackID, len(Colors))]
@@ -57,8 +63,8 @@ func RenderFrames(canvas Image, datas [][]Data, f func(int)) {
 		}
 	}
 
-	renderFrame := func(vdata Data, datas []Data, idx int) Image {
-		im := vdata.Images[idx]
+	renderFrame := func(vdata VideoData, datas []Data, idx int) Image {
+		im := vdata[idx]
 		for _, data := range datas {
 			renderOne(im, data, idx)
 		}
@@ -68,10 +74,11 @@ func RenderFrames(canvas Image, datas [][]Data, f func(int)) {
 	for i := 0; i < datas[0][0].Length(); i++ {
 		offset := 0
 		for _, l := range datas {
-			vdata := l[0]
-			if vdata.Type != VideoType {
+			head := l[0]
+			if head.Type() != VideoType {
 				continue
 			}
+			vdata := head.(VideoData)
 			remaining := l[1:]
 			im := renderFrame(vdata, remaining, i)
 			canvas.DrawImage(0, offset, im)
@@ -88,10 +95,10 @@ func (r *VideoRenderer) render() {
 	var canvas *Image
 
 	labels := make([][]Data, len(r.inputs))
-	var flatInputs []*BufferReader
+	var flatInputs []DataReader
 	for i, input := range r.inputs {
 		for _, rd := range input {
-			labels[i] = append(labels[i], Data{Type: rd.Type()})
+			labels[i] = append(labels[i], NewData(rd.Type()))
 			flatInputs = append(flatInputs, rd)
 		}
 	}
@@ -135,7 +142,7 @@ func (r *VideoRenderer) render() {
 				data := flat[idx]
 				idx++
 				datas[i][j] = data
-				if data.Type != VideoType {
+				if data.Type() != VideoType {
 					labels[i][j] = labels[i][j].Append(data)
 				}
 			}
@@ -146,12 +153,13 @@ func (r *VideoRenderer) render() {
 			height := 0
 			for _, l := range datas {
 				data := l[0]
-				if data.Type != VideoType {
+				if data.Type() != VideoType {
 					continue
 				}
-				height += data.Images[0].Height
-				if data.Images[0].Width > width {
-					width = data.Images[0].Width
+				vdata := data.(VideoData)
+				height += vdata[0].Height
+				if vdata[0].Width > width {
+					width = vdata[0].Width
 				}
 			}
 			im := NewImage(width, height)

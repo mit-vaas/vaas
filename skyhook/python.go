@@ -13,8 +13,8 @@ import (
 
 type pendingSlice struct {
 	slice Slice
-	parents []*BufferReader
-	buf *DataBuffer
+	parents []DataReader
+	buf DataBuffer
 }
 
 type PythonExecutor struct {
@@ -68,12 +68,17 @@ func (e *PythonExecutor) Init() {
 	e.writeLock.Unlock()
 }
 
-func (e *PythonExecutor) Run(parents []*BufferReader, slice Slice) *DataBuffer {
+func (e *PythonExecutor) Run(parents []DataReader, slice Slice) DataBuffer {
 	// prepare pendingSlice
 	e.mu.Lock()
 	id := e.counter
 	e.counter++
-	buf := NewDataBuffer(e.node.Type)
+	var buf DataBuffer
+	if e.node.Type == VideoType {
+		buf = NewVideoBuffer()
+	} else {
+		buf = NewSimpleBuffer(e.node.Type)
+	}
 	ps := &pendingSlice{slice, parents, buf}
 	e.pending[id] = ps
 	e.mu.Unlock()
@@ -104,10 +109,11 @@ func (e *PythonExecutor) Run(parents []*BufferReader, slice Slice) *DataBuffer {
 			e.writeLock.Lock()
 			e.writeJSONPacket(job)
 			for _, data := range datas {
-				if data.Type == VideoType {
-					e.writeVideoPacket(data.Images)
+				if data.Type() == VideoType {
+					vdata := data.(VideoData)
+					e.writeVideoPacket(vdata)
 				} else {
-					e.writeJSONPacket(data.Get())
+					e.writeJSONPacket(data)
 				}
 			}
 			e.writeLock.Unlock()
@@ -151,21 +157,21 @@ func (e *PythonExecutor) ReadLoop() {
 			setErr(err)
 			return
 		}
-		data := Data{Type: t}
-		if t == DetectionType || t == TrackType {
-			JsonUnmarshal(buf, &data.Detections)
-		} else if t == ClassType {
-			JsonUnmarshal(buf, &data.Classes)
-		} else if t == VideoType {
+		var data Data
+		if t == VideoType {
 			nframes := int(binary.BigEndian.Uint32(buf[0:4]))
 			height := int(binary.BigEndian.Uint32(buf[4:8]))
 			width := int(binary.BigEndian.Uint32(buf[8:12]))
 			// TODO: channels buf[12:16]
 			chunkSize := width*height*3
 			buf = buf[16:]
+			var vdata VideoData
 			for i := 0; i < nframes; i++ {
-				data.Images = append(data.Images, ImageFromBytes(width, height, buf[i*chunkSize:(i+1)*chunkSize]))
+				vdata = append(vdata, ImageFromBytes(width, height, buf[i*chunkSize:(i+1)*chunkSize]))
 			}
+			data = vdata
+		} else {
+			data = DecodeData(t, buf)
 		}
 		data = data.EnsureLength(end-start)
 
