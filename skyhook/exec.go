@@ -690,10 +690,11 @@ func init() {
 			return
 		}
 		vector := ParseVector(request.Vector)
-		var slices []Slice
+		var sampler func() *Slice
 		if request.Mode == "random" {
-			for i := 0; i < request.Count; i++ {
-				slices = append(slices, vector[0].Timeline.Uniform(VisualizeMaxFrames))
+			sampler = func() *Slice {
+				slice := vector[0].Timeline.Uniform(VisualizeMaxFrames)
+				return &slice
 			}
 		} else if request.Mode == "sequential" {
 			segment := GetSegment(request.StartSlice.Segment.ID)
@@ -701,46 +702,46 @@ func init() {
 				http.Error(w, "invalid segment for sequential request", 404)
 				return
 			}
-			startIdx := request.StartSlice.Start
-			for i := 0; i < request.Count; i++ {
-				frameRange := [2]int{startIdx+i*VisualizeMaxFrames, startIdx+(i+1)*VisualizeMaxFrames}
+			curIdx := request.StartSlice.Start
+			sampler = func() *Slice {
+				frameRange := [2]int{curIdx, curIdx+VisualizeMaxFrames}
 				if frameRange[1] > segment.Frames {
-					break
+					return nil
 				}
-				slices = append(slices, Slice{
+				curIdx += VisualizeMaxFrames
+				return &Slice{
 					Segment: *segment,
 					Start: frameRange[0],
 					End: frameRange[1],
-				})
+				}
 			}
 		}
 
-		log.Printf("[exec (%s) %v] beginning test", query.Name, slices)
-		task := Task{
-			Query: query,
-			Vector: vector,
-			Slices: slices,
-		}
-		allOutputs := tasks.Schedule(task)
+		log.Printf("[exec (%s) %v] beginning test", query.Name, vector)
+		ch := make(chan VisualizeResponse)
 		renderVectors := query.GetOutputVectors(vector)
-		log.Printf("[exec (%s) %v] test: got output readers, rendering videos", query.Name, slices)
-		var response []VisualizeResponse
-		for i, outputs := range allOutputs {
-			r := RenderVideo(slices[i], outputs)
+		ctx := NewTaskContext(query, vector, sampler, request.Count, func(slice Slice, outputs [][]DataReader, err error) {
+			r := RenderVideo(slice, outputs)
 			uuid := cache.Add(r)
-			log.Printf("[exec (%s) %v] test: cached renderer with %d frames, uuid=%s", query.Name, slices[i], slices[i].Length(), uuid)
+			log.Printf("[exec (%s) %v] test: cached renderer with %d frames, uuid=%s", query.Name, slice, slice.Length(), uuid)
 			var t DataType = VideoType
 			if len(outputs[0]) >= 2 {
 				t = outputs[0][1].Type()
 			}
-			response = append(response, VisualizeResponse{
+			ch <- VisualizeResponse{
 				PreviewURL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", uuid),
 				URL: fmt.Sprintf("/cache/view?id=%s", uuid),
 				UUID: uuid,
-				Slice: slices[i],
+				Slice: slice,
 				Type: t,
 				Vectors: renderVectors,
-			})
+			}
+		})
+		ctx.Get(request.Count)
+		var response []VisualizeResponse
+		for i := 0; i < request.Count; i++ {
+			el := <- ch
+			response = append(response, el)
 		}
 		JsonResponse(w, response)
 	})

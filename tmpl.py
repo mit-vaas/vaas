@@ -108,12 +108,13 @@ def input_packet():
 		raise Exception('invalid packet type {}'.format(buf[4]))
 
 def output_packet(slice_idx, frame_range, data):
-	if meta['Type'] == 'detection' or meta['Type'] == 'track':
-		encoded_data = json.dumps(data).encode('utf-8')
-	elif meta['Type'] == 'video':
+	if meta['Type'] == 'video':
 		encoded_data = struct.pack('>IIII', data.shape[0], data.shape[1], data.shape[2], data.shape[3]) + data.tobytes()
+	else:
+		encoded_data = json.dumps(data).encode('utf-8')
 	sys.stdout.buffer.write(struct.pack('>IIII', slice_idx, frame_range[0], frame_range[1], len(encoded_data)))
 	sys.stdout.buffer.write(encoded_data)
+	sys.stdout.buffer.flush()
 
 meta = input_packet()
 states = {}
