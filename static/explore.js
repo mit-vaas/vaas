@@ -9,6 +9,7 @@ Vue.component('explore-tab', {
 			mode: 'random',
 			sequentialSegment: '',
 
+			resultTotal: 0,
 			resultRows: [],
 			resultUUIDMap: {},
 			detailResult: null,
@@ -31,12 +32,15 @@ Vue.component('explore-tab', {
 			var j = this.resultRows[i].length;
 			this.resultRows[i].push(resp);
 			this.resultUUIDMap[resp.UUID] = [i, j];
+			this.resultTotal++;
 		}.bind(this));
 		this.socket.on('exec-progress', function(resp) {
 			var i = this.resultUUIDMap[resp.UUID][0];
 			var j = this.resultUUIDMap[resp.UUID][1];
 			this.resultRows[i][j].progress = resp.Percent;
-			console.log(i, j, resp.Percent);
+		}.bind(this));
+		this.socket.on('exec-reject', function() {
+			this.resultTotal++;
 		}.bind(this));
 	},
 	methods: {
@@ -76,6 +80,7 @@ Vue.component('explore-tab', {
 		test: function() {
 			this.resultRows = [];
 			this.resultUUIDMap = {};
+			this.resultTotal = 0;
 			this.addMore();
 		},
 		onClick: function(i, j) {
@@ -97,6 +102,22 @@ Vue.component('explore-tab', {
 		detailBack: function() {
 			this.detailResult = null;
 			this.detailTool = '';
+		},
+	},
+	computed: {
+		resultPending: function() {
+			var count = 0;
+			this.resultRows.forEach(function(row) {
+				row.forEach(function(result) {
+					if(result.progress < 100) {
+						count++;
+					}
+				});
+			});
+			return count;
+		},
+		resultCompleted: function() {
+			return this.resultTotal - this.resultPending;
 		},
 	},
 	watch: {
@@ -152,6 +173,7 @@ Vue.component('explore-tab', {
 			</div>
 		</div>
 		<div id="explore-results-div">
+			<p v-if="resultTotal > 0">Completed {{ resultCompleted }}/{{ resultTotal }}</p>
 			<div v-for="(row, i) in resultRows" class="explore-results-row">
 				<div v-for="(result, j) in row" v-on:click.stop="toggleResult(i, j)" class="explore-results-col" :class="{selected: result.selected}">
 					<template v-if="result.ready">

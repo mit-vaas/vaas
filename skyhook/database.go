@@ -79,7 +79,8 @@ func init() {
 		-- input
 		vector TEXT,
 		-- persisted outputs
-		series_id INTEGER REFERENCES series(id)
+		series_id INTEGER REFERENCES series(id),
+		UNIQUE(node_id, vector)
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS queries (
 		id INTEGER PRIMARY KEY ASC,

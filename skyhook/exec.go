@@ -160,7 +160,7 @@ func GetOrCreateVNode(node *Node, vector []*Series) *VNode {
 	if vn != nil {
 		return vn
 	}
-	db.Exec("INSERT INTO vnodes (node_id, vector) VALUES (?, ?)", node.ID, Vector(vector).String())
+	db.Exec("INSERT OR REPLACE INTO vnodes (node_id, vector) VALUES (?, ?)", node.ID, Vector(vector).String())
 	return GetVNode(node, vector)
 }
 
@@ -754,6 +754,11 @@ func init() {
 			log.Printf("[exec (%s) %v] beginning test for client %v", query.Name, vector, s.ID())
 			renderVectors := query.GetOutputVectors(vector)
 			ctx := NewTaskContext(query, vector, sampler, request.Count, func(slice Slice, outputs [][]DataReader, err error) {
+				if err != nil {
+					s.Emit("exec-reject")
+					return
+				}
+
 				cacheID := uuid.New().String()
 				r := RenderVideo(slice, outputs, RenderOpts{ProgressCallback: func(percent int) {
 					type ProgressResponse struct {

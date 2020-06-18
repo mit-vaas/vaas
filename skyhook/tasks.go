@@ -76,6 +76,7 @@ type TaskContext struct {
 	closed bool
 
 	remaining int
+	finished int
 
 	// extra outputs we haven't sent to callback
 	extras []extraOutput
@@ -157,6 +158,7 @@ func (ctx *TaskContext) Close() {
 func (ctx *TaskContext) ctxCallback(slice Slice, outputs [][]DataReader, err error) {
 	if err != nil && strings.Contains(err.Error(), "selector reject") {
 		log.Printf("[task context] selector reject on slice %v, we will retry", slice)
+		ctx.callback(slice, outputs, err)
 		return
 	}
 	ctx.mu.Lock()
