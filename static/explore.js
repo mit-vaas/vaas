@@ -10,6 +10,7 @@ Vue.component('explore-tab', {
 			sequentialSegment: '',
 
 			resultRows: [],
+			resultUUIDMap: {},
 			detailResult: null,
 			detailTool: '',
 		};
@@ -22,10 +23,20 @@ Vue.component('explore-tab', {
 			resp.ready = true;
 			resp.clicked = false;
 			resp.selected = false;
+			resp.progress = 0;
 			if(this.resultRows.length == 0 || this.resultRows[this.resultRows.length-1].length >= 4) {
 				this.resultRows.push([]);
 			}
-			this.resultRows[this.resultRows.length-1].push(resp);
+			var i = this.resultRows.length-1;
+			var j = this.resultRows[i].length;
+			this.resultRows[i].push(resp);
+			this.resultUUIDMap[resp.UUID] = [i, j];
+		}.bind(this));
+		this.socket.on('exec-progress', function(resp) {
+			var i = this.resultUUIDMap[resp.UUID][0];
+			var j = this.resultUUIDMap[resp.UUID][1];
+			this.resultRows[i][j].progress = resp.Percent;
+			console.log(i, j, resp.Percent);
 		}.bind(this));
 	},
 	methods: {
@@ -64,6 +75,7 @@ Vue.component('explore-tab', {
 		},
 		test: function() {
 			this.resultRows = [];
+			this.resultUUIDMap = {};
 			this.addMore();
 		},
 		onClick: function(i, j) {
@@ -148,8 +160,8 @@ Vue.component('explore-tab', {
 							<span v-on:click.stop="viewDetails(i, j)">
 								<button type="button" class="btn btn-outline-dark">
 									<svg class="bi bi-arrow-bar-right" width="1em" height="1em" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-									  <path fill-rule="evenodd" d="M10.146 4.646a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708-.708L12.793 8l-2.647-2.646a.5.5 0 0 1 0-.708z"/>
-									  <path fill-rule="evenodd" d="M6 8a.5.5 0 0 1 .5-.5H13a.5.5 0 0 1 0 1H6.5A.5.5 0 0 1 6 8zm-2.5 6a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 1 0v11a.5.5 0 0 1-.5.5z"/>
+										<path fill-rule="evenodd" d="M10.146 4.646a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708-.708L12.793 8l-2.647-2.646a.5.5 0 0 1 0-.708z"/>
+										<path fill-rule="evenodd" d="M6 8a.5.5 0 0 1 .5-.5H13a.5.5 0 0 1 0 1H6.5A.5.5 0 0 1 6 8zm-2.5 6a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 1 0v11a.5.5 0 0 1-.5.5z"/>
 									</svg>
 								</button>
 							</span>
@@ -158,6 +170,16 @@ Vue.component('explore-tab', {
 						<video v-if="result.clicked" class="explore-result-img" controls autoplay>
 							<source :src="result.URL + '&type=mp4'" type="video/mp4"></source>
 						</video>
+						<div v-if="result.progress < 100">
+							<div class="progress">
+								<div
+									class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+									:aria-valuenow="result.progress"
+									:style="{width: result.progress + '%'}"
+									>
+								</div>
+							</div>
+						</div>
 					</template>
 				</div>
 			</div>

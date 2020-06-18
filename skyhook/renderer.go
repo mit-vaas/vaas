@@ -12,6 +12,7 @@ import (
 type VideoRenderer struct {
 	slice Slice
 	inputs [][]DataReader
+	opts RenderOpts
 
 	// store the non-video labels for inspection
 	labels [][]Data
@@ -25,10 +26,15 @@ type VideoRenderer struct {
 	done bool
 }
 
-func RenderVideo(slice Slice, inputs [][]DataReader) *VideoRenderer {
+type RenderOpts struct {
+	ProgressCallback func(progress int)
+}
+
+func RenderVideo(slice Slice, inputs [][]DataReader, opts RenderOpts) *VideoRenderer {
 	r := &VideoRenderer{
 		slice: slice,
 		inputs: inputs,
+		opts: opts,
 	}
 	r.cond = sync.NewCond(&r.mu)
 	go r.render()
@@ -125,6 +131,7 @@ func (r *VideoRenderer) render() {
 		donech <- true
 	}
 
+	prevProgress := 0
 	f := func(index int, flat []Data) error {
 		r.mu.Lock()
 		if r.err != nil {
@@ -133,6 +140,11 @@ func (r *VideoRenderer) render() {
 		}
 		needPreview := r.preview == nil
 		r.mu.Unlock()
+
+		if r.opts.ProgressCallback != nil && index - prevProgress >= FPS {
+			prevProgress = index
+			r.opts.ProgressCallback(100*index/r.slice.Length())
+		}
 
 		datas := make([][]Data, len(r.inputs))
 		idx := 0
@@ -188,6 +200,9 @@ func (r *VideoRenderer) render() {
 	ReadMultiple(r.slice.Length(), flatInputs, f)
 	close(ch)
 	<- donech
+	if r.opts.ProgressCallback != nil {
+		r.opts.ProgressCallback(100)
+	}
 
 	r.mu.Lock()
 	r.labels = labels

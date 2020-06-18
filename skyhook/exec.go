@@ -2,6 +2,7 @@ package skyhook
 
 import (
 	"github.com/googollee/go-socket.io"
+	"github.com/google/uuid"
 
 	"fmt"
 	"log"
@@ -753,17 +754,24 @@ func init() {
 			log.Printf("[exec (%s) %v] beginning test for client %v", query.Name, vector, s.ID())
 			renderVectors := query.GetOutputVectors(vector)
 			ctx := NewTaskContext(query, vector, sampler, request.Count, func(slice Slice, outputs [][]DataReader, err error) {
-				r := RenderVideo(slice, outputs)
-				uuid := cache.Add(r)
-				log.Printf("[exec (%s) %v] test: cached renderer with %d frames, uuid=%s", query.Name, slice, slice.Length(), uuid)
+				cacheID := uuid.New().String()
+				r := RenderVideo(slice, outputs, RenderOpts{ProgressCallback: func(percent int) {
+					type ProgressResponse struct {
+						UUID string
+						Percent int
+					}
+					s.Emit("exec-progress", ProgressResponse{cacheID, percent})
+				}})
+				cache.Put(cacheID, r)
+				log.Printf("[exec (%s) %v] test: cached renderer with %d frames, uuid=%s", query.Name, slice, slice.Length(), cacheID)
 				var t DataType = VideoType
 				if len(outputs[0]) >= 2 {
 					t = outputs[0][1].Type()
 				}
 				s.Emit("exec-result", VisualizeResponse{
-					PreviewURL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", uuid),
-					URL: fmt.Sprintf("/cache/view?id=%s", uuid),
-					UUID: uuid,
+					PreviewURL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", cacheID),
+					URL: fmt.Sprintf("/cache/view?id=%s", cacheID),
+					UUID: cacheID,
 					Slice: slice,
 					Type: t,
 					Vectors: renderVectors,

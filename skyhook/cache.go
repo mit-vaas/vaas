@@ -32,6 +32,14 @@ func (cache *Cache) Add(item interface{}) string {
 	return id
 }
 
+func (cache *Cache) Put(id string, item interface{}) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	cache.items[id] = &CacheItem{
+		Item: item,
+	}
+}
+
 func (cache *Cache) Get(id string) interface{} {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()

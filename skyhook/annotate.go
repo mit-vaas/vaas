@@ -299,7 +299,7 @@ func init() {
 			VideoFileBuffer{*bgItem, slice}.Reader(),
 			item.Load(slice).Reader(),
 		}}
-		renderer := RenderVideo(slice, inputs)
+		renderer := RenderVideo(slice, inputs, RenderOpts{})
 		uuid := cache.Add(renderer)
 		log.Printf("[annotate] visualize: cached renderer with %d frames, uuid=%s", slice.Length(), uuid)
 		JsonResponse(w, VisualizeResponse{
