@@ -17,6 +17,16 @@ Vue.component('explore-tab', {
 	props: ['tab'],
 	created: function() {
 		this.fetch();
+		this.socket = io('/exec');
+		this.socket.on('exec-result', function(resp) {
+			resp.ready = true;
+			resp.clicked = false;
+			resp.selected = false;
+			if(this.resultRows.length == 0 || this.resultRows[this.resultRows.length-1].length >= 4) {
+				this.resultRows.push([]);
+			}
+			this.resultRows[this.resultRows.length-1].push(resp);
+		}.bind(this));
 	},
 	methods: {
 		fetch: function() {
@@ -50,28 +60,7 @@ Vue.component('explore-tab', {
 					params.StartSlice.Start = parseInt(idx);
 				}
 			}
-			var i = this.resultRows.length;
-			var row = [];
-			for(var j = 0; j < 4; j++) {
-				row.push({
-					ready: false,
-					selected: false,
-				});
-			}
-			this.resultRows.push(row);
-			$.ajax({
-				type: "POST",
-				url: '/exec/test',
-				data: JSON.stringify(params),
-				success: function(data) {
-					data.forEach(function(el) {
-						el.ready = true;
-						el.clicked = false;
-						el.selected = false;
-					});
-					Vue.set(this.resultRows, i, data);
-				}.bind(this),
-			});
+			this.socket.emit('exec', params);
 		},
 		test: function() {
 			this.resultRows = [];

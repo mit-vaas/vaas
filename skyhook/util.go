@@ -1,6 +1,8 @@
 package skyhook
 
 import (
+	"github.com/googollee/go-socket.io"
+
 	"bufio"
 	"encoding/json"
 	"fmt"
@@ -12,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 )
+
+var SetupFuncs []func(*socketio.Server)
 
 func ReadTextFile(fname string) string {
 	bytes, err := ioutil.ReadFile(fname)

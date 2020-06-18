@@ -1,6 +1,8 @@
 package skyhook
 
 import (
+	"github.com/googollee/go-socket.io"
+
 	"fmt"
 	"log"
 	"net/http"
@@ -671,128 +673,116 @@ func init() {
 		)
 	})
 
-	http.HandleFunc("/exec/test", func(w http.ResponseWriter, r *http.Request) {
-		type TestRequest struct {
+	SetupFuncs = append(SetupFuncs, func(server *socketio.Server) {
+		var mu sync.Mutex
+		taskContexts := make(map[string]*TaskContext)
+
+		type ExecRequest struct {
 			Vector string
 			QueryID int
 			Mode string // "random" or "sequential"
 			StartSlice Slice
 			Count int
-		}
-		var request TestRequest
-		if err := JsonRequest(w, r, &request); err != nil {
-			return
+			Continue bool
 		}
 
-		query := GetQuery(request.QueryID)
-		if query == nil {
-			http.Error(w, "no such query", 404)
-			return
-		}
-		vector := ParseVector(request.Vector)
-		var sampler func() *Slice
-		if request.Mode == "random" {
-			sampler = func() *Slice {
-				slice := vector[0].Timeline.Uniform(VisualizeMaxFrames)
-				return &slice
-			}
-		} else if request.Mode == "sequential" {
-			segment := GetSegment(request.StartSlice.Segment.ID)
-			if segment == nil || segment.Timeline.ID != vector[0].Timeline.ID {
-				http.Error(w, "invalid segment for sequential request", 404)
-				return
-			}
-			curIdx := request.StartSlice.Start
-			sampler = func() *Slice {
-				frameRange := [2]int{curIdx, curIdx+VisualizeMaxFrames}
-				if frameRange[1] > segment.Frames {
-					return nil
-				}
-				curIdx += VisualizeMaxFrames
-				return &Slice{
-					Segment: *segment,
-					Start: frameRange[0],
-					End: frameRange[1],
-				}
-			}
-		}
-
-		log.Printf("[exec (%s) %v] beginning test", query.Name, vector)
-		ch := make(chan VisualizeResponse)
-		renderVectors := query.GetOutputVectors(vector)
-		ctx := NewTaskContext(query, vector, sampler, request.Count, func(slice Slice, outputs [][]DataReader, err error) {
-			r := RenderVideo(slice, outputs)
-			uuid := cache.Add(r)
-			log.Printf("[exec (%s) %v] test: cached renderer with %d frames, uuid=%s", query.Name, slice, slice.Length(), uuid)
-			var t DataType = VideoType
-			if len(outputs[0]) >= 2 {
-				t = outputs[0][1].Type()
-			}
-			ch <- VisualizeResponse{
-				PreviewURL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", uuid),
-				URL: fmt.Sprintf("/cache/view?id=%s", uuid),
-				UUID: uuid,
-				Slice: slice,
-				Type: t,
-				Vectors: renderVectors,
-			}
+		server.OnConnect("/exec", func(s socketio.Conn) error {
+			return nil
 		})
-		ctx.Get(request.Count)
-		var response []VisualizeResponse
-		for i := 0; i < request.Count; i++ {
-			el := <- ch
-			response = append(response, el)
-		}
-		JsonResponse(w, response)
-	})
 
-	/*http.HandleFunc("/exec/test2", func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
-		videoID, _ := strconv.Atoi(r.PostForm.Get("video_id"))
-		queryID, _ := strconv.Atoi(r.PostForm.Get("query_id"))
+		server.OnError("/exec", func (s socketio.Conn, err error) {
+			log.Println("[socket.io] error on client %v: %v", s.ID(), err)
+		})
 
-		query := GetQuery(queryID)
-		if query == nil {
-			w.WriteHeader(404)
-			return
-		}
-		video := GetVideo(videoID)
-		if video == nil {
-			w.WriteHeader(404)
-			return
-		}
-		vn := GetOrCreateVNode(node, *video)
-		vn.Load()
-		for {
-			slice := video.Uniform(VisualizeMaxFrames)
-			log.Printf("[exec (%s) %v] beginning test", node.Name, slice)
-			labelBuf := query.Test([]ClipSlice{slice})[0]
-			if labelBuf == nil {
-				w.WriteHeader(404)
+		server.OnEvent("/exec", "exec", func(s socketio.Conn, request ExecRequest) {
+			query := GetQuery(request.QueryID)
+			if query == nil {
+				s.Emit("error", "no such query")
 				return
 			}
-			data, err := labelBuf.ReadFull(slice.Length())
-			if err != nil {
-				log.Printf("[exec (%s) %v] error reading exec output: %v", node.Name, slice, err)
-				w.WriteHeader(400)
-				return
-			} else if data.IsEmpty() {
-				continue
+			vector := ParseVector(request.Vector)
+			var sampler func() *Slice
+			if request.Mode == "random" {
+				sampler = func() *Slice {
+					slice := vector[0].Timeline.Uniform(VisualizeMaxFrames)
+					return &slice
+				}
+			} else if request.Mode == "sequential" {
+				segment := GetSegment(request.StartSlice.Segment.ID)
+				if segment == nil || segment.Timeline.ID != vector[0].Timeline.ID {
+					s.Emit("error", "invalid segment for sequential request")
+					return
+				}
+				curIdx := request.StartSlice.Start
+				sampler = func() *Slice {
+					frameRange := [2]int{curIdx, curIdx+VisualizeMaxFrames}
+					if frameRange[1] > segment.Frames {
+						return nil
+					}
+					curIdx += VisualizeMaxFrames
+					return &Slice{
+						Segment: *segment,
+						Start: frameRange[0],
+						End: frameRange[1],
+					}
+				}
 			}
-			log.Printf("[exec (%s) %v] test: got labelBuf, loading preview", node.Name, slice)
-			nbuf := NewLabelBuffer(data.Type)
-			nbuf.Write(data)
-			pc := CreatePreview(slice, nbuf)
-			uuid := cache.Add(pc)
-			log.Printf("[exec (%s) %v] test: cached preview with %d frames, uuid=%s", node.Name, slice, pc.Slice.Length(), uuid)
-			JsonResponse(w, VisualizeResponse{
-				PreviewURL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", uuid),
-				URL: fmt.Sprintf("/cache/view?id=%s&type=mp4", uuid),
-				Width: slice.Clip.Width,
-				Height: slice.Clip.Height,
-				UUID: uuid,
+
+			// try to reuse existing task context
+			mu.Lock()
+			defer mu.Unlock()
+			ok := func() bool {
+				if !request.Continue {
+					return false
+				}
+				ctx := taskContexts[s.ID()]
+				if ctx == nil {
+					return false
+				}
+				if ctx.query.ID != query.ID || Vector(ctx.vector).String() != vector.String() {
+					return false
+				}
+				log.Printf("[exec (%s) %v] reuse existing task context with %d new outputs", query.Name, vector, request.Count)
+				ctx.Get(request.Count)
+				return true
+			}()
+			if ok {
+				return
+			}
+
+			log.Printf("[exec (%s) %v] beginning test for client %v", query.Name, vector, s.ID())
+			renderVectors := query.GetOutputVectors(vector)
+			ctx := NewTaskContext(query, vector, sampler, request.Count, func(slice Slice, outputs [][]DataReader, err error) {
+				r := RenderVideo(slice, outputs)
+				uuid := cache.Add(r)
+				log.Printf("[exec (%s) %v] test: cached renderer with %d frames, uuid=%s", query.Name, slice, slice.Length(), uuid)
+				var t DataType = VideoType
+				if len(outputs[0]) >= 2 {
+					t = outputs[0][1].Type()
+				}
+				s.Emit("exec-result", VisualizeResponse{
+					PreviewURL: fmt.Sprintf("/cache/preview?id=%s&type=jpeg", uuid),
+					URL: fmt.Sprintf("/cache/view?id=%s", uuid),
+					UUID: uuid,
+					Slice: slice,
+					Type: t,
+					Vectors: renderVectors,
+				})
 			})
-			break
-		}
-	})*/
+			ctx.Get(request.Count)
+			if taskContexts[s.ID()] != nil {
+				taskContexts[s.ID()].Close()
+			}
+			taskContexts[s.ID()] = ctx
+		})
+
+		server.OnDisconnect("/exec", func(s socketio.Conn, e string) {
+			mu.Lock()
+			if taskContexts[s.ID()] != nil {
+				taskContexts[s.ID()].Close()
+				taskContexts[s.ID()] = nil
+			}
+			mu.Unlock()
+		})
+	})
 }
