@@ -26,6 +26,10 @@ html, body, #app, #nodes-panel {
 	max-width: 200px;
 }
 
+.small-container {
+	max-width: 600px;
+}
+
 /* canvas on image */
 .canvas-container {
 	display: inline-block;

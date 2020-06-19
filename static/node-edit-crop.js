@@ -38,10 +38,10 @@ Vue.component('node-edit-crop', {
 		},
 		save: function() {
 			var code = JSON.stringify({
-				left: this.left,
-				top: this.top,
-				right: this.right,
-				bottom: this.bottom,
+				left: parseInt(this.left),
+				top: parseInt(this.top),
+				right: parseInt(this.right),
+				bottom: parseInt(this.bottom),
 			});
 			$.post('/node?id='+this.initNode.ID, {
 				code: code,
