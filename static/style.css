@@ -12,6 +12,20 @@ html, body, #app, #nodes-panel {
 	flex-grow: 1;
 }
 
+.table-row-select tr {
+	cursor: pointer;
+}
+.table-row-select tr:hover {
+	background-color: lightblue;
+}
+.table-row-select tr.selected {
+	background-color: lightgreen;
+}
+
+.short-input {
+	max-width: 200px;
+}
+
 /* canvas on image */
 .canvas-container {
 	display: inline-block;

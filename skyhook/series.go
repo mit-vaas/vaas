@@ -360,6 +360,19 @@ func init() {
 		series.Delete()
 	})
 
+	http.HandleFunc("/series/random-slice", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		seriesID := ParseInt(r.PostForm.Get("series_id"))
+		unit := ParseInt(r.PostForm.Get("unit"))
+		series := GetSeries(seriesID)
+		if series == nil {
+			http.Error(w, "no such series", 404)
+			return
+		}
+		slice := series.Timeline.Uniform(unit)
+		JsonResponse(w, slice)
+	})
+
 	http.HandleFunc("/series/get-item", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 		seriesID := ParseInt(r.Form.Get("series_id"))
@@ -408,6 +421,8 @@ func init() {
 		} else if contentType == "json" {
 			data := item.Load(slice)
 			JsonResponse(w, data)
+		} else if contentType == "meta" {
+			JsonResponse(w, item)
 		}
 	})
 }
