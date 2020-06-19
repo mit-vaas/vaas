@@ -30,6 +30,10 @@ html, body, #app, #nodes-panel {
 	max-width: 600px;
 }
 
+.bordered-div {
+	border: 1px solid black;
+}
+
 /* canvas on image */
 .canvas-container {
 	display: inline-block;

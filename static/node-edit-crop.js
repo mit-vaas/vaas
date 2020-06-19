@@ -87,7 +87,7 @@ Vue.component('node-edit-crop', {
 		<button type="submit" class="btn btn-primary mx-2">Select</button>
 	</form>
 	<div v-if="drawSeries != null">
-		<util-video-draw-shape v-bind:series_id="drawSeries" v-on:draw="onDraw($event)"></util-video-draw-shape>
+		<util-video-draw-shape v-bind:series_id="drawSeries" fixedOptions="box" v-on:draw="onDraw($event)"></util-video-draw-shape>
 	</div>
 </div>
 	`,

@@ -148,8 +148,8 @@ func init() {
 				detections := l.Data.(TrackData)
 				for _, track := range DetectionsToTracks(detections) {
 					for i := 1; i < len(track); i++ {
-						c1 := getCenter(track[i-1])
-						c2 := getCenter(track[i])
+						c1 := getCenter(track[i-1].Detection)
+						c2 := getCenter(track[i].Detection)
 						for _, p := range gomapinfer.DrawLineOnCells(c1[0], c1[1], c2[0], c2[1], im.Width, im.Height) {
 							im.FillRectangle(p[0]-1, p[1]-1, p[0]+1, p[1]+1, [3]uint8{255, 0, 0})
 						}

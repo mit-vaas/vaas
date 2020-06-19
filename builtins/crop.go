@@ -2,7 +2,6 @@ package builtins
 
 import (
 	"../skyhook"
-	"log"
 )
 
 type CropConfig struct {
@@ -26,9 +25,7 @@ func (m Crop) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.Dat
 	buf := skyhook.NewVideoBuffer()
 
 	go func() {
-		var count int = 0
 		PerFrame(parents, slice, buf, skyhook.VideoType, func(idx int, data skyhook.Data, buf skyhook.DataBuffer) error {
-			count++
 			im := data.(skyhook.VideoData)[0]
 			width := m.cfg.Right - m.cfg.Left
 			height := m.cfg.Bottom - m.cfg.Top
@@ -47,7 +44,6 @@ func (m Crop) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.Dat
 			buf.Write(skyhook.VideoData{outim})
 			return nil
 		})
-		log.Println("crop done", count)
 	}()
 
 	return buf

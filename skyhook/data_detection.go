@@ -10,21 +10,42 @@ type Detection struct {
 	TrackID int `json:"track_id"`
 }
 
-func DetectionsToTracks(detections [][]Detection) [][]Detection {
-	tracks := make(map[int][]Detection)
+type DetectionWithFrame struct {
+	Detection
+	FrameIdx int
+}
+
+func DetectionsToTracks(detections [][]Detection) [][]DetectionWithFrame {
+	tracks := make(map[int][]DetectionWithFrame)
 	for frameIdx := range detections {
 		for _, detection := range detections[frameIdx] {
 			if detection.TrackID < 0 {
 				continue
 			}
-			tracks[detection.TrackID] = append(tracks[detection.TrackID], detection)
+			tracks[detection.TrackID] = append(tracks[detection.TrackID], DetectionWithFrame{
+				Detection: detection,
+				FrameIdx: frameIdx,
+			})
 		}
 	}
-	var trackList [][]Detection
+	var trackList [][]DetectionWithFrame
 	for _, track := range tracks {
 		trackList = append(trackList, track)
 	}
 	return trackList
+}
+
+func TracksToDetections(tracks [][]DetectionWithFrame) [][]Detection {
+	var detections [][]Detection
+	for _, track := range tracks {
+		for _, d := range track {
+			for d.FrameIdx >= len(detections) {
+				detections = append(detections, []Detection{})
+			}
+			detections[d.FrameIdx] = append(detections[d.FrameIdx], d.Detection)
+		}
+	}
+	return detections
 }
 
 type DetectionData [][]Detection
