@@ -1,4 +1,4 @@
-package models
+package builtins
 
 import (
 	"../skyhook"
@@ -28,4 +28,5 @@ func PerFrame(parents []skyhook.DataReader, slice skyhook.Slice, buf skyhook.Dat
 		log.Printf("[models (%v)] error reading: %v", slice, err)
 		buf.Error(err)
 	}
+	buf.Close()
 }

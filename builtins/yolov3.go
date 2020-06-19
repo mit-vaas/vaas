@@ -1,4 +1,4 @@
-package models
+package builtins
 
 import (
 	"../skyhook"
@@ -15,35 +15,23 @@ import (
 	"sync"
 )
 
-type Yolov3Config struct {
-	Threshold float64
-}
-
 type Yolov3 struct {
-	threshold float64
 	stdin io.WriteCloser
 	rd *bufio.Reader
 	cmd skyhook.Cmd
 	mu sync.Mutex
 }
 
-func NewYolov3(cfgBytes []byte) skyhook.Executor {
-	type Config struct {
-		Threshold float64
-	}
-	var cfg Config
-	skyhook.JsonUnmarshal(cfgBytes, &cfg)
-
+func NewYolov3(node *skyhook.Node, query *skyhook.Query) skyhook.Executor {
 	cmd := skyhook.Command(
 		"darknet",
 		skyhook.CommandOptions{F: func(cmd *exec.Cmd) {
 			cmd.Dir = "darknet/"
 		}},
-		"./darknet", "detect", "cfg/yolov3.cfg", "yolov3.weights", "-thresh", fmt.Sprintf("%v", cfg.Threshold),
+		"./darknet", "detect", "cfg/yolov3.cfg", "yolov3.weights", "-thresh", "0.1",
 	)
 	rd := bufio.NewReader(cmd.Stdout())
 	m := &Yolov3{
-		threshold: cfg.Threshold,
 		stdin: cmd.Stdin(),
 		rd: rd,
 		cmd: cmd,
@@ -134,5 +122,5 @@ func (m *Yolov3) Close() {
 }
 
 func init() {
-	skyhook.Models["yolov3"] = NewYolov3
+	skyhook.Executors["yolov3"] = NewYolov3
 }

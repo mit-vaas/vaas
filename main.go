@@ -2,7 +2,7 @@ package main
 
 import (
 	"./skyhook"
-	_ "./models"
+	_ "./builtins"
 
 	"github.com/googollee/go-socket.io"
 

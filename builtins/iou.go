@@ -1,4 +1,4 @@
-package models
+package builtins
 
 // Simple overlap-based multi-object tracker.
 
@@ -24,10 +24,19 @@ func (t TrackWithID) Last() skyhook.Detection {
 	return t.Detections[len(t.Detections)-1]
 }
 
-type IOU struct {}
+type IOU struct {
+	maxAge int
+}
 
-func NewIOU(cfgBytes []byte) skyhook.Executor {
-	return IOU{}
+func NewIOU(node *skyhook.Node, query *skyhook.Query) skyhook.Executor {
+	type Config struct {
+		MaxAge int `json:"maxAge"`
+	}
+	var cfg Config
+	skyhook.JsonUnmarshal([]byte(node.Code), &cfg)
+	return IOU{
+		maxAge: cfg.MaxAge,
+	}
 }
 
 func (m IOU) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
@@ -135,5 +144,5 @@ func hungarianMatcher(activeTracks map[int]*TrackWithID, detections []skyhook.De
 }
 
 func init() {
-	skyhook.Models["iou"] = NewIOU
+	skyhook.Executors["iou"] = NewIOU
 }

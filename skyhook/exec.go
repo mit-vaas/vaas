@@ -47,6 +47,8 @@ type Executor interface {
 	Close()
 }
 
+var Executors = map[string]func(*Node, *Query) Executor{}
+
 type Node struct {
 	ID int
 	Name string
@@ -113,12 +115,7 @@ func (node *Node) ListVNodes() []*VNode {
 }
 
 func (node *Node) Exec(query *Query) Executor {
-	if node.Ext == "python" {
-		return node.pythonExecutor(query)
-	} else if node.Ext == "model" {
-		return node.modelExecutor(query)
-	}
-	panic(fmt.Errorf("exec on node with unknown ext %s", node.Ext))
+	return Executors[node.Ext](node, query)
 }
 
 type VNode struct {
@@ -303,7 +300,7 @@ func (query *Query) GetOutputVectors(inputs []*Series) [][]*Series {
 	for i, l := range query.Outputs {
 		for _, output := range l {
 			if output.Type == NodeParent {
-				vn := GetVNode(output.Node, inputs)
+				vn := GetOrCreateVNode(output.Node, inputs)
 				outputs[i] = append(outputs[i], vn.Series)
 			} else if output.Type == SeriesParent {
 				outputs[i] = append(outputs[i], inputs[output.SeriesIdx])
@@ -692,7 +689,7 @@ func init() {
 		})
 
 		server.OnError("/exec", func (s socketio.Conn, err error) {
-			log.Println("[socket.io] error on client %v: %v", s.ID(), err)
+			log.Printf("[socket.io] error on client %v: %v", s.ID(), err)
 		})
 
 		server.OnEvent("/exec", "exec", func(s socketio.Conn, request ExecRequest) {

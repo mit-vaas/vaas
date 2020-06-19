@@ -245,14 +245,13 @@ func (buf *VideoBuffer) Type() DataType {
 
 func (buf *VideoBuffer) Write(data Data) {
 	images := data.(VideoData)
-	buf.mu.Lock()
-	defer buf.mu.Unlock()
 
+	buf.mu.Lock()
 	if !buf.started {
 		buf.dims = [2]int{images[0].Width, images[0].Height}
 		buf.cmd = Command(
 			"ffmpeg", CommandOptions{OnlyDebug: true},
-			"ffmpeg", "-f", "rawvideo",
+			"ffmpeg", "-f", "rawvideo", "-framerate", fmt.Sprintf("%v", FPS),
 			"-s", fmt.Sprintf("%dx%d", buf.dims[0], buf.dims[1]),
 			"-pix_fmt", "rgb24", "-i", "-",
 			"-vcodec", "libx264",
@@ -290,6 +289,7 @@ func (buf *VideoBuffer) Write(data Data) {
 			buf.mu.Unlock()
 		}()
 	}
+	buf.mu.Unlock()
 
 	for _, im := range images {
 		buf.stdin.Write(im.ToBytes())

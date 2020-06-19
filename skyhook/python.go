@@ -193,7 +193,7 @@ func (e *PythonExecutor) Close() {
 	os.Remove(e.tempFile.Name())
 }
 
-func (node *Node) pythonExecutor(query *Query) Executor {
+func NewPythonExecutor(node *Node, query *Query) Executor {
 	log.Printf("[exec (%s/%s)] launching python script", query.Name, node.Name)
 	template, err := ioutil.ReadFile("tmpl.py")
 	if err != nil {
@@ -227,4 +227,8 @@ func (node *Node) pythonExecutor(query *Query) Executor {
 	e.Init()
 	go e.ReadLoop()
 	return e
+}
+
+func init() {
+	Executors["python"] = NewPythonExecutor
 }
