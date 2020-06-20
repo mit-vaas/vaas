@@ -18,7 +18,7 @@ import (
 type Yolov3 struct {
 	stdin io.WriteCloser
 	rd *bufio.Reader
-	cmd skyhook.Cmd
+	cmd *skyhook.Cmd
 	mu sync.Mutex
 }
 
@@ -56,7 +56,7 @@ func (m *Yolov3) getLines() []string {
 }
 
 func (m *Yolov3) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
-	buf := skyhook.NewSimpleBuffer(skyhook.DetectionType)
+	buf := skyhook.NewSimpleBuffer(skyhook.DetectionType, parents[0].Freq())
 
 	parseLines := func(lines []string) []skyhook.Detection {
 		var boxes []skyhook.Detection
@@ -98,7 +98,7 @@ func (m *Yolov3) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.
 	go func() {
 		fname := fmt.Sprintf("%s/%d.jpg", os.TempDir(), rand.Int63())
 		defer os.Remove(fname)
-		PerFrame(parents, slice, buf, skyhook.VideoType, func(idx int, data skyhook.Data, buf skyhook.DataBuffer) error {
+		PerFrame(parents, slice, buf, skyhook.VideoType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
 			im := data.(skyhook.VideoData)[0]
 			if err := ioutil.WriteFile(fname, im.AsJPG(), 0644); err != nil {
 				return err

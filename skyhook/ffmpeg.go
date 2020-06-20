@@ -169,7 +169,7 @@ type VideoReader interface {
 }
 
 type ffmpegReader struct {
-	cmd Cmd
+	cmd *Cmd
 	stdout io.ReadCloser
 	width int
 	height int
@@ -195,33 +195,32 @@ func parseFfmpegTime(str string) int {
 	}
 }
 
-func ReadFfmpeg(fname string, start int, end int, width int, height int) ffmpegReader {
-	log.Printf("[ffmpeg] from %s extract frames [%d:%d) %dx%d", fname, start, end, width, height)
+func ReadFfmpeg(fname string, start int, end int, opts ReadVideoOptions) ffmpegReader {
+	log.Printf("[ffmpeg] from %s extract frames [%d:%d) %dx%d", fname, start, end, opts.Scale[0], opts.Scale[1])
 
 	cmd := Command(
-		"ffmpeg", CommandOptions{NoStdin: true, OnlyDebug: true},
+		"ffmpeg-read", CommandOptions{NoStdin: true, OnlyDebug: true},
 		"ffmpeg",
 		"-ss", ffmpegTime(start),
 		"-i", fname,
 		"-to", ffmpegTime(end-start),
 		"-c:v", "rawvideo", "-pix_fmt", "rgb24", "-f", "rawvideo",
-		"-vf", fmt.Sprintf("scale=%dx%d", width, height),
+		"-vf", fmt.Sprintf("scale=%dx%d,fps=%d/%d", opts.Scale[0], opts.Scale[1], FPS, opts.Sample),
 		"-",
 	)
 
- 	return ffmpegReader{
- 		cmd: cmd,
- 		stdout: cmd.Stdout(),
- 		width: width,
- 		height: height,
- 		buf: make([]byte, width*height*3),
- 	}
+	return ffmpegReader{
+		cmd: cmd,
+		stdout: cmd.Stdout(),
+		width: opts.Scale[0],
+		height: opts.Scale[1],
+		buf: make([]byte, opts.Scale[0]*opts.Scale[1]*3),
+	}
 }
 
 func (rd ffmpegReader) Read() (Image, error) {
 	_, err := io.ReadFull(rd.stdout, rd.buf)
 	if err != nil {
-		rd.Close()
 		return Image{}, err
 	}
 	buf := make([]byte, len(rd.buf))
@@ -264,34 +263,30 @@ func (rd *chanReader) Close() {
 	}()
 }
 
-func ReadVideo(item Item, slice Slice) VideoReader {
+type ReadVideoOptions struct {
+	Scale [2]int
+	Sample int
+}
+
+func ReadVideo(item Item, slice Slice, opts ReadVideoOptions) VideoReader {
+	if opts.Scale[0] == 0 {
+		opts.Scale = [2]int{item.Width, item.Height}
+	}
+	if opts.Sample == 0 {
+		opts.Sample = 1
+	}
 	if item.Format == "jpeg" {
-		return ReadJpegParallel(item, slice.Start - item.Slice.Start, slice.End - item.Slice.Start, 4)
+		return ReadJpegParallel(item, slice.Start - item.Slice.Start, slice.End - item.Slice.Start, 4, opts)
 	} else {
-		return ReadFfmpeg(item.Fname(0), slice.Start - item.Slice.Start, slice.End - item.Slice.Start, item.Width, item.Height)
+		return ReadFfmpeg(item.Fname(0), slice.Start - item.Slice.Start, slice.End - item.Slice.Start, opts)
 	}
 }
 
-func GetFrames(item Item, slice Slice) ([]Image, error) {
-	rd := ReadVideo(item, slice)
-	var frames []Image
-	for {
-		im, err := rd.Read()
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-		frames = append(frames, im)
-	}
-	return frames, nil
-}
-
-func MakeVideo(rd VideoReader, width int, height int) (io.ReadCloser, Cmd) {
+func MakeVideo(rd VideoReader, width int, height int) (io.ReadCloser, *Cmd) {
 	log.Printf("[ffmpeg] make video (%dx%d)", width, height)
 
 	cmd := Command(
-		"ffmpeg", CommandOptions{OnlyDebug: true},
+		"ffmpeg-mkvid", CommandOptions{OnlyDebug: true},
 		"ffmpeg", "-f", "rawvideo",
 		"-s", fmt.Sprintf("%dx%d", width, height),
 		//"-r", fmt.Sprintf("%v", FPS),

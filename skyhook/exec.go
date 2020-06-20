@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -514,7 +513,7 @@ func (e *QueryExecutor) Run(vector []*Series, slice Slice, callback func([][]Dat
 					if err != nil {
 						return
 					}
-					vn.Series.WriteItem(slice, data)
+					vn.Series.WriteItem(slice, data, rd.Freq())
 					e.stats[vn.Node.ID] = NodeStats{
 						samples: append(e.stats[vn.Node.ID].samples, time.Now().Sub(start)),
 					}
@@ -593,7 +592,7 @@ func init() {
 	http.HandleFunc("/queries/node", func(w http.ResponseWriter, r *http.Request) {
 		// get or update a node
 		r.ParseForm()
-		nodeID, _ := strconv.Atoi(r.Form.Get("id"))
+		nodeID := ParseInt(r.Form.Get("id"))
 		node := GetNode(nodeID)
 		if node == nil {
 			w.WriteHeader(404)

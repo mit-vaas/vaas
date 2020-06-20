@@ -12,59 +12,101 @@ Vue.component('new-node-modal', {
 					ID: "models",
 					Name: "Models",
 					Exts: [
-						{ID: "yolov3", Name: "YOLOv3", Description: "Fast Object Detector", Type: "detection", Parents: ["detection"]},
+						{
+							ID: "yolov3",
+							Name: "YOLOv3",
+							Description: "Fast Object Detector",
+							Type: "detection",
+							Parents: ["detection"],
+						},
 					],
 				},
 				{
 					ID: "filters",
 					Name: "Filters",
 					Exts: [
-						{ID: "filter-detection", Name: "Detection Filter", Description: "Filter Detections by Score or Category", Type: "detection", Parents: ["detection"]},
-						{ID: "filter-track", Name: "Track Filter", Description: "Filter Tracks based on Boxes", Type: "track", Parents: ["track"]},
+						{
+							ID: "filter-detection",
+							Name: "Detection Filter",
+							Description: "Filter Detections by Score or Category",
+							Type: "detection",
+							Parents: ["detection"],
+						},
+						{
+							ID: "filter-track",
+							Name: "Track Filter",
+							Description: "Filter Tracks based on Boxes",
+							Type: "track",
+							Parents: ["track"],
+						},
 					],
 				},
 				{
 					ID: "heuristics",
 					Name: "Heuristics",
 					Exts: [
-						{ID: "iou", Name: "IOU", Description: "Simple Overlap-based Multi-Object Tracker", Type: "track", Parents: ["detection"]},
+						{
+							ID: "iou",
+							Name: "IOU",
+							Description: "Simple Overlap-based Multi-Object Tracker",
+							Type: "track",
+							Parents: ["detection"],
+						},
 					],
 				},
 				{
 					ID: "video",
 					Name: "Video Manipulation",
 					Exts: [
-						{ID: "crop", Name: "Crop", Description: "Crop video", Type: "video", Parents: ["video"]},
-						{ID: "rescale", Name: "Re-scale", Description: "Re-scale video", Type: "video", Parents: ["video"]},
+						{
+							ID: "crop",
+							Name: "Crop",
+							Description: "Crop video",
+							Type: "video",
+							Parents: ["video"],
+						},
+						{
+							ID: "rescale",
+							Name: "Re-scale",
+							Description: "Re-scale video",
+							Type: "video",
+							Parents: ["video"],
+						},
 					],
 				},
 				{
 					ID: "custom",
 					Name: "Custom",
 					Exts: [
-						{ID: "python", Name: "Python", Description: "Python function"},
+						{
+							ID: "python",
+							Name: "Python",
+							Description: "Python function",
+						},
 					],
 				},
 				{
 					ID: "misc",
 					Name: "Miscellaneous",
 					Exts: [
-						{ID: "downsample", Name: "Downsample", Description: "Downsample inputs to lower framerate"},
+						{
+							ID: "downsample",
+							Name: "Downsample",
+							Description: "Downsample inputs to lower framerate",
+						},
 					],
 				},
 			],
 		};
 	},
 	props: ['query_id'],
-	created: function() {
-		this.newNodeFields.query_id = this.query_id;
-	},
 	mounted: function() {
 		$(this.$refs.modal).modal('show');
 	},
 	methods: {
 		createNode: function() {
 			var params = {
+				query_id: this.query_id,
 				name: this.newNodeFields.name,
 				parents: this.newNodeFields.parents,
 				type: this.newNodeFields.type,
@@ -77,6 +119,9 @@ Vue.component('new-node-modal', {
 		},
 		selectExt: function(ext) {
 			this.newNodeFields.ext = ext;
+			if(ext.Type) {
+				this.newNodeFields.type = ext.Type;
+			}
 		},
 	},
 	template: `

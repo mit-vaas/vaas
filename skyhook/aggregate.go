@@ -120,7 +120,7 @@ func init() {
 			if im == nil {
 				slice := Slice{l.Slice.Segment, l.Slice.Start, l.Slice.Start+1}
 				bgItem := l.Background.GetItem(slice)
-				rd := ReadVideo(*bgItem,  slice)
+				rd := ReadVideo(*bgItem,  slice, ReadVideoOptions{})
 				x, err := rd.Read()
 				rd.Close()
 				if err != nil {

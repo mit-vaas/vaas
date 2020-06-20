@@ -43,7 +43,7 @@ Vue.component('node-edit-crop', {
 				right: parseInt(this.right),
 				bottom: parseInt(this.bottom),
 			});
-			$.post('/node?id='+this.initNode.ID, {
+			$.post('/queries/node?id='+this.initNode.ID, {
 				code: code,
 			});
 		},

@@ -1,6 +1,7 @@
 package skyhook
 
 import (
+	"fmt"
 	"io"
 	"sync"
 )
@@ -12,7 +13,10 @@ type jpegReader struct {
 	pos int
 }
 
-func ReadJpeg(item Item, start int, end int) *jpegReader {
+func ReadJpeg(item Item, start int, end int, opts ReadVideoOptions) *jpegReader {
+	if opts.Scale[0] != 0 || opts.Sample != 1 {
+		panic(fmt.Errorf("jpegReader does not yet support rescale/resample"))
+	}
 	return &jpegReader{
 		item: item,
 		start: start,
@@ -43,7 +47,10 @@ type parallelJpegReader struct {
 	next int
 }
 
-func ReadJpegParallel(item Item, start int, end int, nthreads int) *parallelJpegReader {
+func ReadJpegParallel(item Item, start int, end int, nthreads int, opts ReadVideoOptions) *parallelJpegReader {
+	if opts.Scale[0] != 0 || opts.Sample != 1 {
+		panic(fmt.Errorf("jpegReader does not yet support rescale/resample"))
+	}
 	rd := &parallelJpegReader{
 		item: item,
 		start: start,

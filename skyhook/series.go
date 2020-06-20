@@ -61,6 +61,7 @@ type Item struct {
 
 	Width int
 	Height int
+	Freq int
 }
 
 func (slice Slice) String() string {
@@ -274,13 +275,13 @@ func pad6(x int) string {
 	return s
 }
 
-const ItemQuery = "SELECT id, segment_id, series_id, start, end, format, width, height FROM items"
+const ItemQuery = "SELECT id, segment_id, series_id, start, end, format, width, height, freq FROM items"
 
 func itemListHelper(rows *Rows) []Item {
 	var items []Item
 	for rows.Next() {
 		item := Item{Series: &Series{}}
-		rows.Scan(&item.ID, &item.Slice.Segment.ID, &item.Series.ID, &item.Slice.Start, &item.Slice.End, &item.Format, &item.Width, &item.Height)
+		rows.Scan(&item.ID, &item.Slice.Segment.ID, &item.Series.ID, &item.Slice.Start, &item.Slice.End, &item.Format, &item.Width, &item.Height, &item.Freq)
 		items = append(items, item)
 	}
 	for i := range items {
@@ -308,10 +309,10 @@ func GetItem(id int) *Item {
 	}
 }
 
-func (series Series) AddItem(slice Slice, format string, videoDims [2]int) *Item {
+func (series Series) AddItem(slice Slice, format string, videoDims [2]int, freq int) *Item {
 	res := db.Exec(
-		"INSERT INTO items (segment_id, series_id, start, end, format, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		slice.Segment.ID, series.ID, slice.Start, slice.End, format, videoDims[0], videoDims[1],
+		"INSERT INTO items (segment_id, series_id, start, end, format, width, height, freq) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		slice.Segment.ID, series.ID, slice.Start, slice.End, format, videoDims[0], videoDims[1], freq,
 	)
 	return GetItem(res.LastInsertId())
 }
@@ -398,7 +399,7 @@ func init() {
 			return
 		}
 		if contentType == "jpeg" || contentType == "mp4" {
-			rd := ReadVideo(*item, slice)
+			rd := ReadVideo(*item, slice, ReadVideoOptions{})
 			defer rd.Close()
 			if contentType == "jpeg" {
 				// return image

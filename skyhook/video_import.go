@@ -105,7 +105,7 @@ func ImportLocal(fname string) func(series Series) error {
 	return func(series Series) error {
 		// we will fix the frames/width/height later
 		segment := series.Timeline.AddSegment(filepath.Base(fname), 1, FPS)
-		item := series.AddItem(segment.ToSlice(), "mp4", [2]int{1920, 1080})
+		item := series.AddItem(segment.ToSlice(), "mp4", [2]int{1920, 1080}, 1)
 		err := Transcode(fname, item.Fname(0), series, 0)
 		if err != nil {
 			return err
@@ -118,7 +118,7 @@ func ImportLocal(fname string) func(series Series) error {
 func ImportYoutube(url string) func(series Series) error {
 	return func(series Series) error {
 		segment := series.Timeline.AddSegment(url, 1, FPS)
-		item := series.AddItem(segment.ToSlice(), "mp4", [2]int{1920, 1080})
+		item := series.AddItem(segment.ToSlice(), "mp4", [2]int{1920, 1080}, 1)
 
 		// download the video
 		log.Printf("[video_import (%s)] youtube: download video from %s", series.Name, url)

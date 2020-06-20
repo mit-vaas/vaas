@@ -12,6 +12,9 @@ func (d VideoData) Length() int {
 	return len(d)
 }
 func (d VideoData) EnsureLength(length int) Data {
+	for len(d) < length {
+		d = append(d, d[len(d)-1])
+	}
 	return d
 }
 func (d VideoData) Slice(i, j int) Data {

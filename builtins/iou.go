@@ -40,12 +40,12 @@ func NewIOU(node *skyhook.Node, query *skyhook.Query) skyhook.Executor {
 }
 
 func (m IOU) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
-	buf := skyhook.NewSimpleBuffer(skyhook.TrackType)
+	buf := skyhook.NewSimpleBuffer(skyhook.TrackType, parents[0].Freq())
 
 	go func() {
 		var nextID int = 1
 		activeTracks := make(map[int]*TrackWithID)
-		PerFrame(parents, slice, buf, skyhook.DetectionType, func(idx int, data skyhook.Data, buf skyhook.DataBuffer) error {
+		PerFrame(parents, slice, buf, skyhook.DetectionType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
 			detections := data.(skyhook.DetectionData)[0]
 			var out []skyhook.Detection
 

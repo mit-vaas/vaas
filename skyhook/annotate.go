@@ -45,7 +45,7 @@ func (item Item) Load(slice Slice) DataBuffer {
 	if item.Series.DataType == VideoType {
 		return VideoFileBuffer{item, slice}
 	}
-	buf := NewSimpleBuffer(item.Series.DataType)
+	buf := NewSimpleBuffer(item.Series.DataType, item.Freq)
 	go func() {
 		bytes, err := ioutil.ReadFile(item.Fname(0))
 		if err != nil {
@@ -76,9 +76,9 @@ func (series Series) Length() int {
 
 // Add label without adding a new clip.
 // Currently used by exec to store query outputs.
-func (series Series) WriteItem(slice Slice, data Data) *Item {
+func (series Series) WriteItem(slice Slice, data Data, freq int) *Item {
 	os.Mkdir(fmt.Sprintf("items/%d", series.ID), 0755)
-	item := series.AddItem(slice, "json", [2]int{0, 0})
+	item := series.AddItem(slice, "json", [2]int{0, 0}, freq)
 	log.Printf("[annotate series %d] add item %d for slice %v", series.ID, item.ID, slice)
 	item.UpdateData(data)
 	return item
@@ -219,7 +219,7 @@ func init() {
 		if request.Index == -1 {
 			segment := GetSegment(request.Slice.Segment.ID)
 			slice := Slice{*segment, request.Slice.Start, request.Slice.End}
-			series.WriteItem(slice, DetectionData(request.Labels))
+			series.WriteItem(slice, DetectionData(request.Labels), 1)
 			log.Printf("[annotate] add new label item to series %d", series.ID)
 			w.WriteHeader(200)
 			return
@@ -251,7 +251,7 @@ func init() {
 		if request.Index == -1 {
 			segment := GetSegment(request.Slice.Segment.ID)
 			slice := Slice{*segment, request.Slice.Start, request.Slice.End}
-			series.WriteItem(slice, ClassData(request.Labels))
+			series.WriteItem(slice, ClassData(request.Labels), 1)
 			log.Printf("[annotate] add new label item to series %d", series.ID)
 			w.WriteHeader(200)
 			return

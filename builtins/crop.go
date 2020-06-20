@@ -22,10 +22,10 @@ func NewCrop(node *skyhook.Node, query *skyhook.Query) skyhook.Executor {
 }
 
 func (m Crop) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
-	buf := skyhook.NewVideoBuffer()
+	buf := skyhook.NewVideoBuffer(parents[0].Freq())
 
 	go func() {
-		PerFrame(parents, slice, buf, skyhook.VideoType, func(idx int, data skyhook.Data, buf skyhook.DataBuffer) error {
+		PerFrame(parents, slice, buf, skyhook.VideoType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
 			im := data.(skyhook.VideoData)[0]
 			width := m.cfg.Right - m.cfg.Left
 			height := m.cfg.Bottom - m.cfg.Top

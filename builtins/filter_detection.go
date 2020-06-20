@@ -28,10 +28,10 @@ func NewDetectionFilter(node *skyhook.Node, query *skyhook.Query) skyhook.Execut
 }
 
 func (m DetectionFilter) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
-	buf := skyhook.NewVideoBuffer()
+	buf := skyhook.NewVideoBuffer(parents[0].Freq())
 
 	go func() {
-		PerFrame(parents, slice, buf, skyhook.DetectionType, func(idx int, data skyhook.Data, buf skyhook.DataBuffer) error {
+		PerFrame(parents, slice, buf, skyhook.DetectionType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
 			detections := data.(skyhook.DetectionData)[0]
 			var ndetections []skyhook.Detection
 			for _, d := range detections {

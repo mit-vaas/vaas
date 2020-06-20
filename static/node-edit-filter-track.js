@@ -50,7 +50,7 @@ Vue.component('node-edit-filter-track', {
 				Shapes: this.shapes,
 				Order: this.orderMatters == 'yes',
 			});
-			$.post('/node?id='+this.initNode.ID, {
+			$.post('/queries/node?id='+this.initNode.ID, {
 				code: code,
 			});
 		},

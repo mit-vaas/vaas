@@ -14,14 +14,14 @@ import (
 type pendingSlice struct {
 	slice Slice
 	parents []DataReader
-	buf DataBuffer
+	buf DataWriter
 }
 
 type PythonExecutor struct {
 	query *Query
 	node *Node
 	tempFile *os.File
-	cmd Cmd
+	cmd *Cmd
 	stdin io.WriteCloser
 	stdout io.ReadCloser
 	pending map[int]*pendingSlice
@@ -73,11 +73,12 @@ func (e *PythonExecutor) Run(parents []DataReader, slice Slice) DataBuffer {
 	e.mu.Lock()
 	id := e.counter
 	e.counter++
-	var buf DataBuffer
+	var buf DataWriter
+	freq := MinFreq(parents)
 	if e.node.Type == VideoType {
-		buf = NewVideoBuffer()
+		buf = NewVideoBuffer(freq)
 	} else {
-		buf = NewSimpleBuffer(e.node.Type)
+		buf = NewSimpleBuffer(e.node.Type, freq)
 	}
 	ps := &pendingSlice{slice, parents, buf}
 	e.pending[id] = ps
@@ -119,7 +120,12 @@ func (e *PythonExecutor) Run(parents []DataReader, slice Slice) DataBuffer {
 			e.writeLock.Unlock()
 			return nil
 		}
-		ReadMultiple(slice.Length(), parents, f)
+		err := ReadMultiple(slice.Length(), parents[0].Freq(), parents, f)
+		if err != nil {
+			buf.Error(err)
+			return
+		}
+		buf.Close()
 	}()
 
 	return buf

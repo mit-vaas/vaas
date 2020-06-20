@@ -98,21 +98,26 @@ type Cmd struct {
 	stderr io.ReadCloser
 	// if not nil, means PrintStderr will send last line it got before exiting
 	stderrCh chan string
+	closed bool
 }
 
-func (cmd Cmd) Stdin() io.WriteCloser {
+func (cmd *Cmd) Stdin() io.WriteCloser {
 	return cmd.stdin
 }
 
-func (cmd Cmd) Stdout() io.ReadCloser {
+func (cmd *Cmd) Stdout() io.ReadCloser {
 	return cmd.stdout
 }
 
-func (cmd Cmd) Stderr() io.ReadCloser {
+func (cmd *Cmd) Stderr() io.ReadCloser {
 	return cmd.stderr
 }
 
-func (cmd Cmd) Wait() error {
+func (cmd *Cmd) Wait() error {
+	if cmd.closed {
+		panic(fmt.Errorf("closed twice"))
+	}
+	cmd.closed = true
 	if cmd.stdin != nil {
 		cmd.stdin.Close()
 	}
@@ -130,7 +135,7 @@ func (cmd Cmd) Wait() error {
 	return err
 }
 
-func (cmd Cmd) printStderr(onlyDebug bool) {
+func (cmd *Cmd) printStderr(onlyDebug bool) {
 	rd := bufio.NewReader(cmd.stderr)
 	var lastLine string
 	for {
@@ -146,9 +151,7 @@ func (cmd Cmd) printStderr(onlyDebug bool) {
 			log.Printf("[%s] %s", cmd.prefix, line)
 		}
 	}
-	if cmd.stderrCh != nil {
-		cmd.stderrCh <- lastLine
-	}
+	cmd.stderrCh <- lastLine
 }
 
 type CommandOptions struct {
@@ -160,7 +163,7 @@ type CommandOptions struct {
 	OnlyDebug bool
 }
 
-func Command(prefix string, opts CommandOptions, command string, args ...string) Cmd {
+func Command(prefix string, opts CommandOptions, command string, args ...string) *Cmd {
 	log.Printf("[util] %s %v", command, args)
 	cmd := exec.Command(command, args...)
 	var stdin io.WriteCloser
@@ -193,7 +196,7 @@ func Command(prefix string, opts CommandOptions, command string, args ...string)
 	if err := cmd.Start(); err != nil {
 		panic(err)
 	}
-	mycmd := Cmd{
+	mycmd := &Cmd{
 		prefix: prefix,
 		cmd: cmd,
 		stdin: stdin,

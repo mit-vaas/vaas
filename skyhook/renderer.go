@@ -96,7 +96,7 @@ func RenderFrames(canvas Image, datas [][]Data, f func(int)) {
 
 func (r *VideoRenderer) render() {
 	ch := make(chan Image)
-	var cmd Cmd
+	var cmd *Cmd
 	var stdout io.ReadCloser
 	var canvas *Image
 
@@ -197,9 +197,16 @@ func (r *VideoRenderer) render() {
 		return nil
 	}
 
-	ReadMultiple(r.slice.Length(), flatInputs, f)
+	err := ReadMultiple(r.slice.Length(), 1, flatInputs, f)
 	close(ch)
 	<- donech
+
+	if err != nil {
+		r.setErr(err)
+		log.Printf("[renderer] error rendering: %v", err)
+		return
+	}
+
 	if r.opts.ProgressCallback != nil {
 		r.opts.ProgressCallback(100)
 	}

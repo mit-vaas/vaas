@@ -56,7 +56,7 @@ func NewTrackFilter(node *skyhook.Node, query *skyhook.Query) skyhook.Executor {
 }
 
 func (m TrackFilter) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
-	buf := skyhook.NewVideoBuffer()
+	buf := skyhook.NewVideoBuffer(parents[0].Freq())
 
 	go func() {
 		data, err := parents[0].Read(slice.Length())
@@ -64,6 +64,7 @@ func (m TrackFilter) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyh
 			buf.Error(err)
 			return
 		}
+		parents[0].Close()
 		detections := data.(skyhook.TrackData)
 		tracks := skyhook.DetectionsToTracks(detections)
 		var out [][]skyhook.DetectionWithFrame

@@ -63,7 +63,8 @@ func init() {
 		format TEXT,
 		-- set if video
 		width INTEGER NOT NULL DEFAULT 0,
-		height INTEGER NOT NULL DEFAULT 0
+		height INTEGER NOT NULL DEFAULT 0,
+		freq INTEGER NOT NULL DEFAULT 1
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS nodes (
 		id INTEGER PRIMARY KEY ASC,
