@@ -218,11 +218,6 @@ Vue.component('util-video-draw-shape', {
 			}
 		},
 	},
-	filters: {
-		capitalize: function(value) {
-			return value.charAt(0).toUpperCase() + value.slice(1);
-		},
-	},
 	template: `
 <div>
 	<form v-if="modeOptions.length > 1" class="form-inline">
