@@ -1,4 +1,4 @@
-html, body, #app, #nodes-panel {
+html, body, #app, #queries-panel {
 	height: 100%;
 }
 
@@ -74,8 +74,25 @@ html, body, #app, #nodes-panel {
 	width: 100%;
 }
 
-#n-edit-div {
+/* queries panel */
+
+#q-div {
+	display: flex;
+	flex-flow: row;
+}
+
+#q-view {
+	flex-grow: 1;
+}
+
+#q-node-edit-container {
 	height: 100%;
+	display: flex;
+	flex-flow: column;
+}
+
+#q-node-edit-div {
+	flex-grow: 1;
 }
 
 /* explore panel */

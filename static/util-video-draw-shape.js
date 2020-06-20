@@ -51,7 +51,7 @@ Vue.component('util-video-draw-shape', {
 		render: function() {
 			this.curDesc = '';
 			var stage = new Konva.Stage({
-				container: '#konva',
+				container: this.$refs.layer,
 				width: this.item.Width,
 				height: this.item.Height,
 			});
@@ -240,7 +240,7 @@ Vue.component('util-video-draw-shape', {
 		}"
 		>
 		<img :src="item.imageURL" :width="item.Width" :height="item.Height" />
-		<div id="konva" class="konva" ref="layer"></div>
+		<div class="konva" ref="layer"></div>
 	</div>
 	<div>
 		<p>{{ curDesc }}</p>

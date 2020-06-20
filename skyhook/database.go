@@ -68,10 +68,12 @@ func init() {
 	db.Exec(`CREATE TABLE IF NOT EXISTS nodes (
 		id INTEGER PRIMARY KEY ASC,
 		name TEXT NOT NULL,
+		parent_types TEXT NOT NULL,
 		parents TEXT NOT NULL,
 		type TEXT NOT NULL,
 		ext TEXT,
-		code TEXT NOT NULL
+		code TEXT NOT NULL,
+		query_id INTEGER REFERENCES queries(id)
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS vnodes (
 		id INTEGER PRIMARY KEY ASC,
@@ -86,7 +88,8 @@ func init() {
 		id INTEGER PRIMARY KEY ASC,
 		name TEXT NOT NULL DEFAULT '',
 		outputs TEXT NOT NULL DEFAULT '',
-		selector INTEGER REFERENCES nodes(id)
+		selector INTEGER REFERENCES nodes(id),
+		render_meta TEXT NOT NULL DEFAULT ''
 	)`)
 }
 

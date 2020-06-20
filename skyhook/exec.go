@@ -20,10 +20,7 @@ const (
 )
 type Parent struct {
 	Type ParentType
-
 	NodeID int
-	Node *Node
-
 	SeriesIdx int
 }
 
@@ -52,30 +49,36 @@ var Executors = map[string]func(*Node, *Query) Executor{}
 type Node struct {
 	ID int
 	Name string
-	ParentSpecs []Parent // parents without *Node filled in
+	ParentTypes []DataType
+	Parents []Parent
 	Type DataType
 	Ext string
 	Code string
+	QueryID int
 
-	Parents []Parent
 }
 
-const NodeQuery = "SELECT id, name, parents, type, ext, code FROM nodes"
+const NodeQuery = "SELECT id, name, parent_types, parents, type, ext, code, query_id FROM nodes"
 
 func nodeListHelper(rows *Rows) []*Node {
 	nodes := []*Node{}
 	for rows.Next() {
 		var node Node
-		var parents string
-		rows.Scan(&node.ID, &node.Name, &parents, &node.Type, &node.Ext, &node.Code)
-		node.ParentSpecs = ParseParents(parents)
+		var parentTypes, parents string
+		rows.Scan(&node.ID, &node.Name, &parentTypes, &parents, &node.Type, &node.Ext, &node.Code, &node.QueryID)
+		if parentTypes != "" {
+			for _, dt := range strings.Split(parentTypes, ",") {
+				node.ParentTypes = append(node.ParentTypes, DataType(dt))
+			}
+		}
+		node.Parents = ParseParents(parents)
 		nodes = append(nodes, &node)
 	}
 	return nodes
 }
 
-func ListNodes() []*Node {
-	rows := db.Query(NodeQuery)
+func ListNodesByQuery(query *Query) []*Node {
+	rows := db.Query(NodeQuery + " WHERE query_id = ?", query.ID)
 	return nodeListHelper(rows)
 }
 
@@ -83,30 +86,9 @@ func GetNode(id int) *Node {
 	rows := db.Query(NodeQuery + " WHERE id = ?", id)
 	nodes := nodeListHelper(rows)
 	if len(nodes) == 1 {
-		nodes[0].Load()
 		return nodes[0]
 	} else {
 		return nil
-	}
-}
-
-func (node *Node) Load() {
-	node.LoadMap(map[int]*Node{})
-}
-
-func (node *Node) LoadMap(m map[int]*Node) {
-	populate := len(node.Parents) == 0
-	m[node.ID] = node
-	for _, parent := range node.ParentSpecs {
-		if parent.Type == NodeParent {
-			if m[parent.NodeID] == nil {
-				GetNode(parent.NodeID).LoadMap(m)
-			}
-			parent.Node = m[parent.NodeID]
-		}
-		if populate {
-			node.Parents = append(node.Parents, parent)
-		}
 	}
 }
 
@@ -116,6 +98,22 @@ func (node *Node) ListVNodes() []*VNode {
 
 func (node *Node) Exec(query *Query) Executor {
 	return Executors[node.Ext](node, query)
+}
+
+func (node *Node) GetChildren(m map[int]*Node) []*Node {
+	var nodes []*Node
+	for _, other := range m {
+		for _, parent := range other.Parents {
+			if parent.Type != NodeParent {
+				continue
+			}
+			if parent.NodeID != node.ID {
+				continue
+			}
+			nodes = append(nodes, other)
+		}
+	}
+	return nodes
 }
 
 type VNode struct {
@@ -203,12 +201,16 @@ type Plan struct {
 	// but we could always implement it as a ReplaceOptimization if desired.
 }
 
+// Metadata for rendering query and its nodes on the front-end query editor.
+type QueryRenderMeta map[string][2]int
+
 type Query struct {
 	ID int
 	Name string
 	Plan *Plan
 	OutputsStr string
 	SelectorID *int
+	RenderMeta QueryRenderMeta
 
 	Outputs [][]Parent
 	Selector *Node
@@ -216,31 +218,18 @@ type Query struct {
 	Nodes map[int]*Node
 }
 
-const QueryQuery = "SELECT id, name, outputs, selector FROM queries"
+const QueryQuery = "SELECT id, name, outputs, selector, render_meta FROM queries"
 
 func queryListHelper(rows *Rows) []*Query {
 	queries := []*Query{}
 	for rows.Next() {
 		var query Query
-		rows.Scan(&query.ID, &query.Name, &query.OutputsStr, &query.SelectorID)
-		queries = append(queries, &query)
-	}
-	for _, query := range queries {
-		sections := strings.Split(query.OutputsStr, ";")
-		query.Outputs = make([][]Parent, len(sections))
-		for i, section := range sections {
-			query.Outputs[i] = ParseParents(section)
-			for j, output := range query.Outputs[i] {
-				if output.Type != NodeParent {
-					continue
-				}
-				node := GetNode(output.NodeID)
-				if node == nil {
-					panic(fmt.Errorf("no node with ID %d", output.NodeID))
-				}
-				query.Outputs[i][j].Node = node
-			}
+		var renderMeta string
+		rows.Scan(&query.ID, &query.Name, &query.OutputsStr, &query.SelectorID, &renderMeta)
+		if renderMeta != "" {
+			JsonUnmarshal([]byte(renderMeta), &query.RenderMeta)
 		}
+		queries = append(queries, &query)
 	}
 	return queries
 }
@@ -261,37 +250,40 @@ func ListQueries() []*Query {
 }
 
 func (query *Query) FlatOutputs() []*Node {
+	query.Load()
 	var flat []*Node
 	for _, outputs := range query.Outputs {
 		for _, output := range outputs {
 			if output.Type != NodeParent {
 				continue
 			}
-			flat = append(flat, output.Node)
+			flat = append(flat, query.Nodes[output.NodeID])
 		}
 	}
 	return flat
 }
 
 func (query *Query) Load() {
-	if len(query.Nodes) > 0 {
+	if query.Nodes != nil {
 		return
 	}
-	m := make(map[int]*Node)
-	for _, node := range query.FlatOutputs() {
-		m[node.ID] = node
+
+	query.Nodes = make(map[int]*Node)
+	for _, node := range ListNodesByQuery(query) {
+		query.Nodes[node.ID] = node
 	}
-	for _, node := range query.FlatOutputs() {
-		node.LoadMap(m)
+
+	// load output and selector
+	if query.OutputsStr != "" {
+		sections := strings.Split(query.OutputsStr, ";")
+		query.Outputs = make([][]Parent, len(sections))
+		for i, section := range sections {
+			query.Outputs[i] = ParseParents(section)
+		}
 	}
 	if query.SelectorID != nil {
-		if m[*query.SelectorID] == nil {
-			node := GetNode(*query.SelectorID)
-			node.LoadMap(m)
-		}
-		query.Selector = m[*query.SelectorID]
+		query.Selector = query.Nodes[*query.SelectorID]
 	}
-	query.Nodes = m
 }
 
 func (query *Query) GetOutputVectors(inputs []*Series) [][]*Series {
@@ -300,7 +292,8 @@ func (query *Query) GetOutputVectors(inputs []*Series) [][]*Series {
 	for i, l := range query.Outputs {
 		for _, output := range l {
 			if output.Type == NodeParent {
-				vn := GetOrCreateVNode(output.Node, inputs)
+				node := query.Nodes[output.NodeID]
+				vn := GetOrCreateVNode(node, inputs)
 				outputs[i] = append(outputs[i], vn.Series)
 			} else if output.Type == SeriesParent {
 				outputs[i] = append(outputs[i], inputs[output.SeriesIdx])
@@ -444,11 +437,11 @@ func (e *QueryExecutor) Run(vector []*Series, slice Slice, callback func([][]Dat
 			for _, parent := range node.Parents {
 				if parent.Type != NodeParent {
 					continue
-				} else if seen[parent.Node.ID] {
+				} else if seen[parent.NodeID] {
 					continue
 				}
-				seen[parent.Node.ID] = true
-				q = append(q, parent.Node)
+				seen[parent.NodeID] = true
+				q = append(q, e.query.Nodes[parent.NodeID])
 			}
 		}
 		if len(needed) == 0 {
@@ -461,7 +454,7 @@ func (e *QueryExecutor) Run(vector []*Series, slice Slice, callback func([][]Dat
 				if parent.Type == SeriesParent {
 					parents = append(parents, getInputBuffer(parent.SeriesIdx).Reader())
 				} else if parent.Type == NodeParent {
-					buf := cachedOutputs[parent.Node.ID]
+					buf := cachedOutputs[parent.NodeID]
 					if buf == nil {
 						return nil
 					}
@@ -574,26 +567,31 @@ func (e *QueryExecutor) Wait() {
 }
 
 func init() {
-	http.HandleFunc("/nodes", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/queries/nodes", func(w http.ResponseWriter, r *http.Request) {
+		// list nodes for a query, or create new node
+		r.ParseForm()
+		queryID := ParseInt(r.Form.Get("query_id"))
+		query := GetQuery(queryID)
+
 		if r.Method == "GET" {
-			JsonResponse(w, ListNodes())
+			JsonResponse(w, ListNodesByQuery(query))
 			return
 		} else if r.Method != "POST" {
 			w.WriteHeader(404)
 			return
 		}
 
-		r.ParseForm()
 		name := r.PostForm.Get("name")
 		parents := r.PostForm.Get("parents")
 		t := r.PostForm.Get("type")
 		ext := r.PostForm.Get("ext")
 		db.Exec(
-			"INSERT INTO nodes (name, parents, type, ext, code) VALUES (?, ?, ?, ?, '')",
-			name, parents, t, ext,
+			"INSERT INTO nodes (name, parents, type, ext, code, query_id) VALUES (?, ?, ?, ?, '', ?)",
+			name, parents, t, ext, queryID,
 		)
 	})
-	http.HandleFunc("/node", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/queries/node", func(w http.ResponseWriter, r *http.Request) {
+		// get or update a node
 		r.ParseForm()
 		nodeID, _ := strconv.Atoi(r.Form.Get("id"))
 		node := GetNode(nodeID)
@@ -612,33 +610,21 @@ func init() {
 		code := r.PostForm.Get("code")
 		db.Exec("UPDATE nodes SET code = ? WHERE id = ?", code, node.ID)
 
+		query := GetQuery(node.QueryID)
+		query.Load()
+
 		// delete all saved labels at the vnodes for this node
 		// and recursively delete for vnodes that depend on that vnode
 		affectedNodes := map[int]*Node{node.ID: node}
 		queue := []*Node{node}
-		allNodes := ListNodes()
 		for len(queue) > 0 {
 			head := queue[0]
 			queue = queue[1:]
 			// find all children of head
-			for _, node := range allNodes {
+			for _, node := range head.GetChildren(query.Nodes) {
 				if affectedNodes[node.ID] != nil {
 					continue
 				}
-				isChild := false
-				for _, parent := range node.ParentSpecs {
-					if parent.Type != NodeParent {
-						continue
-					}
-					if parent.NodeID != head.ID {
-						continue
-					}
-					isChild = true
-				}
-				if !isChild {
-					continue
-				}
-
 				affectedNodes[node.ID] = node
 				queue = append(queue, node)
 			}
@@ -664,10 +650,38 @@ func init() {
 
 		r.ParseForm()
 		name := r.PostForm.Get("name")
-		outputs := r.PostForm.Get("outputs")
+		res := db.Exec("INSERT INTO queries (name) VALUES (?)", name)
+		query := GetQuery(res.LastInsertId())
+		JsonResponse(w, query)
+	})
+
+	http.HandleFunc("/queries/query", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		query := GetQuery(ParseInt(r.Form.Get("query_id")))
+		if query == nil {
+			http.Error(w, "no such query", 404)
+			return
+		}
+		query.Load()
+		JsonResponse(w, query)
+	})
+
+	http.HandleFunc("/queries/render-meta", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+		type Request struct {
+			ID int
+			Meta QueryRenderMeta
+		}
+		var request Request
+		if err := JsonRequest(w, r, &request); err != nil {
+			return
+		}
 		db.Exec(
-			"INSERT INTO queries (name, outputs) VALUES (?, ?)",
-			name, outputs,
+				"UPDATE queries SET render_meta = ? WHERE id = ?",
+				string(JsonMarshal(request.Meta)), request.ID,
 		)
 	})
 
