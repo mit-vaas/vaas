@@ -4,11 +4,14 @@ Vue.component('queries-tab', {
 			queries: [],
 			nodes: [],
 			newQueryName: '',
-			selectedQuery: '',
+			selectedQueryID: '',
+			selectedQuery: null,
 			selectedNode: null,
 			showNewNodeModal: false,
 			nodeRects: {},
 			editor: '',
+
+			addParentFields: {},
 		};
 	},
 	props: ['tab'],
@@ -24,8 +27,8 @@ Vue.component('queries-tab', {
 			}
 			$.get('/queries', (queries) => {
 				this.queries = queries;
-				if(this.selectedQuery == '') {
-					this.selectedQuery = this.queries[0].ID;
+				if(this.selectedQueryID == '') {
+					this.selectedQueryID = this.queries[0].ID;
 					this.update();
 				}
 			});
@@ -35,19 +38,26 @@ Vue.component('queries-tab', {
 				this.newQueryName = '';
 				this.fetchQueries();
 				this.queries.push(query);
-				this.selectedQuery = query.ID;
+				this.selectedQueryID = query.ID;
 				this.update();
 			});
 		},
 		update: function() {
-			if(this.selectedQuery == '') {
+			if(this.selectedQueryID == '') {
 				return;
 			}
-			$.get('/queries/query?query_id='+this.selectedQuery, (query) => {
-				this.render(query);
+			$.get('/queries/query?query_id='+this.selectedQueryID, (query) => {
+				this.selectedQuery = query;
+				if(this.selectedNode && query.Nodes[this.selectedNode.ID]) {
+					this.selectNode(query.Nodes[this.selectedNode.ID]);
+				} else {
+					this.selectedNode = null;
+				}
+				this.render();
 			})
 		},
-		render: function(query) {
+		render: function() {
+			var query = this.selectedQuery;
 			var dims = [1000, 500];
 			var stage = new Konva.Stage({
 				container: this.$refs.layer,
@@ -109,6 +119,9 @@ Vue.component('queries-tab', {
 					strokeWidth: 1,
 					name: 'myrect',
 				});
+				if(this.selectedNode != null && 'n' + this.selectedNode.ID == id) {
+					rect.fill('salmon');
+				}
 				var group = new Konva.Group({
 					draggable: true,
 					x: meta[0],
@@ -164,7 +177,7 @@ Vue.component('queries-tab', {
 				})
 				group.on('click', (e) => {
 					e.cancelBubble = true;
-					this.selectedNode = node;
+					this.selectNode(node);
 					layer.find('.myrect').fill('lightblue');
 					rect.fill('salmon');
 					layer.draw();
@@ -172,22 +185,27 @@ Vue.component('queries-tab', {
 			}
 
 			stage.on('click', (e) => {
-				this.selectedNode = null;
+				this.selectNode(null);
 				layer.find('.myrect').fill('lightblue');
 				layer.draw();
 			});
 
 			// (3) render the arrows
-			var getClosestPoint = (group1, group2) => {
+			var getClosestPoint = (group1, group2, isdst) => {
 				var cx = group1.x();
 				var cy = group1.y();
 				var width = group1.mywidth;
 				var height = group1.myheight;
+				var padding = 0;
+				if(isdst) {
+					// add padding so arrow doesn't go into the rectangle
+					padding = 3;
+				}
 				var p1 = [
-					[cx, cy-height/2],
-					[cx, cy+height/2],
-					[cx-width/2, cy],
-					[cx+width/2, cy],
+					[cx, cy-height/2-padding],
+					[cx, cy+height/2+padding],
+					[cx-width/2-padding, cy],
+					[cx+width/2+padding, cy],
 				];
 				var p2 = [group2.x(), group2.y()];
 				var best = null;
@@ -215,8 +233,8 @@ Vue.component('queries-tab', {
 					} else if(parent.Type == 's') {
 						var src = 's'+parent.SeriesIdx;
 					}
-					var p1 = getClosestPoint(groups[src], groups[dst]);
-					var p2 = getClosestPoint(groups[dst], groups[src]);
+					var p1 = getClosestPoint(groups[src], groups[dst], false);
+					var p2 = getClosestPoint(groups[dst], groups[src], true);
 					var arrow = new Konva.Arrow({
 						points: [p1[0], p1[1], p2[0], p2[1]],
 						pointerLength: 10,
@@ -243,7 +261,7 @@ Vue.component('queries-tab', {
 					meta[gid] = [parseInt(groups[gid].x()), parseInt(groups[gid].y())];
 				}
 				var params = {
-					ID: this.selectedQuery,
+					ID: this.selectedQueryID,
 					Meta: meta,
 				};
 				$.ajax({
@@ -262,14 +280,15 @@ Vue.component('queries-tab', {
 						let mode = el[0];
 						let arrow = el[1];
 						let other = el[2];
-						let p1 = getClosestPoint(groups[gid], groups[other]);
-						let p2 = getClosestPoint(groups[other], groups[gid]);
-						let points;
+						let p1, p2;
 						if(mode == 'src') {
-							points = [p1[0], p1[1], p2[0], p2[1]];
+							p1 = getClosestPoint(groups[gid], groups[other], false);
+							p2 = getClosestPoint(groups[other], groups[gid], true);
 						} else {
-							points = [p2[0], p2[1], p1[0], p1[1]];
+							p1 = getClosestPoint(groups[other], groups[gid], false);
+							p2 = getClosestPoint(groups[gid], groups[other], true);
 						}
+						let points = [p1[0], p1[1], p2[0], p2[1]];
 						arrow.points(points);
 						layer.draw();
 					});
@@ -283,6 +302,16 @@ Vue.component('queries-tab', {
 			this.showNewNodeModal = false;
 			this.update();
 		},
+		selectNode: function(node) {
+			this.selectedNode = node;
+			if(node) {
+				node.parentSet = {};
+				node.Parents.forEach((parent) => {
+					node.parentSet[parent.Spec] = parent;
+				});
+			}
+			this.addParentFields = {spec: ''};
+		},
 		editNode: function() {
 			if(this.selectedNode.Ext == 'python') {
 				this.editor = 'node-edit-text';
@@ -290,9 +319,30 @@ Vue.component('queries-tab', {
 				this.editor = 'node-edit-' + this.selectedNode.Ext;
 			}
 		},
+		removeNode: function() {
+			$.post('/queries/node/remove', {id: this.selectedNode.ID}, () => {
+				this.update();
+			});
+		},
 		backFromEditing: function() {
 			this.editor = '';
 			this.update();
+		},
+		removeParent: function(spec) {
+			let parents = this.selectedNode.Parents.filter(parent => parent.Spec != spec);
+			let parts = parents.map((parent) => parent.Spec);
+			let parentsStr = parts.join(',');
+			$.post('/queries/node?id='+this.selectedNode.ID, {parents: parentsStr}, () => {
+				this.update();
+			});
+		},
+		addParent: function() {
+			let parts = this.selectedNode.Parents.map((parent) => parent.Spec);
+			parts.push(this.addParentFields.spec);
+			let parentsStr = parts.join(',');
+			$.post('/queries/node?id='+this.selectedNode.ID, {parents: parentsStr}, () => {
+				this.update();
+			});
 		},
 	},
 	watch: {
@@ -309,7 +359,7 @@ Vue.component('queries-tab', {
 		<div id="q-view" ref="view">
 			<form v-on:submit.prevent="createQuery" class="form-inline my-2">
 				<label class="ml-1">Query:</label>
-				<select v-model="selectedQuery" @change="update" class="form-control ml-1">
+				<select v-model="selectedQueryID" @change="update" class="form-control ml-1">
 					<option v-for="query in queries" :value="query.ID">{{ query.Name }}</option>
 				</select>
 				<button type="button" class="btn btn-danger ml-1">Remove</button>
@@ -319,12 +369,46 @@ Vue.component('queries-tab', {
 			<div ref="layer" style="position: absolute"></div>
 		</div>
 		<div>
-			<div>
+			<div class="my-2">
 				<button type="button" class="btn btn-primary" v-on:click="showNewNodeModal = true">New Node</button>
 				<button type="button" class="btn btn-primary" :disabled="selectedNode == null" v-on:click="editNode">Edit Node</button>
 			</div>
+			<hr />
+			<div v-if="selectedNode != null" class="my-2">
+				<div>Node {{ selectedNode.Name }}</div>
+				<div><button type="button" class="btn btn-danger" v-on:click="removeNode">Remove Node</button></div>
+				<div>
+					<table class="table table-sm">
+						<thead>
+							<tr><th colspan="2">Parents</th></tr>
+						</thead>
+						<tbody>
+							<tr v-for="parent in selectedNode.Parents">
+								<template v-if="parent.Type == 's'">
+									<td>Input {{ parent.SeriesIdx }}</td>
+								</template>
+								<template v-else-if="parent.Type == 'n'">
+									<td>{{ selectedQuery.Nodes[parent.NodeID].Name }}</td>
+								</template>
+								<td><button type="button" class="btn btn-danger btn-sm" v-on:click="removeParent(parent.Spec)">Remove</button></td>
+							</tr>
+							<tr>
+								<td>
+									<select v-model="addParentFields.spec" class="form-control">
+										<option v-if="!selectedNode.parentSet['s0']" value="s0">Input 0</option>
+										<template v-for="node in selectedQuery.Nodes">
+											<option v-if="!selectedNode.parentSet['n' + node.ID]" :value="'n' + node.ID">{{ node.Name }}</option>
+										</template>
+									</select>
+								</td>
+								<td><button type="button" class="btn btn-success btn-sm" v-on:click="addParent">Add</button></td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
 		</div>
-		<new-node-modal v-if="showNewNodeModal && selectedQuery != ''" :query_id="selectedQuery" v-on:closed="onNewNodeModalClosed"></new-node-modal>
+		<new-node-modal v-if="showNewNodeModal && selectedQueryID != ''" :query_id="selectedQueryID" v-on:closed="onNewNodeModalClosed"></new-node-modal>
 	</div>
 	<div v-else id="q-node-edit-container">
 		<div>

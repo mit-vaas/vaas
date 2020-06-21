@@ -18,15 +18,20 @@ const (
 	SeriesParent = "s"
 )
 type Parent struct {
+	Spec string
 	Type ParentType
 	NodeID int
 	SeriesIdx int
 }
 
 func ParseParents(str string) []Parent {
-	var parents []Parent
+	parents := []Parent{}
+	if str == "" {
+		return parents
+	}
 	for _, part := range strings.Split(str, ",") {
 		var parent Parent
+		parent.Spec = part
 		parent.Type = ParentType(part[0:1])
 		if parent.Type == NodeParent {
 			parent.NodeID = ParseInt(part[1:])
@@ -113,6 +118,40 @@ func (node *Node) GetChildren(m map[int]*Node) []*Node {
 		}
 	}
 	return nodes
+}
+
+func (node *Node) OnChange() {
+	// delete all saved labels at the vnodes for this node
+	// and recursively delete for vnodes that depend on that vnode
+
+	query := GetQuery(node.QueryID)
+	query.Load()
+
+	affectedNodes := map[int]*Node{node.ID: node}
+	queue := []*Node{node}
+	for len(queue) > 0 {
+		head := queue[0]
+		queue = queue[1:]
+		// find all children of head
+		for _, node := range head.GetChildren(query.Nodes) {
+			if affectedNodes[node.ID] != nil {
+				continue
+			}
+			affectedNodes[node.ID] = node
+			queue = append(queue, node)
+		}
+	}
+
+	for _, node := range affectedNodes {
+		for _, vn := range node.ListVNodes() {
+			vn.Clear()
+		}
+	}
+}
+
+func (node *Node) Remove() {
+	node.OnChange()
+	db.Exec("DELETE FROM nodes WHERE id = ?", node.ID)
 }
 
 type VNode struct {
@@ -524,6 +563,7 @@ func (e *QueryExecutor) Run(vector []*Series, slice Slice, callback func([][]Dat
 
 	e.wg.Add(1)
 	go func() {
+		defer e.wg.Done()
 		// if a selector is provided, first check it
 		if e.query.Selector != nil {
 			run([]*Node{e.query.Selector})
@@ -549,7 +589,6 @@ func (e *QueryExecutor) Run(vector []*Series, slice Slice, callback func([][]Dat
 		for _, buf := range cachedOutputs {
 			buf.Wait()
 		}
-		e.wg.Done()
 	}()
 }
 
@@ -589,6 +628,7 @@ func init() {
 			name, parents, t, ext, queryID,
 		)
 	})
+
 	http.HandleFunc("/queries/node", func(w http.ResponseWriter, r *http.Request) {
 		// get or update a node
 		r.ParseForm()
@@ -606,36 +646,31 @@ func init() {
 			return
 		}
 
-		code := r.PostForm.Get("code")
-		db.Exec("UPDATE nodes SET code = ? WHERE id = ?", code, node.ID)
-
-		query := GetQuery(node.QueryID)
-		query.Load()
-
-		// delete all saved labels at the vnodes for this node
-		// and recursively delete for vnodes that depend on that vnode
-		affectedNodes := map[int]*Node{node.ID: node}
-		queue := []*Node{node}
-		for len(queue) > 0 {
-			head := queue[0]
-			queue = queue[1:]
-			// find all children of head
-			for _, node := range head.GetChildren(query.Nodes) {
-				if affectedNodes[node.ID] != nil {
-					continue
-				}
-				affectedNodes[node.ID] = node
-				queue = append(queue, node)
-			}
+		if r.PostForm["code"] != nil {
+			db.Exec("UPDATE nodes SET code = ? WHERE id = ?", r.PostForm.Get("code"), node.ID)
 		}
-
-		for _, node := range affectedNodes {
-			for _, vn := range node.ListVNodes() {
-				vn.Clear()
-			}
+		if r.PostForm["parents"] != nil {
+			db.Exec("UPDATE nodes SET parents = ? WHERE id = ?", r.PostForm.Get("parents"), node.ID)
 		}
+		node.OnChange()
 
 		tasks.nodeUpdated(node)
+	})
+
+	http.HandleFunc("/queries/node/remove", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+		r.ParseForm()
+		nodeID := ParseInt(r.PostForm.Get("id"))
+		node := GetNode(nodeID)
+		if node == nil {
+			w.WriteHeader(404)
+			return
+		}
+		tasks.nodeUpdated(node)
+		node.Remove()
 	})
 
 	http.HandleFunc("/queries", func(w http.ResponseWriter, r *http.Request) {
