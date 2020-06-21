@@ -38,7 +38,7 @@ func (m Crop) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.Dat
 			outim := skyhook.NewImage(width, height)
 			for i := m.cfg.Left; i < m.cfg.Right; i++ {
 				for j := m.cfg.Top; j < m.cfg.Bottom; j++ {
-					outim.Set(i - m.cfg.Left, j - m.cfg.Top, im.Get(i, j))
+					outim.SetRGB(i - m.cfg.Left, j - m.cfg.Top, im.GetRGB(i, j))
 				}
 			}
 			buf.Write(skyhook.VideoData{outim})

@@ -194,6 +194,7 @@ Vue.component('new-node-modal', {
 									<option value="track">Track</option>
 									<option value="class">Class</option>
 									<option value="video">Video</option>
+									<option value="text">Text</option>
 								</select>
 							</template>
 						</div>

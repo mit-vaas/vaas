@@ -3,8 +3,12 @@ package skyhook
 import (
 	"bytes"
 	"image"
+	"image/color"
 	"image/jpeg"
 	"image/png"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/math/fixed"
 	"os"
 )
 
@@ -101,7 +105,7 @@ func (im Image) ToBytes() []byte {
 	return im.Bytes
 }
 
-func (im Image) Set(i int, j int, color [3]uint8) {
+func (im Image) SetRGB(i int, j int, color [3]uint8) {
 	if i < 0 || i >= im.Width || j < 0 || j >= im.Height {
 		return
 	}
@@ -110,7 +114,7 @@ func (im Image) Set(i int, j int, color [3]uint8) {
 	}
 }
 
-func (im Image) Get(i int, j int) [3]uint8 {
+func (im Image) GetRGB(i int, j int) [3]uint8 {
 	var color [3]uint8
 	for channel := 0; channel < 3; channel++ {
 		color[channel] = im.Bytes[(j*im.Width+i)*3+channel]
@@ -121,7 +125,7 @@ func (im Image) Get(i int, j int) [3]uint8 {
 func (im Image) FillRectangle(left, top, right, bottom int, color [3]uint8) {
 	for i := left; i < right; i++ {
 		for j := top; j < bottom; j++ {
-			im.Set(i, j, color)
+			im.SetRGB(i, j, color)
 		}
 	}
 }
@@ -146,7 +150,51 @@ func (im Image) DrawRectangle(left, top, right, bottom int, width int, color [3]
 func (im Image) DrawImage(left int, top int, other Image) {
 	for i := 0; i < other.Width; i++ {
 		for j := 0; j < other.Height; j++ {
-			im.Set(left+i, top+j, other.Get(i, j))
+			im.SetRGB(left+i, top+j, other.GetRGB(i, j))
 		}
 	}
+}
+
+func (im Image) DrawText(text RichText) {
+	c := color.RGBA{255, 255, 255, 255}
+	if text.X == 0 && text.Y == 0 {
+		text.X = 5
+		text.Y = 5
+	}
+	text.Y += 7 // center since height is 13
+	p := fixed.P(text.X, text.Y)
+	d := &font.Drawer{
+		Dst: im,
+		Src: image.NewUniform(c),
+		Face: basicfont.Face7x13,
+		Dot: p,
+	}
+	rect, _ := d.BoundString(text.Text)
+	sx, sy := rect.Min.X.Round(), rect.Min.Y.Round()
+	ex, ey := rect.Max.X.Round(), rect.Max.Y.Round()
+	im.FillRectangle(sx-3, sy-3, ex+3, ey+3, [3]uint8{0, 0, 0})
+	d.DrawString(text.Text)
+}
+
+// for image.Image
+
+func (im Image) Set(i int, j int, c color.Color) {
+	r, g, b, _ := c.RGBA()
+	r = r >> 8
+	g = g >> 8
+	b = b >> 8
+	im.SetRGB(i, j, [3]uint8{uint8(r), uint8(g), uint8(b)})
+}
+
+func (im Image) At(i int, j int) color.Color {
+	c := im.GetRGB(i, j)
+	return color.RGBA{c[0], c[1], c[2], 255}
+}
+
+func (im Image) ColorModel() color.Model {
+	return color.RGBAModel
+}
+
+func (im Image) Bounds() image.Rectangle {
+	return image.Rectangle{image.Point{0, 0}, image.Point{im.Width, im.Height}}
 }

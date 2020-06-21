@@ -1,8 +1,6 @@
 package skyhook
 
 import (
-	//"github.com/mitroadmaps/gomapinfer/image"
-
 	"bytes"
 	"io"
 	"log"
@@ -65,6 +63,11 @@ func RenderFrames(canvas Image, datas [][]Data, f func(int)) {
 					color = Colors[Mod(detection.TrackID, len(Colors))]
 				}
 				im.DrawRectangle(detection.Left, detection.Top, detection.Right, detection.Bottom, 2, color)
+			}
+		} else if data.Type() == TextType {
+			texts := data.(TextData)
+			for _, text := range texts {
+				im.DrawText(text)
 			}
 		}
 	}

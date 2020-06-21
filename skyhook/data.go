@@ -12,6 +12,7 @@ const (
 	TrackType = "track"
 	ClassType = "class"
 	VideoType = "video"
+	TextType = "text"
 )
 
 type DataImpl struct {
