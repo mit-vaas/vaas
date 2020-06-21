@@ -46,16 +46,14 @@ func (m *TaskManager) Schedule(task Task) {
 	}
 }
 
-func (m *TaskManager) nodeUpdated(node *Node) {
+func (m *TaskManager) queryUpdated(queryID int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for id, e := range m.activeQueries {
-		if e.query.Nodes[node.ID] == nil {
-			continue
-		}
-		e.Wait()
-		delete(m.activeQueries, id)
+	if m.activeQueries[queryID] == nil {
+		return
 	}
+	m.activeQueries[queryID].Wait()
+	delete(m.activeQueries, queryID)
 }
 
 type extraOutput struct {
@@ -165,6 +163,7 @@ func (ctx *TaskContext) ctxCallback(slice Slice, outputs [][]DataReader, err err
 	defer ctx.mu.Unlock()
 	if ctx.remaining <= 0 {
 		ctx.extras = append(ctx.extras, extraOutput{slice, outputs})
+		return
 	}
 	ctx.remaining--
 	ctx.callback(slice, outputs, err)

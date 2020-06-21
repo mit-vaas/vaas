@@ -120,12 +120,11 @@ func (e *PythonExecutor) Run(parents []DataReader, slice Slice) DataBuffer {
 			e.writeLock.Unlock()
 			return nil
 		}
-		err := ReadMultiple(slice.Length(), parents[0].Freq(), parents, f)
-		if err != nil {
-			buf.Error(err)
-			return
-		}
-		buf.Close()
+		// TODO: look at the return error
+		// currently we don't because buf is controlled by ReadLoop
+		ReadMultiple(slice.Length(), parents[0].Freq(), parents, f)
+
+		// we don't close buf here since ReadLoop will close it
 	}()
 
 	return buf
@@ -150,7 +149,7 @@ func (e *PythonExecutor) ReadLoop() {
 	for {
 		_, err := io.ReadFull(e.stdout, header)
 		if err != nil {
-			setErr(err)
+			setErr(fmt.Errorf("error reading from python: %v", err))
 			return
 		}
 		sliceIdx := int(binary.BigEndian.Uint32(header[0:4]))
@@ -160,7 +159,7 @@ func (e *PythonExecutor) ReadLoop() {
 		buf := make([]byte, size)
 		_, err = io.ReadFull(e.stdout, buf)
 		if err != nil {
-			setErr(err)
+			setErr(fmt.Errorf("error reading from python: %v", err))
 			return
 		}
 		var data Data

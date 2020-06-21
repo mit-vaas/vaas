@@ -272,7 +272,7 @@ func ReadMultiple(length int, targetFreq int, inputs []DataReader, callback func
 		for _, rd := range inputs {
 			data, err := rd.Peek(perIter/rd.Freq())
 			if err != nil {
-				return err
+				return fmt.Errorf("error from input peek: %v", err)
 			}
 			if available == -1 || data.Length()*rd.Freq() < available {
 				available = data.Length()*rd.Freq()
@@ -286,14 +286,14 @@ func ReadMultiple(length int, targetFreq int, inputs []DataReader, callback func
 			// collect the last partial output from the reader.
 			data, err := rd.Read((available+rd.Freq()-1)/rd.Freq())
 			if err != nil {
-				return err
+				return fmt.Errorf("error from input read: %v", err)
 			}
 			datas[i] = AdjustDataFreq(data, available, rd.Freq(), targetFreq)
 		}
 
 		err := callback(completed, datas)
 		if err != nil {
-			return err
+			return fmt.Errorf("error from callback: %v", err)
 		}
 
 		completed += available

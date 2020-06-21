@@ -59,10 +59,11 @@ Vue.component('queries-tab', {
 		render: function() {
 			var query = this.selectedQuery;
 			var dims = [1000, 500];
+			var scale = (this.$refs.view.offsetWidth-10) / dims[0];
 			var stage = new Konva.Stage({
 				container: this.$refs.layer,
-				width: dims[0],
-				height: dims[1],
+				width: parseInt(dims[0]*scale),
+				height: parseInt(dims[1]*scale),
 			});
 			var layer = new Konva.Layer();
 			var rescaleLayer = () => {
@@ -114,7 +115,6 @@ Vue.component('queries-tab', {
 					offsetY: text.offsetY(),
 					width: text.width(),
 					height: text.height(),
-					fill: 'lightblue',
 					stroke: 'black',
 					strokeWidth: 1,
 					name: 'myrect',
@@ -129,11 +129,32 @@ Vue.component('queries-tab', {
 				});
 				group.mywidth = text.width();
 				group.myheight = text.height();
+				group.myrect = rect;
 				group.add(rect);
 				group.add(text);
 				layer.add(group);
 				groups[id] = group;
-				return [rect, group];
+				return group;
+			};
+
+			var resetColors = () => {
+				for(let gid in groups) {
+					let rect = groups[gid].myrect;
+					if(gid[0] == 's') {
+						rect.fill('lightgreen');
+					} else {
+						rect.fill('lightblue');
+					}
+				}
+				this.selectedQuery.Outputs.forEach((section) => {
+					section.forEach((parent) => {
+						groups[parent.Spec].myrect.fill('mediumpurple');
+					});
+				});
+				if(this.selectedNode != null) {
+					groups['n'+this.selectedNode.ID].myrect.fill('salmon');
+				}
+				layer.draw();
 			};
 
 			// (1) render the vector inputs
@@ -165,9 +186,8 @@ Vue.component('queries-tab', {
 					meta = [500, 150+25*numDefault];
 					numDefault++;
 				}
-				let shapes = addGroup('n'+nodeID, `${node.Name} (${node.Ext})`, meta);
-				let rect = shapes[0];
-				let group = shapes[1];
+				let group = addGroup('n'+nodeID, `${node.Name} (${node.Ext})`, meta);
+				let rect = group.myrect;
 
 				group.on('mouseenter', () => {
 					stage.container().style.cursor = 'pointer';
@@ -178,16 +198,15 @@ Vue.component('queries-tab', {
 				group.on('click', (e) => {
 					e.cancelBubble = true;
 					this.selectNode(node);
-					layer.find('.myrect').fill('lightblue');
-					rect.fill('salmon');
-					layer.draw();
+					resetColors();
 				});
 			}
 
+			resetColors();
+
 			stage.on('click', (e) => {
 				this.selectNode(null);
-				layer.find('.myrect').fill('lightblue');
-				layer.draw();
+				resetColors();
 			});
 
 			// (3) render the arrows
@@ -336,13 +355,47 @@ Vue.component('queries-tab', {
 				this.update();
 			});
 		},
-		addParent: function() {
+		addParent: function(spec) {
 			let parts = this.selectedNode.Parents.map((parent) => parent.Spec);
-			parts.push(this.addParentFields.spec);
+			parts.push(spec);
 			let parentsStr = parts.join(',');
 			$.post('/queries/node?id='+this.selectedNode.ID, {parents: parentsStr}, () => {
 				this.update();
 			});
+		},
+		saveOutputs: function(outputs) {
+			let parts = [];
+			outputs.forEach((section) => {
+				var l = [];
+				section.forEach((parent) => {
+					l.push(parent.Spec);
+				});
+				parts.push(l.join(','));
+			});
+			let outputsStr = parts.join(';');
+			$.post('/queries/query?query_id='+this.selectedQuery.ID, {outputs: outputsStr}, () => {
+				this.update();
+			});
+		},
+		addOutputRow: function() {
+			let outputs = this.selectedQuery.Outputs;
+			outputs.push([]);
+			this.saveOutputs(outputs);
+		},
+		removeOutputRow: function(i) {
+			let outputs = this.selectedQuery.Outputs;
+			outputs.splice(i, 1);
+			this.saveOutputs(outputs);
+		},
+		addOutput: function(i, spec) {
+			let outputs = this.selectedQuery.Outputs;
+			outputs[i].push({Spec: spec});
+			this.saveOutputs(outputs);
+		},
+		removeOutput: function(i, spec) {
+			let outputs = this.selectedQuery.Outputs;
+			outputs[i] = outputs[i].filter((parent) => parent.Spec != spec);
+			this.saveOutputs(outputs);
 		},
 	},
 	watch: {
@@ -366,7 +419,21 @@ Vue.component('queries-tab', {
 				<input v-model="newQueryName" type="form-control" placeholder="Name" class="ml-4" />
 				<button type="submit" class="btn btn-primary ml-1">Add Query</button>
 			</form>
-			<div ref="layer" style="position: absolute"></div>
+			<div ref="layer"></div>
+			<div v-if="selectedQuery != null" class="small-container">
+				<template v-for="(outputs, i) in selectedQuery.Outputs">
+					Output {{ i }} <button type="button" class="btn btn-danger" v-on:click="removeOutputRow(i)">Remove</button>
+					<queries-parents-table
+						:query="selectedQuery"
+						:parents="outputs"
+						label="Outputs"
+						v-on:add="addOutput(i, $event)"
+						v-on:remove="removeOutput(i, $event)"
+						>
+					</queries-parents-table>
+				</template>
+				<button type="button" class="btn btn-primary" v-on:click="addOutputRow">Add Output</button>
+			</div>
 		</div>
 		<div>
 			<div class="my-2">
@@ -378,33 +445,14 @@ Vue.component('queries-tab', {
 				<div>Node {{ selectedNode.Name }}</div>
 				<div><button type="button" class="btn btn-danger" v-on:click="removeNode">Remove Node</button></div>
 				<div>
-					<table class="table table-sm">
-						<thead>
-							<tr><th colspan="2">Parents</th></tr>
-						</thead>
-						<tbody>
-							<tr v-for="parent in selectedNode.Parents">
-								<template v-if="parent.Type == 's'">
-									<td>Input {{ parent.SeriesIdx }}</td>
-								</template>
-								<template v-else-if="parent.Type == 'n'">
-									<td>{{ selectedQuery.Nodes[parent.NodeID].Name }}</td>
-								</template>
-								<td><button type="button" class="btn btn-danger btn-sm" v-on:click="removeParent(parent.Spec)">Remove</button></td>
-							</tr>
-							<tr>
-								<td>
-									<select v-model="addParentFields.spec" class="form-control">
-										<option v-if="!selectedNode.parentSet['s0']" value="s0">Input 0</option>
-										<template v-for="node in selectedQuery.Nodes">
-											<option v-if="!selectedNode.parentSet['n' + node.ID]" :value="'n' + node.ID">{{ node.Name }}</option>
-										</template>
-									</select>
-								</td>
-								<td><button type="button" class="btn btn-success btn-sm" v-on:click="addParent">Add</button></td>
-							</tr>
-						</tbody>
-					</table>
+					<queries-parents-table
+						:query="selectedQuery"
+						:parents="selectedNode.Parents"
+						label="Parents"
+						v-on:add="addParent($event)"
+						v-on:remove="removeParent($event)"
+						>
+					</queries-parents-table>
 				</div>
 			</div>
 		</div>

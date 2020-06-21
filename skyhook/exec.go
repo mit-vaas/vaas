@@ -570,6 +570,7 @@ func (e *QueryExecutor) Run(vector []*Series, slice Slice, callback func([][]Dat
 			rd := cachedOutputs[e.query.Selector.ID].Reader()
 			data, err := rd.Read(slice.Length())
 			if err != nil {
+				log.Printf("[exec %s %v] error computing selector: %v", e.query.Name, slice, err)
 				callback(nil, err)
 				return
 			}
@@ -653,8 +654,7 @@ func init() {
 			db.Exec("UPDATE nodes SET parents = ? WHERE id = ?", r.PostForm.Get("parents"), node.ID)
 		}
 		node.OnChange()
-
-		tasks.nodeUpdated(node)
+		tasks.queryUpdated(node.QueryID)
 	})
 
 	http.HandleFunc("/queries/node/remove", func(w http.ResponseWriter, r *http.Request) {
@@ -669,7 +669,7 @@ func init() {
 			w.WriteHeader(404)
 			return
 		}
-		tasks.nodeUpdated(node)
+		tasks.queryUpdated(node.QueryID)
 		node.Remove()
 	})
 
@@ -696,8 +696,19 @@ func init() {
 			http.Error(w, "no such query", 404)
 			return
 		}
-		query.Load()
-		JsonResponse(w, query)
+		if r.Method == "GET" {
+			query.Load()
+			JsonResponse(w, query)
+		} else if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+
+		r.ParseForm()
+		if r.PostForm["outputs"] != nil {
+			db.Exec("UPDATE queries SET outputs = ? WHERE id = ?", r.PostForm.Get("outputs"), query.ID)
+		}
+		tasks.queryUpdated(query.ID)
 	})
 
 	http.HandleFunc("/queries/render-meta", func(w http.ResponseWriter, r *http.Request) {
