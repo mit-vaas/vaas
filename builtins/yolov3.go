@@ -16,6 +16,7 @@ import (
 )
 
 type Yolov3 struct {
+	cfgFname string
 	stdin io.WriteCloser
 	rd *bufio.Reader
 	cmd *skyhook.Cmd
@@ -23,21 +24,40 @@ type Yolov3 struct {
 }
 
 func NewYolov3(node *skyhook.Node, query *skyhook.Query) skyhook.Executor {
-	cmd := skyhook.Command(
+	return &Yolov3{}
+}
+
+func (m *Yolov3) start(width int, height int) {
+	// prepare configuration with this width/height
+	bytes, err := ioutil.ReadFile("darknet/cfg/yolov3.cfg")
+	if err != nil {
+		panic(err)
+	}
+	m.cfgFname = fmt.Sprintf("%s/%d.cfg", os.TempDir(), rand.Int63())
+	file, err := os.Create(m.cfgFname)
+	if err != nil {
+		panic(err)
+	}
+	for _, line := range strings.Split(string(bytes), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "width=") {
+			line = fmt.Sprintf("width=%d", width)
+		} else if strings.HasPrefix(line, "height=") {
+			line = fmt.Sprintf("height=%d", height)
+		}
+		file.Write([]byte(line+"\n"))
+	}
+	file.Close()
+	m.cmd = skyhook.Command(
 		"darknet",
 		skyhook.CommandOptions{F: func(cmd *exec.Cmd) {
 			cmd.Dir = "darknet/"
 		}},
-		"./darknet", "detect", "cfg/yolov3.cfg", "yolov3.weights", "-thresh", "0.1",
+		"./darknet", "detect", m.cfgFname, "yolov3.weights", "-thresh", "0.1",
 	)
-	rd := bufio.NewReader(cmd.Stdout())
-	m := &Yolov3{
-		stdin: cmd.Stdin(),
-		rd: rd,
-		cmd: cmd,
-	}
+	m.stdin = m.cmd.Stdin()
+	m.rd = bufio.NewReader(m.cmd.Stdout())
 	m.getLines()
-	return m
 }
 
 func (m *Yolov3) getLines() []string {
@@ -104,6 +124,9 @@ func (m *Yolov3) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.
 				return err
 			}
 			m.mu.Lock()
+			if m.stdin == nil {
+				m.start(im.Width, im.Height)
+			}
 			m.stdin.Write([]byte(fname + "\n"))
 			lines := m.getLines()
 			boxes := parseLines(lines)

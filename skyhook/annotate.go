@@ -54,7 +54,7 @@ func (item Item) Load(slice Slice) DataBuffer {
 			return
 		}
 		data := DecodeData(item.Series.DataType, bytes)
-		data = data.Slice(slice.Start - item.Slice.Start, slice.End - item.Slice.Start)
+		data = data.Slice((slice.Start - item.Slice.Start)/item.Freq, (slice.End - item.Slice.Start + item.Freq-1)/item.Freq)
 		buf.Write(data)
 		buf.Close()
 	}()

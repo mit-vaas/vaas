@@ -3,6 +3,7 @@ package builtins
 import (
 	"../skyhook"
 	"github.com/mitroadmaps/gomapinfer/common"
+	"fmt"
 )
 
 type Shape [][2]int
@@ -35,6 +36,9 @@ func (shp Shape) Contains(d skyhook.Detection) bool {
 }
 
 type TrackFilterConfig struct {
+	ScaleX float64
+	ScaleY float64
+
 	// list of list of shapes
 	// each shape is specified by a list of points
 	// each row is a different alternative that can satisfy the predicate
@@ -52,16 +56,26 @@ type TrackFilter struct {
 func NewTrackFilter(node *skyhook.Node, query *skyhook.Query) skyhook.Executor {
 	var cfg TrackFilterConfig
 	skyhook.JsonUnmarshal([]byte(node.Code), &cfg)
+	for i := range cfg.Shapes {
+		for j := range cfg.Shapes[i] {
+			for k, p := range cfg.Shapes[i][j] {
+				cfg.Shapes[i][j][k] = [2]int{
+					int(float64(p[0])*cfg.ScaleX),
+					int(float64(p[1])*cfg.ScaleY),
+				}
+			}
+		}
+	}
 	return TrackFilter{cfg: cfg}
 }
 
 func (m TrackFilter) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
-	buf := skyhook.NewVideoBuffer(parents[0].Freq())
+	buf := skyhook.NewSimpleBuffer(skyhook.TrackType, parents[0].Freq())
 
 	go func() {
 		data, err := parents[0].Read(slice.Length())
 		if err != nil {
-			buf.Error(err)
+			buf.Error(fmt.Errorf("filter_track error reading parent: %v", err))
 			return
 		}
 		parents[0].Close()
@@ -110,7 +124,8 @@ func (m TrackFilter) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyh
 			}
 		}
 		detections = skyhook.TracksToDetections(out)
-		buf.Write(skyhook.TrackData(detections))
+		buf.Write(skyhook.TrackData(detections).EnsureLength(data.Length()))
+		buf.Close()
 	}()
 
 	return buf

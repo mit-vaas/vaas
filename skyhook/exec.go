@@ -312,12 +312,10 @@ func (query *Query) Load() {
 	}
 
 	// load output and selector
-	if query.OutputsStr != "" {
-		sections := strings.Split(query.OutputsStr, ";")
-		query.Outputs = make([][]Parent, len(sections))
-		for i, section := range sections {
-			query.Outputs[i] = ParseParents(section)
-		}
+	sections := strings.Split(query.OutputsStr, ";")
+	query.Outputs = make([][]Parent, len(sections))
+	for i, section := range sections {
+		query.Outputs[i] = ParseParents(section)
 	}
 	if query.SelectorID != nil {
 		query.Selector = query.Nodes[*query.SelectorID]
@@ -362,6 +360,7 @@ type QueryExecutor struct {
 
 	// map from node ID to executors
 	executors map[int]Executor
+	mu sync.Mutex
 
 	wg sync.WaitGroup
 	stats map[int]NodeStats
@@ -510,9 +509,11 @@ func (e *QueryExecutor) Run(vector []*Series, slice Slice, callback func([][]Dat
 				if parents == nil {
 					continue
 				}
+				e.mu.Lock()
 				if e.executors[nodeID] == nil {
 					e.executors[nodeID] = node.Exec(e.query)
 				}
+				e.mu.Unlock()
 				buf := e.executors[nodeID].Run(parents, slice)
 				cachedOutputs[node.ID] = buf
 				delete(needed, nodeID)
@@ -621,12 +622,11 @@ func init() {
 		}
 
 		name := r.PostForm.Get("name")
-		parents := r.PostForm.Get("parents")
 		t := r.PostForm.Get("type")
 		ext := r.PostForm.Get("ext")
 		db.Exec(
-			"INSERT INTO nodes (name, parents, type, ext, code, query_id) VALUES (?, ?, ?, ?, '', ?)",
-			name, parents, t, ext, queryID,
+			"INSERT INTO nodes (name, parents, type, ext, code, query_id, parent_types) VALUES (?, '', ?, ?, '', ?, '')",
+			name, t, ext, queryID,
 		)
 	})
 

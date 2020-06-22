@@ -47,13 +47,13 @@ Vue.component('explore-tab', {
 		fetch: function() {
 			$.get('/datasets', function(data) {
 				this.videos = data;
-				if(!this.selectedVideoID) {
+				if(!this.selectedVideoID && this.videos.length > 0) {
 					this.selectedVideoID = this.videos[0].ID;
 				}
 			}.bind(this));
 			$.get('/queries', function(data) {
 				this.queries = data;
-				if(!this.query) {
+				if(!this.query && this.queries.length > 0) {
 					this.query = this.queries[0].ID;
 				}
 			}.bind(this));

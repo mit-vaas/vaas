@@ -28,7 +28,7 @@ func NewDetectionFilter(node *skyhook.Node, query *skyhook.Query) skyhook.Execut
 }
 
 func (m DetectionFilter) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
-	buf := skyhook.NewVideoBuffer(parents[0].Freq())
+	buf := skyhook.NewSimpleBuffer(skyhook.DetectionType, parents[0].Freq())
 
 	go func() {
 		PerFrame(parents, slice, buf, skyhook.DetectionType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
@@ -43,7 +43,7 @@ func (m DetectionFilter) Run(parents []skyhook.DataReader, slice skyhook.Slice) 
 				}
 				ndetections = append(ndetections, d)
 			}
-			buf.Write(skyhook.DetectionData{ndetections})
+			buf.Write(skyhook.DetectionData{ndetections}.EnsureLength(data.Length()))
 			return nil
 		})
 	}()

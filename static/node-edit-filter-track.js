@@ -1,6 +1,8 @@
 Vue.component('node-edit-filter-track', {
 	data: function() {
 		return {
+			scaleX: 1,
+			scaleY: 1,
 			orderMatters: 'yes',
 			shapes: [[]],
 			dataSeries: [],
@@ -12,6 +14,8 @@ Vue.component('node-edit-filter-track', {
 	created: function() {
 		try {
 			var s = JSON.parse(this.initNode.Code);
+			this.scaleX = s.ScaleX;
+			this.scaleY = s.ScaleY;
 			this.orderMatters = (s.Order) ? 'yes' : 'no';
 			this.shapes = s.Shapes;
 		} catch(e) {}
@@ -47,6 +51,8 @@ Vue.component('node-edit-filter-track', {
 		},
 		save: function() {
 			var code = JSON.stringify({
+				ScaleX: parseFloat(this.scaleX),
+				ScaleY: parseFloat(this.scaleY),
 				Shapes: this.shapes,
 				Order: this.orderMatters == 'yes',
 			});
@@ -73,6 +79,18 @@ Vue.component('node-edit-filter-track', {
 				In sequence matching mode, for each alternative shape list, a track matches the alternative only if it passes through shapes in the list in order.
 				<br />In set matching mode, a track matches the alternative if it passes through all of the shapes, in any order.
 			</small>
+		</div>
+	</div>
+	<div class="form-group row">
+		<label class="col-sm-2 col-form-label">ScaleX</label>
+		<div class="col-sm-10">
+			<input v-model="scaleX" type="text" class="form-control">
+		</div>
+	</div>
+	<div class="form-group row">
+		<label class="col-sm-2 col-form-label">ScaleY</label>
+		<div class="col-sm-10">
+			<input v-model="scaleY" type="text" class="form-control">
 		</div>
 	</div>
 	<div class="form-group row">

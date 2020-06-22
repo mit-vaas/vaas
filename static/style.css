@@ -139,6 +139,7 @@ html, body, #app, #queries-panel {
 
 .explore-result-img {
 	max-width: 100%;
+	min-width: 50%;
 }
 
 /* n-edit-text */

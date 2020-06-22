@@ -3,7 +3,6 @@ Vue.component('new-node-modal', {
 		return {
 			newNodeFields: {
 				name: '',
-				parents: '',
 				type: '',
 				ext: null,
 			},
@@ -108,7 +107,6 @@ Vue.component('new-node-modal', {
 			var params = {
 				query_id: this.query_id,
 				name: this.newNodeFields.name,
-				parents: this.newNodeFields.parents,
 				type: this.newNodeFields.type,
 				ext: this.newNodeFields.ext.ID,
 			};
@@ -173,12 +171,6 @@ Vue.component('new-node-modal', {
 									</table>
 								</div>
 							</div>
-						</div>
-					</div>
-					<div class="form-group row">
-						<label class="col-sm-2 col-form-label">Parents</label>
-						<div class="col-sm-10">
-							<input v-model="newNodeFields.parents" class="form-control" type="text" />
 						</div>
 					</div>
 					<div class="form-group row">

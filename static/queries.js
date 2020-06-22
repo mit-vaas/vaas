@@ -10,6 +10,8 @@ Vue.component('queries-tab', {
 			showNewNodeModal: false,
 			nodeRects: {},
 			editor: '',
+			prevStage: null,
+			resizeObserver: null,
 
 			addParentFields: {},
 		};
@@ -27,7 +29,7 @@ Vue.component('queries-tab', {
 			}
 			$.get('/queries', (queries) => {
 				this.queries = queries;
-				if(this.selectedQueryID == '') {
+				if(this.selectedQueryID == '' && this.queries.length > 0) {
 					this.selectedQueryID = this.queries[0].ID;
 					this.update();
 				}
@@ -60,11 +62,21 @@ Vue.component('queries-tab', {
 			var query = this.selectedQuery;
 			var dims = [1000, 500];
 			var scale = (this.$refs.view.offsetWidth-10) / dims[0];
+
+			if(this.prevStage) {
+				this.prevStage.destroy();
+			}
+			if(this.resizeObserver) {
+				this.resizeObserver.disconnect();
+			}
+
 			var stage = new Konva.Stage({
 				container: this.$refs.layer,
 				width: parseInt(dims[0]*scale),
 				height: parseInt(dims[1]*scale),
 			});
+			this.prevStage = stage;
+
 			var layer = new Konva.Layer();
 			var rescaleLayer = () => {
 				if(!this.$refs.view) {
@@ -79,7 +91,8 @@ Vue.component('queries-tab', {
 				layer.draw();
 			};
 			rescaleLayer();
-			new ResizeObserver(rescaleLayer).observe(this.$refs.view);
+			this.resizeObserver = new ResizeObserver(rescaleLayer);
+			this.resizeObserver.observe(this.$refs.view);
 			stage.add(layer);
 			layer.add(new Konva.Rect({
 				x: 0,
@@ -98,6 +111,23 @@ Vue.component('queries-tab', {
 
 			var groups = {};
 			var arrows = {};
+
+			var save = () => {
+				var meta = {};
+				for(var gid in groups) {
+					meta[gid] = [parseInt(groups[gid].x()), parseInt(groups[gid].y())];
+				}
+				var params = {
+					ID: this.selectedQueryID,
+					Meta: meta,
+				};
+				$.ajax({
+					type: "POST",
+					url: '/queries/render-meta',
+					data: JSON.stringify(params),
+					processData: false,
+				});
+			};
 
 			var addGroup = (id, text, meta) => {
 				var text = new Konva.Text({
@@ -130,6 +160,7 @@ Vue.component('queries-tab', {
 				group.mywidth = text.width();
 				group.myheight = text.height();
 				group.myrect = rect;
+				group.on('dragend', save);
 				group.add(rect);
 				group.add(text);
 				layer.add(group);
@@ -146,7 +177,7 @@ Vue.component('queries-tab', {
 						rect.fill('lightblue');
 					}
 				}
-				this.selectedQuery.Outputs.forEach((section) => {
+				query.Outputs.forEach((section) => {
 					section.forEach((parent) => {
 						groups[parent.Spec].myrect.fill('mediumpurple');
 					});
@@ -274,23 +305,6 @@ Vue.component('queries-tab', {
 				});
 			}
 
-			var save = () => {
-				var meta = {};
-				for(var gid in groups) {
-					meta[gid] = [parseInt(groups[gid].x()), parseInt(groups[gid].y())];
-				}
-				var params = {
-					ID: this.selectedQueryID,
-					Meta: meta,
-				};
-				$.ajax({
-					type: "POST",
-					url: '/queries/render-meta',
-					data: JSON.stringify(params),
-					processData: false,
-				});
-			};
-
 			// (4) add listeners to move the arrows when groups are dragged
 			for(let gid in arrows) {
 				let l = arrows[gid];
@@ -312,7 +326,6 @@ Vue.component('queries-tab', {
 						layer.draw();
 					});
 				});
-				groups[gid].on('dragend', save);
 			}
 
 			layer.draw();

@@ -269,24 +269,29 @@ func ReadMultiple(length int, targetFreq int, inputs []DataReader, callback func
 	for completed < length {
 		// peek each input to see how much we can read
 		available := -1
-		for _, rd := range inputs {
+		for i, rd := range inputs {
 			data, err := rd.Peek(perIter/rd.Freq())
 			if err != nil {
-				return fmt.Errorf("error from input peek: %v", err)
+				return fmt.Errorf("error from input peek: %v (from input idx %d type %v)", err, i, rd.Type())
 			}
 			if available == -1 || data.Length()*rd.Freq() < available {
 				available = data.Length()*rd.Freq()
 			}
 		}
 
+		// round available up to nearest multiple of perIter, but can't go past length
+		available = ((available + perIter-1) / perIter) * perIter
+		if completed+available > length {
+			available = length - completed
+		}
+
 		datas := make([]Data, len(inputs))
 		for i, rd := range inputs {
-			// available is always a multiple of Freq due to peeking above except if
-			// this is the last data we will read. if that is the case then we want to
-			// collect the last partial output from the reader.
+			// if available is not a multiple of rd.Freq, it implies we're on the last
+			// output and we need to make sure we capture the partial output frame
 			data, err := rd.Read((available+rd.Freq()-1)/rd.Freq())
 			if err != nil {
-				return fmt.Errorf("error from input read: %v", err)
+				return fmt.Errorf("error from input read: %v (from input idx %d type %v)", err, i, rd.Type())
 			}
 			datas[i] = AdjustDataFreq(data, available, rd.Freq(), targetFreq)
 		}

@@ -122,8 +122,10 @@ func (e *PythonExecutor) Run(parents []DataReader, slice Slice) DataBuffer {
 		}
 		// TODO: look at the return error
 		// currently we don't because buf is controlled by ReadLoop
-		ReadMultiple(slice.Length(), parents[0].Freq(), parents, f)
-
+		err := ReadMultiple(slice.Length(), MinFreq(parents), parents, f)
+		if err != nil {
+			panic(fmt.Errorf("ReadMultiple error at node %s: %v", e.node.Name, err))
+		}
 		// we don't close buf here since ReadLoop will close it
 	}()
 
