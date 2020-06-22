@@ -217,7 +217,7 @@ Vue.component('queries-tab', {
 					meta = [500, 150+25*numDefault];
 					numDefault++;
 				}
-				let group = addGroup('n'+nodeID, `${node.Name} (${node.Ext})`, meta);
+				let group = addGroup('n'+nodeID, `${node.Name} (${node.Type})`, meta);
 				let rect = group.myrect;
 
 				group.on('mouseenter', () => {
@@ -345,10 +345,10 @@ Vue.component('queries-tab', {
 			this.addParentFields = {spec: ''};
 		},
 		editNode: function() {
-			if(this.selectedNode.Ext == 'python') {
+			if(this.selectedNode.Type == 'python') {
 				this.editor = 'node-edit-text';
 			} else {
-				this.editor = 'node-edit-' + this.selectedNode.Ext;
+				this.editor = 'node-edit-' + this.selectedNode.Type;
 			}
 		},
 		removeNode: function() {

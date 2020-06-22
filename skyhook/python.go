@@ -61,7 +61,7 @@ func (e *PythonExecutor) Init() {
 		Type DataType
 		Parents int
 	}
-	meta.Type = e.node.Type
+	meta.Type = e.node.DataType
 	meta.Parents = len(e.node.Parents)
 	e.writeLock.Lock()
 	e.writeJSONPacket(meta)
@@ -75,10 +75,10 @@ func (e *PythonExecutor) Run(parents []DataReader, slice Slice) DataBuffer {
 	e.counter++
 	var buf DataWriter
 	freq := MinFreq(parents)
-	if e.node.Type == VideoType {
+	if e.node.DataType == VideoType {
 		buf = NewVideoBuffer(freq)
 	} else {
-		buf = NewSimpleBuffer(e.node.Type, freq)
+		buf = NewSimpleBuffer(e.node.DataType, freq)
 	}
 	ps := &pendingSlice{slice, parents, buf}
 	e.pending[id] = ps
@@ -133,7 +133,7 @@ func (e *PythonExecutor) Run(parents []DataReader, slice Slice) DataBuffer {
 }
 
 func (e *PythonExecutor) ReadLoop() {
-	t := e.node.Type
+	t := e.node.DataType
 
 	setErr := func(err error) {
 		e.mu.Lock()

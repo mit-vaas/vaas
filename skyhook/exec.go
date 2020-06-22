@@ -55,21 +55,21 @@ type Node struct {
 	Name string
 	ParentTypes []DataType
 	Parents []Parent
-	Type DataType
-	Ext string
+	Type string
+	DataType DataType
 	Code string
 	QueryID int
 
 }
 
-const NodeQuery = "SELECT id, name, parent_types, parents, type, ext, code, query_id FROM nodes"
+const NodeQuery = "SELECT id, name, parent_types, parents, type, data_type, code, query_id FROM nodes"
 
 func nodeListHelper(rows *Rows) []*Node {
 	nodes := []*Node{}
 	for rows.Next() {
 		var node Node
 		var parentTypes, parents string
-		rows.Scan(&node.ID, &node.Name, &parentTypes, &parents, &node.Type, &node.Ext, &node.Code, &node.QueryID)
+		rows.Scan(&node.ID, &node.Name, &parentTypes, &parents, &node.Type, &node.DataType, &node.Code, &node.QueryID)
 		if parentTypes != "" {
 			for _, dt := range strings.Split(parentTypes, ",") {
 				node.ParentTypes = append(node.ParentTypes, DataType(dt))
@@ -101,7 +101,7 @@ func (node *Node) ListVNodes() []*VNode {
 }
 
 func (node *Node) Exec(query *Query) Executor {
-	return Executors[node.Ext](node, query)
+	return Executors[node.Type](node, query)
 }
 
 func (node *Node) GetChildren(m map[int]*Node) []*Node {
@@ -519,7 +519,7 @@ func (e *QueryExecutor) Run(vector []*Series, slice Slice, callback func([][]Dat
 				delete(needed, nodeID)
 
 				// save it unless it is video
-				if node.Type == VideoType {
+				if node.DataType == VideoType {
 					continue
 				}
 
@@ -536,7 +536,7 @@ func (e *QueryExecutor) Run(vector []*Series, slice Slice, callback func([][]Dat
 						name := fmt.Sprintf("exec-%v-%d", vn.Node.Name, vn.ID)
 						res := tx.Exec(
 							"INSERT INTO series (timeline_id, name, type, data_type, src_vector, node_id) VALUES (?, ?, 'outputs', ?, ?, ?)",
-							vector[0].Timeline.ID, name, vn.Node.Type, Vector(vector).String(), vn.Node.ID,
+							vector[0].Timeline.ID, name, vn.Node.DataType, Vector(vector).String(), vn.Node.ID,
 						)
 						vn.SeriesID = new(int)
 						*vn.SeriesID = res.LastInsertId()
@@ -623,10 +623,10 @@ func init() {
 
 		name := r.PostForm.Get("name")
 		t := r.PostForm.Get("type")
-		ext := r.PostForm.Get("ext")
+		dataType := r.PostForm.Get("data_type")
 		db.Exec(
-			"INSERT INTO nodes (name, parents, type, ext, code, query_id, parent_types) VALUES (?, '', ?, ?, '', ?, '')",
-			name, t, ext, queryID,
+			"INSERT INTO nodes (name, parents, type, data_type, code, query_id, parent_types) VALUES (?, '', ?, ?, '', ?, '')",
+			name, t, dataType, queryID,
 		)
 	})
 

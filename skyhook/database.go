@@ -71,8 +71,9 @@ func init() {
 		name TEXT NOT NULL,
 		parent_types TEXT NOT NULL,
 		parents TEXT NOT NULL,
-		type TEXT NOT NULL,
-		ext TEXT,
+		-- indicates the node execution/editing module name
+		type TEXT,
+		data_type TEXT NOT NULL,
 		code TEXT NOT NULL,
 		query_id INTEGER REFERENCES queries(id)
 	)`)
@@ -91,6 +92,12 @@ func init() {
 		outputs TEXT NOT NULL DEFAULT '',
 		selector INTEGER REFERENCES nodes(id),
 		render_meta TEXT NOT NULL DEFAULT ''
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS jobs (
+		id INTEGER PRIMARY KEY ASC,
+		name TEXT NOT NULL DEFAULT '',
+		detail TEXT NOT NULL DEFAULT '',
+		type TEXT NOT NULL
 	)`)
 }
 
