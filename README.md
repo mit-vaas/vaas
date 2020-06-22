@@ -100,13 +100,13 @@ always be the case.
 A Query represents a data flow graph that composes a series of Nodes to
 implement some analytics task.
 
-Each Node specifies its parent(s), "ext" (type), and data type. For example, to
+Each Node specifies its parent(s), type, and data type. For example, to
 classify traffic light colors, one may define a simple sequence of two nodes:
 
-1. A node with ext=Crop and data-type=Video that inputs Input[0] (the first
+1. A node with type=Crop and data-type=Video that inputs Input[0] (the first
 and only series in the query input vector) and outputs the video cropped around
 the traffic light.
-2. A node with ext=Python and data-type=Class that inputs the cropped video and
+2. A node with type=Python and data-type=Class that inputs the cropped video and
 processes it through a Python function to determine the light color.
 
 Nodes may reference some Output Series where their outputs are persisted.
