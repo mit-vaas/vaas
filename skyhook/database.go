@@ -96,7 +96,7 @@ func init() {
 	db.Exec(`CREATE TABLE IF NOT EXISTS jobs (
 		id INTEGER PRIMARY KEY ASC,
 		name TEXT NOT NULL DEFAULT '',
-		detail TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT '',
 		type TEXT NOT NULL
 	)`)
 }
