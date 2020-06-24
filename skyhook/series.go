@@ -346,6 +346,10 @@ func init() {
 		JsonResponse(w, ListSeriesByType("data"))
 	})
 
+	http.HandleFunc("/series", func(w http.ResponseWriter, r *http.Request) {
+		JsonResponse(w, ListSeries())
+	})
+
 	http.HandleFunc("/series/delete", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			w.WriteHeader(404)

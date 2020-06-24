@@ -1,5 +1,10 @@
 package skyhook
 
+import (
+	"fmt"
+	"sort"
+)
+
 type DataRef struct {
 	Series *Series // reference an entire series
 	Item *Item // reference a specific item
@@ -17,6 +22,65 @@ type ConcreteRef struct {
 	Data Data
 }
 
+func (ref ConcreteRef) Type() DataType {
+	if ref.Item != nil {
+		return ref.Item.Series.DataType
+	} else {
+		return ref.Data.Type()
+	}
+}
+
+func ResolveDataRefs(refs []DataRef) ([]ConcreteRef, error) {
+	var out []ConcreteRef
+
+	for i := 0; i < len(refs); i++ {
+		ref := refs[i]
+		if ref.Series != nil {
+			series := GetSeries(ref.Series.ID)
+			if series == nil {
+				return nil, fmt.Errorf("no such series %d", ref.Series.ID)
+			}
+			for _, item := range series.ListItems() {
+				cur := item
+				refs = append(refs, DataRef{Item: &cur})
+			}
+		} else if ref.Item != nil {
+			item := GetItem(ref.Item.ID)
+			if item == nil {
+				return nil, fmt.Errorf("no such item %d", ref.Item.ID)
+			}
+			out = append(out, ConcreteRef{
+				Slice: item.Slice,
+				Item: item,
+			})
+		} else if len(ref.Data) > 0 {
+			segment := GetSegment(ref.Slice.Segment.ID)
+			slice := Slice{*segment, ref.Slice.Start, ref.Slice.End}
+			data := DecodeData(ref.DataType, []byte(ref.Data)).EnsureLength(slice.Length())
+			out = append(out, ConcreteRef{
+				Slice: slice,
+				Data: data,
+			})
+		} else {
+			return nil, fmt.Errorf("bad DataRef")
+		}
+	}
+
+	return out, nil
+}
+
+func EnumerateDataRefs(refs [][]DataRef, f func(Slice, []ConcreteRef) error) error {
+	concretes := make([][]ConcreteRef, len(refs))
+	for i := range refs {
+		var err error
+		concretes[i], err = ResolveDataRefs(refs[i])
+		if err != nil {
+			return err
+		}
+	}
+	return EnumerateConcreteRefs(concretes, f)
+}
+
 type ConcreteRefs []ConcreteRef
 func (a ConcreteRefs) Len() int           { return len(a) }
 func (a ConcreteRefs) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
@@ -32,7 +96,7 @@ func (a ConcreteRefs) Less(i, j int) bool {
 }
 
 // Essentially, find the intersection of a bunch of sets of intervals (slices).
-func EnumerateConcreteRefs(refs [][]ConcreteRef, f func(Slice, []ConcreteRef)) {
+func EnumerateConcreteRefs(refs [][]ConcreteRef, f func(Slice, []ConcreteRef) error) error {
 	// collect segments where all the sets have at least one ConcreteRef
  	vsize := len(refs)
 	bySegment := make(map[int][][]ConcreteRef)
@@ -52,10 +116,14 @@ func EnumerateConcreteRefs(refs [][]ConcreteRef, f func(Slice, []ConcreteRef)) {
 
 	// enumerate in each segment
 	for _, cur := range bySegment {
+		for i := 0; i < vsize; i++ {
+			sort.Sort(ConcreteRefs(cur[i]))
+		}
+
 		indexes := make([]int, vsize)
 		t := 0
 
-		iter := func() bool {
+		iter := func() (bool, error) {
 			// set t to max left index
 			for i := 0; i < vsize; i++ {
 				if cur[i][indexes[i]].Slice.Start > t {
@@ -69,7 +137,7 @@ func EnumerateConcreteRefs(refs [][]ConcreteRef, f func(Slice, []ConcreteRef)) {
 					indexes[i]++
 				}
 				if indexes[i] >= len(cur[i]) {
-					return true
+					return true, nil
 				}
 			}
 
@@ -88,24 +156,31 @@ func EnumerateConcreteRefs(refs [][]ConcreteRef, f func(Slice, []ConcreteRef)) {
 				}
 			}
 			if len(l) < vsize {
-				return false
+				return false, nil
 			}
 			slice := Slice{l[0].Slice.Segment, t, end}
-			f(slice, l)
+			err := f(slice, l)
+			if err != nil {
+				return true, err
+			}
 
 			// increment the one with smallest right index
 			indexes[constrainingIdx]++
 			if indexes[constrainingIdx] >= len(cur[constrainingIdx]) {
-				return true
+				return true, nil
 			}
-			return false
+			return false, nil
 		}
 
 		for {
-			stop := iter()
-			if stop {
+			stop, err := iter()
+			if err != nil {
+				return err
+			} else if stop {
 				break
 			}
 		}
 	}
+
+	return nil
 }

@@ -97,7 +97,8 @@ func init() {
 		id INTEGER PRIMARY KEY ASC,
 		name TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT '',
-		type TEXT NOT NULL
+		type TEXT NOT NULL,
+		detail TEXT NOT NULL DEFAULT ''
 	)`)
 }
 

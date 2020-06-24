@@ -22,6 +22,9 @@
 				<li class="nav-item">
 					<a class="nav-link" id="annotate-tab" data-toggle="tab" href="#annotate-panel" role="tab" aria-controls="annotate-panel" aria-selected="true">Annotate</a>
 				</li>
+				<li class="nav-item">
+					<a class="nav-link" id="jobs-tab" data-toggle="tab" href="#jobs-panel" role="tab" aria-controls="jobs-panel" aria-selected="true">Jobs</a>
+				</li>
 			</ul>
 			<div class="tab-content mx-1" id="content">
 				<div class="tab-pane fade show active" id="video-panel" role="tabpanel" aria-labelledby="video-tab">
@@ -35,6 +38,9 @@
 				</div>
 				<div class="tab-pane fade" id="annotate-panel" role="tabpanel" aria-labelledby="annotate-tab">
 					<annotate-tab :tab="tab"></annotate-tab>
+				</div>
+				<div class="tab-pane fade" id="jobs-panel" role="tabpanel" aria-labelledby="jobs-tab">
+					<jobs-tab :tab="tab"></jobs-tab>
 				</div>
 			</div>
 		</div>
@@ -58,6 +64,7 @@
 		<script src="node-edit-filter-track.js"></script>
 		<script src="node-edit-iou.js"></script>
 		<script src="node-edit-rescale.js"></script>
+		<script src="node-edit-simple-classifier.js"></script>
 		<script src="node-edit-text.js"></script>
 		<script src="node-edit-yolov3.js"></script>
 		<script src="explore.js"></script>
@@ -66,6 +73,8 @@
 		<script src="annotate-default-detection.js"></script>
 		<script src="annotate-default-class.js"></script>
 		<script src="annotate-visualize.js"></script>
+		<script src="jobs.js"></script>
+		<script src="job-cmd.js"></script>
 		<script src="util-video-draw-shape.js"></script>
 		<script src="filters.js"></script>
 		<script src="index.js"></script>

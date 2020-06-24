@@ -120,6 +120,15 @@ func (node *Node) GetChildren(m map[int]*Node) []*Node {
 	return nodes
 }
 
+func (node *Node) Update(code *string, parents *string) {
+	if code != nil {
+		db.Exec("UPDATE nodes SET code = ? WHERE id = ?", *code, node.ID)
+	}
+	if parents != nil {
+		db.Exec("UPDATE nodes SET parents = ? WHERE id = ?", *parents, node.ID)
+	}
+}
+
 func (node *Node) OnChange() {
 	// delete all saved labels at the vnodes for this node
 	// and recursively delete for vnodes that depend on that vnode
@@ -647,13 +656,16 @@ func init() {
 			return
 		}
 
+		var code, parents *string
 		if r.PostForm["code"] != nil {
-			db.Exec("UPDATE nodes SET code = ? WHERE id = ?", r.PostForm.Get("code"), node.ID)
+			code = new(string)
+			*code = r.PostForm.Get("code")
 		}
 		if r.PostForm["parents"] != nil {
-			db.Exec("UPDATE nodes SET parents = ? WHERE id = ?", r.PostForm.Get("parents"), node.ID)
+			parents = new(string)
+			*parents = r.PostForm.Get("parents")
 		}
-		node.OnChange()
+		node.Update(code, parents)
 		tasks.queryUpdated(node.QueryID)
 	})
 
