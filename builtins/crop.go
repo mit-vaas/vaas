@@ -2,6 +2,7 @@ package builtins
 
 import (
 	"../skyhook"
+	"fmt"
 )
 
 type CropConfig struct {
@@ -12,20 +13,30 @@ type CropConfig struct {
 }
 
 type Crop struct {
+	node *skyhook.Node
 	cfg CropConfig
 }
 
-func NewCrop(node *skyhook.Node, query *skyhook.Query) skyhook.Executor {
+func NewCrop(node *skyhook.Node) skyhook.Executor {
 	var cfg CropConfig
 	skyhook.JsonUnmarshal([]byte(node.Code), &cfg)
-	return Crop{cfg: cfg}
+	return Crop{
+		node: node,
+		cfg: cfg,
+	}
 }
 
-func (m Crop) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
-	buf := skyhook.NewVideoBuffer(parents[0].Freq())
+func (m Crop) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
+	parents, err := GetParents(ctx, m.node)
+	if err != nil {
+		return skyhook.GetErrorBuffer(m.node.DataType, fmt.Errorf("crop error reading parents: %v", err))
+	}
+
+	w := skyhook.NewVideoWriter()
 
 	go func() {
-		PerFrame(parents, slice, buf, skyhook.VideoType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
+		w.SetMeta(parents[0].Freq())
+		PerFrame(parents, ctx.Slice, w, skyhook.VideoType, func(idx int, data skyhook.Data, w skyhook.DataWriter) error {
 			im := data.(skyhook.VideoData)[0]
 			width := m.cfg.Right - m.cfg.Left
 			height := m.cfg.Bottom - m.cfg.Top
@@ -41,12 +52,12 @@ func (m Crop) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.Dat
 					outim.SetRGB(i - m.cfg.Left, j - m.cfg.Top, im.GetRGB(i, j))
 				}
 			}
-			buf.Write(skyhook.VideoData{outim})
+			w.Write(skyhook.VideoData{outim})
 			return nil
 		})
 	}()
 
-	return buf
+	return w.Buffer()
 }
 
 func (m Crop) Close() {}

@@ -6,6 +6,8 @@ import (
 	"../skyhook"
 	gomapinfer "github.com/mitroadmaps/gomapinfer/common"
 	goslgraph "github.com/cpmech/gosl/graph"
+
+	"fmt"
 )
 
 func DetectionToRectangle(d skyhook.Detection) gomapinfer.Rectangle {
@@ -25,27 +27,35 @@ func (t TrackWithID) Last() skyhook.Detection {
 }
 
 type IOU struct {
+	node *skyhook.Node
 	maxAge int
 }
 
-func NewIOU(node *skyhook.Node, query *skyhook.Query) skyhook.Executor {
+func NewIOU(node *skyhook.Node) skyhook.Executor {
 	type Config struct {
 		MaxAge int `json:"maxAge"`
 	}
 	var cfg Config
 	skyhook.JsonUnmarshal([]byte(node.Code), &cfg)
 	return IOU{
+		node: node,
 		maxAge: cfg.MaxAge,
 	}
 }
 
-func (m IOU) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
-	buf := skyhook.NewSimpleBuffer(skyhook.TrackType, parents[0].Freq())
+func (m IOU) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
+	parents, err := GetParents(ctx, m.node)
+	if err != nil {
+		return skyhook.GetErrorBuffer(m.node.DataType, fmt.Errorf("iou error reading parents: %v", err))
+	}
+	buf := skyhook.NewSimpleBuffer(skyhook.TrackType)
 
 	go func() {
+		buf.SetMeta(parents[0].Freq())
+
 		var nextID int = 1
 		activeTracks := make(map[int]*TrackWithID)
-		PerFrame(parents, slice, buf, skyhook.DetectionType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
+		PerFrame(parents, ctx.Slice, buf, skyhook.DetectionType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
 			detections := data.(skyhook.DetectionData)[0]
 			var out []skyhook.Detection
 

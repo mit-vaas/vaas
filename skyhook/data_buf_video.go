@@ -1,11 +1,87 @@
 package skyhook
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
 	"sync"
 )
+
+type VideoWriter struct {
+	freq int
+	cmd *Cmd
+	stdin io.WriteCloser
+	buf *VideoBuffer
+}
+
+func NewVideoWriter() *VideoWriter {
+	buf := NewVideoBuffer()
+	return &VideoWriter{
+		buf: buf,
+	}
+}
+
+// must be called before any calls to Write
+func (w *VideoWriter) SetMeta(freq int) {
+	w.freq = freq
+}
+
+func (w *VideoWriter) Write(data Data) {
+	if w.freq == 0 {
+		panic(fmt.Errorf("must SetMeta before Write"))
+	}
+
+	images := data.(VideoData)
+
+	if w.stdin == nil {
+		width := images[0].Width
+		height := images[0].Height
+		w.buf.SetMeta(w.freq, width, height)
+		w.cmd = Command(
+			"ffmpeg-vbuf", CommandOptions{OnlyDebug: true},
+			"ffmpeg", "-f", "rawvideo", "-framerate", fmt.Sprintf("%v", FPS),
+			"-s", fmt.Sprintf("%dx%d", width, height),
+			"-pix_fmt", "rgb24", "-i", "-",
+			"-vcodec", "libx264",
+			"-vf", fmt.Sprintf("fps=%v", FPS),
+			"-f", "mp4", "-movflags", "faststart+frag_keyframe+empty_moov",
+			"-",
+		)
+		w.stdin = w.cmd.Stdin()
+
+		go func() {
+			stdout := w.cmd.Stdout()
+			_, err := io.Copy(w.buf, stdout)
+			if err != nil {
+				log.Printf("[VideoWriter] warning: error encoding video: %v", err)
+			}
+			stdout.Close()
+			w.cmd.Wait()
+			w.buf.Close()
+		}()
+	}
+
+	for _, im := range images {
+		w.stdin.Write(im.ToBytes())
+	}
+}
+
+func (w *VideoWriter) Close() {
+	w.stdin.Close()
+	w.buf.Wait()
+}
+
+func (w *VideoWriter) Error(err error) {
+	if w.stdin != nil {
+		w.stdin.Close()
+	}
+	w.buf.Error(err)
+}
+
+func (w *VideoWriter) Buffer() DataBuffer {
+	return w.buf
+}
 
 type VideoBuffer struct {
 	videoBytes []byte
@@ -14,15 +90,14 @@ type VideoBuffer struct {
 	err error
 	done bool
 	freq int
-
-	started bool
 	dims [2]int
-	cmd *Cmd
-	stdin io.WriteCloser
+
+	// whether dims is set yet
+	started bool
 }
 
-func NewVideoBuffer(freq int) *VideoBuffer {
-	buf := &VideoBuffer{freq: freq}
+func NewVideoBuffer() *VideoBuffer {
+	buf := &VideoBuffer{}
 	buf.cond = sync.NewCond(&buf.mu)
 	return buf
 }
@@ -31,70 +106,45 @@ func (buf *VideoBuffer) Type() DataType {
 	return VideoType
 }
 
-func (buf *VideoBuffer) Write(data Data) {
-	images := data.(VideoData)
-
+func (buf *VideoBuffer) SetMeta(freq int, width int, height int) {
 	buf.mu.Lock()
-	if !buf.started {
-		buf.dims = [2]int{images[0].Width, images[0].Height}
-		buf.cmd = Command(
-			"ffmpeg-vbuf", CommandOptions{OnlyDebug: true},
-			"ffmpeg", "-f", "rawvideo", "-framerate", fmt.Sprintf("%v", FPS),
-			"-s", fmt.Sprintf("%dx%d", buf.dims[0], buf.dims[1]),
-			"-pix_fmt", "rgb24", "-i", "-",
-			"-vcodec", "libx264",
-			"-vf", fmt.Sprintf("fps=%v", FPS),
-			"-f", "mp4", "-movflags", "faststart+frag_keyframe+empty_moov",
-			"-",
-		)
-		buf.started = true
-		buf.stdin = buf.cmd.Stdin()
-
-		go func() {
-			stdout := buf.cmd.Stdout()
-			b := make([]byte, 4096)
-			for {
-				n, err := stdout.Read(b)
-				buf.mu.Lock()
-				if n > 0 {
-					buf.videoBytes = append(buf.videoBytes, b[0:n]...)
-				}
-				buf.cond.Broadcast()
-				buf.mu.Unlock()
-				if err == io.EOF {
-					break
-				} else if err != nil {
-					log.Printf("[VideoBuffer] warning: error encoding video: %v", err)
-					break
-				}
-			}
-			stdout.Close()
-			buf.cmd.Wait()
-
-			buf.mu.Lock()
-			buf.done = true
-			buf.cond.Broadcast()
-			buf.mu.Unlock()
-		}()
-	}
+	buf.freq = freq
+	buf.dims = [2]int{width, height}
+	buf.started = true
+	buf.cond.Broadcast()
 	buf.mu.Unlock()
-
-	for _, im := range images {
-		buf.stdin.Write(im.ToBytes())
-	}
 }
 
-func (buf *VideoBuffer) Close() {
-	buf.stdin.Close()
+func (buf *VideoBuffer) waitForMeta() error {
 	buf.mu.Lock()
-	for buf.started && !buf.done && buf.err == nil {
+	defer buf.mu.Unlock()
+	for buf.err == nil && !buf.started {
 		buf.cond.Wait()
 	}
+	if buf.err != nil {
+		return buf.err
+	}
+	return nil
+}
+
+func (buf *VideoBuffer) Write(p []byte) (int, error) {
+	buf.mu.Lock()
+	buf.videoBytes = append(buf.videoBytes, p...)
+	buf.cond.Broadcast()
 	buf.mu.Unlock()
+	return len(p), nil
+}
+
+// this implements io.Closer, not our ones that don't return error
+func (buf *VideoBuffer) Close() error {
+	buf.mu.Lock()
+	buf.done = true
+	buf.cond.Broadcast()
+	buf.mu.Unlock()
+	return nil
 }
 
 func (buf *VideoBuffer) Error(err error) {
-	buf.stdin.Close()
 	buf.mu.Lock()
 	buf.err = err
 	buf.cond.Broadcast()
@@ -113,7 +163,15 @@ func (buf *VideoBuffer) Wait() error {
 	return nil
 }
 
-func (buf *VideoBuffer) read(pos int, b []byte) (int, error) {
+func (buf *VideoBuffer) Reader() DataReader {
+	rd := &VideoBufferReader{
+		buf: buf,
+		freq: buf.freq,
+	}
+	return rd
+}
+
+func (buf *VideoBuffer) Read(pos int, b []byte) (int, error) {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
 	for len(buf.videoBytes) <= pos && buf.err == nil && !buf.done {
@@ -128,29 +186,61 @@ func (buf *VideoBuffer) read(pos int, b []byte) (int, error) {
 	return n, nil
 }
 
-func (buf *VideoBuffer) waitForStarted() error {
-	buf.mu.Lock()
-	defer buf.mu.Unlock()
-	for buf.err == nil && !buf.started {
-		buf.cond.Wait()
+func (buf *VideoBuffer) FromReader(r io.Reader) {
+	header := make([]byte, 12)
+	_, err := io.ReadFull(r, header)
+	if err != nil {
+		buf.Error(fmt.Errorf("error reading binary: %v", err))
+		return
 	}
-	if buf.err != nil {
-		return buf.err
+	freq := int(binary.BigEndian.Uint32(header[0:4]))
+	width := int(binary.BigEndian.Uint32(header[4:8]))
+	height := int(binary.BigEndian.Uint32(header[8:12]))
+	buf.SetMeta(freq, width, height)
+	_, err = io.Copy(buf, r)
+	if err != nil {
+		buf.Error(fmt.Errorf("error reading binary: %v", err))
+		return
 	}
-	return nil
+	buf.Close()
 }
 
-func (buf *VideoBuffer) Reader() DataReader {
-	rd := &VideoBufferReader{
-		buf: buf,
-		freq: buf.freq,
+func (buf *VideoBuffer) ToWriter(w io.Writer) error {
+	buf.waitForMeta()
+	header := make([]byte, 12)
+	binary.BigEndian.PutUint32(header[0:4], uint32(buf.freq))
+	binary.BigEndian.PutUint32(header[4:8], uint32(buf.dims[0]))
+	binary.BigEndian.PutUint32(header[8:12], uint32(buf.dims[1]))
+	w.Write(header)
+
+	pos := 0
+	p := make([]byte, 4096)
+	for {
+		n, err := buf.Read(pos, p)
+		if err == io.EOF {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		w.Write(p[0:n])
+		pos += n
 	}
-	return rd
+}
+
+type VideoBinaryReader struct {
+	buf *VideoBuffer
+	pos int
+}
+
+func (r *VideoBinaryReader) Read(p []byte) (int, error) {
+	n, err := r.buf.Read(r.pos, p)
+	r.pos += n
+	return n, err
 }
 
 type VideoFileBuffer struct {
-	item Item
-	slice Slice
+	Item Item
+	Slice Slice
 }
 func (buf VideoFileBuffer) Type() DataType {
 	return VideoType
@@ -167,8 +257,8 @@ func (buf VideoFileBuffer) Wait() error {
 }
 func (buf VideoFileBuffer) Reader() DataReader {
 	return &VideoBufferReader{
-		item: buf.item,
-		slice: buf.slice,
+		item: buf.Item,
+		slice: buf.Slice,
 		freq: 1,
 	}
 }
@@ -208,6 +298,11 @@ func (rd *VideoBufferReader) Resample(freq int) {
 
 func (rd *VideoBufferReader) Freq() int {
 	freq := rd.freq
+	if freq == 0 {
+		rd.buf.waitForMeta()
+		rd.freq = rd.buf.freq
+		freq = rd.freq
+	}
 	if rd.resample > 0 {
 		freq *= rd.resample
 	}
@@ -240,7 +335,7 @@ func (rd *VideoBufferReader) Wait() error {
 
 func (rd *VideoBufferReader) start() {
 	if rd.buf != nil {
-		err := rd.buf.waitForStarted()
+		err := rd.buf.waitForMeta()
 		if err != nil {
 			rd.err = err
 			return
@@ -271,7 +366,7 @@ func (rd *VideoBufferReader) start() {
 			b := make([]byte, 4096)
 			pos := 0
 			for {
-				n, err := rd.buf.read(pos, b)
+				n, err := rd.buf.Read(pos, b)
 				if err != nil {
 					break
 				}

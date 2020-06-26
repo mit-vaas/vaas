@@ -18,6 +18,7 @@ type SimpleClassifierConfig struct {
 }
 
 type SimpleClassifier struct {
+	node *skyhook.Node
 	cfg SimpleClassifierConfig
 	stdin io.WriteCloser
 	rd *bufio.Reader
@@ -25,19 +26,25 @@ type SimpleClassifier struct {
 	mu sync.Mutex
 }
 
-func NewSimpleClassifier(node *skyhook.Node, query *skyhook.Query) skyhook.Executor {
+func NewSimpleClassifier(node *skyhook.Node) skyhook.Executor {
 	var cfg SimpleClassifierConfig
 	skyhook.JsonUnmarshal([]byte(node.Code), &cfg)
 	return &SimpleClassifier{
+		node: node,
 		cfg: cfg,
 	}
 }
 
-func (m *SimpleClassifier) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
-	buf := skyhook.NewSimpleBuffer(skyhook.DetectionType, parents[0].Freq())
+func (m *SimpleClassifier) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
+	parents, err := GetParents(ctx, m.node)
+	if err != nil {
+		return skyhook.GetErrorBuffer(m.node.DataType, fmt.Errorf("simple-classifier error reading parents: %v", err))
+	}
+	buf := skyhook.NewSimpleBuffer(skyhook.DetectionType)
 
 	go func() {
-		PerFrame(parents, slice, buf, skyhook.VideoType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
+		buf.SetMeta(parents[0].Freq())
+		PerFrame(parents, ctx.Slice, buf, skyhook.VideoType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
 			//im := data.(skyhook.VideoData)[0]
 			// ...
 			return nil

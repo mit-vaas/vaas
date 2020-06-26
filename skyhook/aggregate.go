@@ -110,7 +110,7 @@ func init() {
 			return
 		}
 		var request []LabeledSliceRef
-		if err := JsonRequest(w, r, &request); err != nil {
+		if err := ParseJsonRequest(w, r, &request); err != nil {
 			return
 		}
 

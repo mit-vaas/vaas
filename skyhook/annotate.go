@@ -45,7 +45,8 @@ func (item Item) Load(slice Slice) DataBuffer {
 	if item.Series.DataType == VideoType {
 		return VideoFileBuffer{item, slice}
 	}
-	buf := NewSimpleBuffer(item.Series.DataType, item.Freq)
+	buf := NewSimpleBuffer(item.Series.DataType)
+	buf.SetMeta(item.Freq)
 	go func() {
 		bytes, err := ioutil.ReadFile(item.Fname(0))
 		if err != nil {
@@ -205,7 +206,7 @@ func init() {
 
 	http.HandleFunc("/series/detection-label", func(w http.ResponseWriter, r *http.Request) {
 		var request DetectionLabelRequest
-		if err := JsonRequest(w, r, &request); err != nil {
+		if err := ParseJsonRequest(w, r, &request); err != nil {
 			return
 		}
 
@@ -237,7 +238,7 @@ func init() {
 
 	http.HandleFunc("/series/class-label", func(w http.ResponseWriter, r *http.Request) {
 		var request ClassLabelRequest
-		if err := JsonRequest(w, r, &request); err != nil {
+		if err := ParseJsonRequest(w, r, &request); err != nil {
 			return
 		}
 

@@ -3,7 +3,6 @@ package skyhook
 import (
 	"fmt"
 	"io"
-	"sync"
 )
 
 type DataType string
@@ -65,159 +64,31 @@ type DataBuffer interface {
 	Wait() error
 }
 
-type DataWriter interface {
+type DataBufferWithIO interface {
 	DataBuffer
+	FromReader(r io.Reader)
+	ToWriter(w io.Writer) error
+}
+
+type DataWriter interface {
+	SetMeta(freq int)
 	Write(data Data)
 	Close()
 	Error(err error)
+	Buffer() DataBuffer
 }
 
-type SimpleBuffer struct {
-	buf Data
-	mu sync.Mutex
-	cond *sync.Cond
-	err error
-	done bool
-	freq int
-	length int
-}
-
-type SimpleReader struct {
-	buf *SimpleBuffer
-	freq int
-	pos int
-}
-
-func NewSimpleBuffer(t DataType, freq int) *SimpleBuffer {
+func GetErrorBuffer(t DataType, err error) DataBuffer {
 	if t == VideoType {
-		panic(fmt.Errorf("SimpleBuffer should not be used for video"))
-	} else if freq <= 0 {
-		panic(fmt.Errorf("freq must be positive"))
-	}
-	buf := &SimpleBuffer{
-		buf: NewData(t),
-		freq: freq,
-	}
-	buf.cond = sync.NewCond(&buf.mu)
-	return buf
-}
-
-// Optionally set the length of this buffer.
-// The buffer will drop Writes or duplicate items on Close to ensure it matches the length.
-func (buf *SimpleBuffer) SetLength(length int) {
-	buf.length = length
-}
-
-func (buf *SimpleBuffer) Type() DataType {
-	return buf.buf.Type()
-}
-
-func (buf *SimpleBuffer) read(pos int, n int) (Data, error) {
-	buf.mu.Lock()
-	defer buf.mu.Unlock()
-	wait := n
-	if wait <= 0 {
-		wait = 1
-	}
-	for buf.buf.Length() < pos+wait && buf.err == nil && !buf.done {
-		buf.cond.Wait()
-	}
-	if buf.err != nil {
-		return nil, buf.err
-	} else if pos == buf.buf.Length() && buf.done {
-		return nil, io.EOF
-	}
-
-	if n <= 0 || pos+n > buf.buf.Length() {
-		n = buf.buf.Length()-pos
-	}
-	data := NewData(buf.Type()).Append(buf.buf.Slice(pos, pos+n))
-	return data, nil
-}
-
-// Wait for at least n to complete, and read them without removing from the buffer.
-func (buf *SimpleBuffer) peek(pos int, n int) (Data, error) {
-	buf.mu.Lock()
-	defer buf.mu.Unlock()
-	if n > 0 {
-		for buf.buf.Length() < pos+n && buf.err == nil && !buf.done {
-			buf.cond.Wait()
-		}
-	}
-	if buf.err != nil {
-		return nil, buf.err
-	}
-	data := NewData(buf.Type()).Append(buf.buf.Slice(pos, buf.buf.Length()))
-	return data, nil
-}
-
-func (buf *SimpleBuffer) Write(data Data) {
-	buf.mu.Lock()
-	buf.buf = buf.buf.Append(data)
-	if buf.length > 0 && buf.buf.Length() > buf.length {
-		buf.buf = buf.buf.Slice(0, buf.length)
-	}
-	buf.cond.Broadcast()
-	buf.mu.Unlock()
-}
-
-func (buf *SimpleBuffer) Close() {
-	buf.mu.Lock()
-	if buf.length > 0 && buf.buf.Length() < buf.length {
-		buf.buf = buf.buf.EnsureLength(buf.length)
-	}
-	buf.done = true
-	buf.cond.Broadcast()
-	buf.mu.Unlock()
-}
-
-func (buf *SimpleBuffer) Error(err error) {
-	buf.mu.Lock()
-	buf.err = err
-	buf.cond.Broadcast()
-	buf.mu.Unlock()
-}
-
-func (buf *SimpleBuffer) Wait() error {
-	buf.mu.Lock()
-	defer buf.mu.Unlock()
-	for !buf.done && buf.err == nil {
-		buf.cond.Wait()
-	}
-	if buf.err != nil {
-		return buf.err
-	}
-	return nil
-}
-
-func (buf *SimpleBuffer) Reader() DataReader {
-	return &SimpleReader{
-		buf: buf,
-		freq: buf.freq,
+		buf := NewVideoBuffer()
+		buf.Error(err)
+		return buf
+	} else {
+		buf := NewSimpleBuffer(t)
+		buf.Error(err)
+		return buf
 	}
 }
-
-func (rd *SimpleReader) Type() DataType {
-	return rd.buf.Type()
-}
-
-func (rd *SimpleReader) Read(n int) (Data, error) {
-	data, err := rd.buf.read(rd.pos, n)
-	if data != nil {
-		rd.pos += data.Length()
-	}
-	return data, err
-}
-
-func (rd *SimpleReader) Peek(n int) (Data, error) {
-	return rd.buf.peek(rd.pos, n)
-}
-
-func (rd *SimpleReader) Freq() int {
-	return rd.freq
-}
-
-func (rd *SimpleReader) Close() {}
 
 func MinFreq(inputs []DataReader) int {
 	freq := inputs[0].Freq()

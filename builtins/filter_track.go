@@ -50,10 +50,11 @@ type TrackFilterConfig struct {
 }
 
 type TrackFilter struct {
+	node *skyhook.Node
 	cfg TrackFilterConfig
 }
 
-func NewTrackFilter(node *skyhook.Node, query *skyhook.Query) skyhook.Executor {
+func NewTrackFilter(node *skyhook.Node) skyhook.Executor {
 	var cfg TrackFilterConfig
 	skyhook.JsonUnmarshal([]byte(node.Code), &cfg)
 	for i := range cfg.Shapes {
@@ -66,14 +67,22 @@ func NewTrackFilter(node *skyhook.Node, query *skyhook.Query) skyhook.Executor {
 			}
 		}
 	}
-	return TrackFilter{cfg: cfg}
+	return TrackFilter{
+		node: node,
+		cfg: cfg,
+	}
 }
 
-func (m TrackFilter) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
-	buf := skyhook.NewSimpleBuffer(skyhook.TrackType, parents[0].Freq())
+func (m TrackFilter) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
+	parents, err := GetParents(ctx, m.node)
+	if err != nil {
+		return skyhook.GetErrorBuffer(m.node.DataType, fmt.Errorf("track-filter error reading parents: %v", err))
+	}
+	buf := skyhook.NewSimpleBuffer(skyhook.TrackType)
 
 	go func() {
-		data, err := parents[0].Read(slice.Length())
+		buf.SetMeta(parents[0].Freq())
+		data, err := parents[0].Read(ctx.Slice.Length())
 		if err != nil {
 			buf.Error(fmt.Errorf("filter_track error reading parent: %v", err))
 			return

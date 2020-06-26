@@ -16,6 +16,7 @@ import (
 )
 
 type Yolov3 struct {
+	node *skyhook.Node
 	cfgFname string
 	stdin io.WriteCloser
 	rd *bufio.Reader
@@ -23,8 +24,8 @@ type Yolov3 struct {
 	mu sync.Mutex
 }
 
-func NewYolov3(node *skyhook.Node, query *skyhook.Query) skyhook.Executor {
-	return &Yolov3{}
+func NewYolov3(node *skyhook.Node) skyhook.Executor {
+	return &Yolov3{node: node}
 }
 
 func (m *Yolov3) start(width int, height int) {
@@ -75,8 +76,12 @@ func (m *Yolov3) getLines() []string {
 	return strings.Split(output, "\n")
 }
 
-func (m *Yolov3) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
-	buf := skyhook.NewSimpleBuffer(skyhook.DetectionType, parents[0].Freq())
+func (m *Yolov3) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
+	parents, err := GetParents(ctx, m.node)
+	if err != nil {
+		return skyhook.GetErrorBuffer(m.node.DataType, fmt.Errorf("yolov3 error reading parents: %v", err))
+	}
+	buf := skyhook.NewSimpleBuffer(skyhook.DetectionType)
 
 	parseLines := func(lines []string) []skyhook.Detection {
 		var boxes []skyhook.Detection
@@ -116,9 +121,10 @@ func (m *Yolov3) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.
 	}
 
 	go func() {
+		buf.SetMeta(parents[0].Freq())
 		fname := fmt.Sprintf("%s/%d.jpg", os.TempDir(), rand.Int63())
 		defer os.Remove(fname)
-		PerFrame(parents, slice, buf, skyhook.VideoType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
+		PerFrame(parents, ctx.Slice, buf, skyhook.VideoType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
 			im := data.(skyhook.VideoData)[0]
 			if err := ioutil.WriteFile(fname, im.AsJPG(), 0644); err != nil {
 				return err

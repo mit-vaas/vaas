@@ -2,6 +2,7 @@ package builtins
 
 import (
 	"../skyhook"
+	"fmt"
 )
 
 type DetectionFilterConfig struct {
@@ -10,14 +11,16 @@ type DetectionFilterConfig struct {
 }
 
 type DetectionFilter struct {
+	node *skyhook.Node
 	score float64
 	classes map[string]bool
 }
 
-func NewDetectionFilter(node *skyhook.Node, query *skyhook.Query) skyhook.Executor {
+func NewDetectionFilter(node *skyhook.Node) skyhook.Executor {
 	var cfg DetectionFilterConfig
 	skyhook.JsonUnmarshal([]byte(node.Code), &cfg)
 	m := DetectionFilter{
+		node: node,
 		score: cfg.Score,
 		classes: make(map[string]bool),
 	}
@@ -27,11 +30,16 @@ func NewDetectionFilter(node *skyhook.Node, query *skyhook.Query) skyhook.Execut
 	return m
 }
 
-func (m DetectionFilter) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
-	buf := skyhook.NewSimpleBuffer(skyhook.DetectionType, parents[0].Freq())
+func (m DetectionFilter) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
+	parents, err := GetParents(ctx, m.node)
+	if err != nil {
+		return skyhook.GetErrorBuffer(m.node.DataType, fmt.Errorf("detection-filter error reading parents: %v", err))
+	}
+	buf := skyhook.NewSimpleBuffer(skyhook.DetectionType)
 
 	go func() {
-		PerFrame(parents, slice, buf, skyhook.DetectionType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
+		buf.SetMeta(parents[0].Freq())
+		PerFrame(parents, ctx.Slice, buf, skyhook.DetectionType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
 			detections := data.(skyhook.DetectionData)[0]
 			var ndetections []skyhook.Detection
 			for _, d := range detections {

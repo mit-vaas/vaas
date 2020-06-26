@@ -3,6 +3,7 @@ package skyhook
 import (
 	"github.com/googollee/go-socket.io"
 
+	"bytes"
 	"bufio"
 	"encoding/json"
 	"fmt"
@@ -59,7 +60,7 @@ func JsonResponse(w http.ResponseWriter, x interface{}) {
 	w.Write(bytes)
 }
 
-func JsonRequest(w http.ResponseWriter, r *http.Request, x interface{}) error {
+func ParseJsonRequest(w http.ResponseWriter, r *http.Request, x interface{}) error {
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("json decode error: %v", err), 400)
@@ -68,6 +69,24 @@ func JsonRequest(w http.ResponseWriter, r *http.Request, x interface{}) error {
 	if err := json.Unmarshal(bytes, x); err != nil {
 		http.Error(w, fmt.Sprintf("json decode error: %v", err), 400)
 		return err
+	}
+	return nil
+}
+
+func JsonPost(baseURL string, path string, request interface{}, response interface{}) error {
+	body := bytes.NewBuffer(JsonMarshal(request))
+	resp, err := http.Post(baseURL + path, "application/json", body)
+	if err != nil {
+		return fmt.Errorf("error performing HTTP request: %v", err)
+	}
+	bytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("error performing HTTP request: %v", err)
+	} else if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(bytes))
+	}
+	if response != nil {
+		JsonUnmarshal(bytes, response)
 	}
 	return nil
 }

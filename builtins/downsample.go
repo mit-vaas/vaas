@@ -12,21 +12,29 @@ type DownsampleConfig struct {
 }
 
 type Downsample struct {
+	node *skyhook.Node
 	cfg DownsampleConfig
 }
 
-func NewDownsample(node *skyhook.Node, query *skyhook.Query) skyhook.Executor {
+func NewDownsample(node *skyhook.Node) skyhook.Executor {
 	var cfg DownsampleConfig
 	skyhook.JsonUnmarshal([]byte(node.Code), &cfg)
-	return Downsample{cfg: cfg}
+	return Downsample{
+		node: node,
+		cfg: cfg,
+	}
 }
 
-func (m Downsample) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyhook.DataBuffer {
+func (m Downsample) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
+	parents, err := GetParents(ctx, m.node)
+	if err != nil {
+		return skyhook.GetErrorBuffer(m.node.DataType, fmt.Errorf("downsample error reading parents: %v", err))
+	}
 	if len(parents) != 1 {
 		panic(fmt.Errorf("downsample takes one parent"))
 	}
 	parent := parents[0]
-	expectedLength := (slice.Length() + m.cfg.Freq-1) / m.cfg.Freq
+	expectedLength := (ctx.Slice.Length() + m.cfg.Freq-1) / m.cfg.Freq
 
 	// push-down the re-sample if possible
 	if vbufReader, ok := parent.(*skyhook.VideoBufferReader); ok {
@@ -35,11 +43,12 @@ func (m Downsample) Run(parents []skyhook.DataReader, slice skyhook.Slice) skyho
 		return vbufReader
 	}
 
-	buf := skyhook.NewSimpleBuffer(parent.Type(), m.cfg.Freq)
+	buf := skyhook.NewSimpleBuffer(parent.Type())
+	buf.SetMeta(m.cfg.Freq)
 
 	go func() {
 		var count int = 0
-		err := skyhook.ReadMultiple(slice.Length(), m.cfg.Freq, parents, func(index int, datas []skyhook.Data) error {
+		err := skyhook.ReadMultiple(ctx.Slice.Length(), m.cfg.Freq, parents, func(index int, datas []skyhook.Data) error {
 			data := datas[0]
 			count += data.Length()
 			buf.Write(data)
