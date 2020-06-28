@@ -32,7 +32,11 @@ type Data interface {
 }
 
 func NewData(t DataType) Data {
-	return dataImpls[t].New()
+	impl, ok := dataImpls[t]
+	if !ok {
+		panic(fmt.Errorf("unknown data type %v", t))
+	}
+	return impl.New()
 }
 
 func DecodeData(t DataType, bytes []byte) Data {
@@ -64,9 +68,8 @@ type DataBuffer interface {
 	Wait() error
 }
 
-type DataBufferWithIO interface {
+type DataBufferIOWriter interface {
 	DataBuffer
-	FromReader(r io.Reader)
 	ToWriter(w io.Writer) error
 }
 

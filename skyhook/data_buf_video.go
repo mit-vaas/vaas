@@ -166,7 +166,6 @@ func (buf *VideoBuffer) Wait() error {
 func (buf *VideoBuffer) Reader() DataReader {
 	rd := &VideoBufferReader{
 		buf: buf,
-		freq: buf.freq,
 	}
 	return rd
 }
@@ -186,56 +185,8 @@ func (buf *VideoBuffer) Read(pos int, b []byte) (int, error) {
 	return n, nil
 }
 
-func (buf *VideoBuffer) FromReader(r io.Reader) {
-	header := make([]byte, 12)
-	_, err := io.ReadFull(r, header)
-	if err != nil {
-		buf.Error(fmt.Errorf("error reading binary: %v", err))
-		return
-	}
-	freq := int(binary.BigEndian.Uint32(header[0:4]))
-	width := int(binary.BigEndian.Uint32(header[4:8]))
-	height := int(binary.BigEndian.Uint32(header[8:12]))
-	buf.SetMeta(freq, width, height)
-	_, err = io.Copy(buf, r)
-	if err != nil {
-		buf.Error(fmt.Errorf("error reading binary: %v", err))
-		return
-	}
-	buf.Close()
-}
-
 func (buf *VideoBuffer) ToWriter(w io.Writer) error {
-	buf.waitForMeta()
-	header := make([]byte, 12)
-	binary.BigEndian.PutUint32(header[0:4], uint32(buf.freq))
-	binary.BigEndian.PutUint32(header[4:8], uint32(buf.dims[0]))
-	binary.BigEndian.PutUint32(header[8:12], uint32(buf.dims[1]))
-	w.Write(header)
-
-	pos := 0
-	p := make([]byte, 4096)
-	for {
-		n, err := buf.Read(pos, p)
-		if err == io.EOF {
-			return nil
-		} else if err != nil {
-			return err
-		}
-		w.Write(p[0:n])
-		pos += n
-	}
-}
-
-type VideoBinaryReader struct {
-	buf *VideoBuffer
-	pos int
-}
-
-func (r *VideoBinaryReader) Read(p []byte) (int, error) {
-	n, err := r.buf.Read(r.pos, p)
-	r.pos += n
-	return n, err
+	return buf.Reader().(*VideoBufferReader).ToWriter(w)
 }
 
 type VideoFileBuffer struct {
@@ -333,6 +284,16 @@ func (rd *VideoBufferReader) Wait() error {
 	return rd.buf.Wait()
 }
 
+func (rd *VideoBufferReader) getDims() [2]int {
+	if rd.rescale[0] != 0 {
+		return rd.rescale
+	} else if rd.buf != nil {
+		return rd.buf.dims
+	} else {
+		return [2]int{rd.item.Width, rd.item.Height}
+	}
+}
+
 func (rd *VideoBufferReader) start() {
 	if rd.buf != nil {
 		err := rd.buf.waitForMeta()
@@ -340,14 +301,8 @@ func (rd *VideoBufferReader) start() {
 			rd.err = err
 			return
 		}
-		width := rd.buf.dims[0]
-		height := rd.buf.dims[1]
+		dims := rd.getDims()
 		sample := 1
-
-		if rd.rescale[0] != 0 {
-			width = rd.rescale[0]
-			height = rd.rescale[1]
-		}
 		if rd.resample != 0 {
 			sample = rd.resample
 		}
@@ -357,7 +312,7 @@ func (rd *VideoBufferReader) start() {
 			"ffmpeg",
 			"-f", "mp4", "-i", "-",
 			"-c:v", "rawvideo", "-pix_fmt", "rgb24", "-f", "rawvideo",
-			"-vf", fmt.Sprintf("scale=%dx%d,fps=%d/%d", width, height, FPS, sample),
+			"-vf", fmt.Sprintf("scale=%dx%d,fps=%d/%d", dims[0], dims[1], FPS, sample),
 			"-",
 		)
 
@@ -381,9 +336,9 @@ func (rd *VideoBufferReader) start() {
 		rd.rd = ffmpegReader{
 			cmd: cmd,
 			stdout: cmd.Stdout(),
-			width: width,
-			height: height,
-			buf: make([]byte, width*height*3),
+			width: dims[0],
+			height: dims[1],
+			buf: make([]byte, dims[0]*dims[1]*3),
 		}
 	} else {
 		rd.rd = ReadVideo(rd.item, rd.slice, ReadVideoOptions{
@@ -484,4 +439,106 @@ func (rd *VideoBufferReader) Close() {
 		rd.rd.Close()
 	}
 	rd.err = fmt.Errorf("closed")
+}
+
+type VideoIOMeta struct {
+	Resample int
+	Rescale [2]int
+
+	BufFreq int
+	BufWidth int
+	BufHeight int
+
+	ItemID *int
+	Slice Slice
+}
+
+func VideoBufferFromReader(r io.ReadCloser) DataBuffer {
+	hlen := make([]byte, 4)
+	_, err := io.ReadFull(r, hlen)
+	if err != nil {
+		return GetErrorBuffer(VideoType, fmt.Errorf("error reading video from io.Reader: %v", err))
+	}
+	l := int(binary.BigEndian.Uint32(hlen))
+	metaBytes := make([]byte, l)
+	_, err = io.ReadFull(r, metaBytes)
+	if err != nil {
+		return GetErrorBuffer(VideoType, fmt.Errorf("error reading video from io.Reader: %v", err))
+	}
+	var meta VideoIOMeta
+	JsonUnmarshal(metaBytes, &meta)
+
+	if meta.ItemID == nil {
+		// reader sends the video bytes
+		buf := NewVideoBuffer()
+		buf.SetMeta(meta.BufFreq, meta.BufWidth, meta.BufHeight)
+		rd := buf.Reader().(*VideoBufferReader)
+		rd.resample = meta.Resample
+		rd.rescale = meta.Rescale
+		go func() {
+			_, err = io.Copy(buf, r)
+			if err != nil {
+				buf.Error(fmt.Errorf("error reading video (VideoBuffer) from io.Reader: %v", err))
+				return
+			}
+			r.Close()
+			buf.Close()
+		}()
+		return rd
+	} else {
+		r.Close()
+		item := GetItem(*meta.ItemID)
+		if item == nil {
+			return GetErrorBuffer(VideoType, fmt.Errorf("error reading video from io.Reader: no such item %d", *meta.ItemID))
+		}
+		return &VideoBufferReader{
+			item: *item,
+			slice: meta.Slice,
+			freq: item.Freq,
+			resample: meta.Resample,
+			rescale: meta.Rescale,
+		}
+	}
+}
+
+func (rd *VideoBufferReader) ToWriter(w io.Writer) error {
+	meta := VideoIOMeta{
+		Resample: rd.resample,
+		Rescale: rd.rescale,
+	}
+
+	writeMeta := func() {
+		metaBytes := JsonMarshal(meta)
+		hlen := make([]byte, 4)
+		binary.BigEndian.PutUint32(hlen, uint32(len(metaBytes)))
+		w.Write(hlen)
+		w.Write(metaBytes)
+	}
+
+	if rd.buf != nil {
+		rd.buf.waitForMeta()
+		meta.BufFreq = rd.buf.freq
+		meta.BufWidth = rd.buf.dims[0]
+		meta.BufHeight = rd.buf.dims[1]
+		writeMeta()
+
+		pos := 0
+		p := make([]byte, 4096)
+		for {
+			n, err := rd.buf.Read(pos, p)
+			if err == io.EOF {
+				return nil
+			} else if err != nil {
+				return err
+			}
+			w.Write(p[0:n])
+			pos += n
+		}
+	} else {
+		meta.ItemID = &rd.item.ID
+		meta.Slice = rd.slice
+		writeMeta()
+	}
+
+	return nil
 }

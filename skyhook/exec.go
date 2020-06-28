@@ -51,17 +51,17 @@ func (context ExecContext) GetReader(node *Node) (DataReader, error) {
 	} else if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("HTTP error %d", resp.StatusCode)
 	}
-	var buf DataBufferWithIO
+	var buf DataBuffer
 	if node.DataType == VideoType {
-		buf = NewVideoBuffer()
+		buf = VideoBufferFromReader(resp.Body)
 	} else {
-		buf = NewSimpleBuffer(node.DataType)
+		sbuf := NewSimpleBuffer(node.DataType)
+		go func() {
+			sbuf.FromReader(resp.Body)
+			resp.Body.Close()
+		}()
+		buf = sbuf
 	}
-
-	go func() {
-		buf.FromReader(resp.Body)
-		resp.Body.Close()
-	}()
 
 	return buf.Reader(), nil
 }
@@ -139,18 +139,20 @@ func (query *Query) Run(vector []*Series, slice Slice) ([][]DataReader, error) {
 
 	// get the selector
 	selector := query.Selector
-	rd, err := context.GetReader(selector)
-	if err != nil {
-		log.Printf("[query-run %s %v] error computing selector: %v", query.Name, slice, err)
-		return nil, err
-	}
-	data, err := rd.Read(slice.Length())
-	if err != nil {
-		log.Printf("[query-run %s %v] error computing selector: %v", query.Name, slice, err)
-		return nil, err
-	}
-	if data.IsEmpty() {
-		return nil, fmt.Errorf("selector reject")
+	if selector != nil {
+		rd, err := context.GetReader(selector)
+		if err != nil {
+			log.Printf("[query-run %s %v] error computing selector: %v", query.Name, slice, err)
+			return nil, err
+		}
+		data, err := rd.Read(slice.Length())
+		if err != nil {
+			log.Printf("[query-run %s %v] error computing selector: %v", query.Name, slice, err)
+			return nil, err
+		}
+		if data.IsEmpty() {
+			return nil, fmt.Errorf("selector reject")
+		}
 	}
 
 	// get the outputs for rendering

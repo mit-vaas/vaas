@@ -74,7 +74,10 @@ func ParseJsonRequest(w http.ResponseWriter, r *http.Request, x interface{}) err
 }
 
 func JsonPost(baseURL string, path string, request interface{}, response interface{}) error {
-	body := bytes.NewBuffer(JsonMarshal(request))
+	var body io.Reader
+	if request != nil {
+		body = bytes.NewBuffer(JsonMarshal(request))
+	}
 	resp, err := http.Post(baseURL + path, "application/json", body)
 	if err != nil {
 		return fmt.Errorf("error performing HTTP request: %v", err)

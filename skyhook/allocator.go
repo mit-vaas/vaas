@@ -2,6 +2,8 @@ package skyhook
 
 import (
 	"fmt"
+	"net/http"
+	"net/url"
 	"sync"
 )
 
@@ -33,6 +35,7 @@ var Machines = []Machine{
 }
 
 type Container struct {
+	UUID string
 	Environment Environment
 	BaseURL string
 	MachineIdx int
@@ -60,6 +63,10 @@ type MinimalAllocator struct {
 var allocator Allocator = &MinimalAllocator{
 	envSets: make(map[EnvSetID]EnvSet),
 	containers: make(map[EnvSetID][]Container),
+}
+
+func GetAllocator() Allocator {
+	return allocator
 }
 
 func (a *MinimalAllocator) FlatContainers() []Container {
@@ -135,16 +142,14 @@ func (a *MinimalAllocator) tryAllocate(set EnvSet) bool {
 	var containers []Container
 	for envIdx, env := range set.Environments {
 		machine := Machines[allocation[envIdx]]
-		var containerURL string
-		err := JsonPost(machine.BaseURL, "/allocate", env, &containerURL)
+		var container Container
+		err := JsonPost(machine.BaseURL, "/allocate", env, &container)
 		if err != nil {
 			panic(fmt.Errorf("allocation error: %v", err))
 		}
-		containers = append(containers, Container{
-			Environment: env,
-			BaseURL: containerURL,
-			MachineIdx: allocation[envIdx],
-		})
+		container.Environment = env
+		container.MachineIdx = allocation[envIdx]
+		containers = append(containers, container)
 	}
 	a.containers[set.ID] = containers
 
@@ -152,7 +157,22 @@ func (a *MinimalAllocator) tryAllocate(set EnvSet) bool {
 }
 
 func (a *MinimalAllocator) Deallocate(setID EnvSetID) {
-	// TODO
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.containers[setID] == nil {
+		return
+	}
+	for _, container := range a.containers[setID] {
+		resp, err := http.PostForm(Machines[container.MachineIdx].BaseURL + "/deallocate", url.Values{"uuid": {container.UUID}})
+		if err != nil {
+			panic(fmt.Errorf("de-allocation error: %v", err))
+		} else if resp.StatusCode != 200 {
+			panic(fmt.Errorf("de-allocation error: got status code %v", resp.StatusCode))
+		}
+		resp.Body.Close()
+	}
+	delete(a.containers, setID)
+	delete(a.envSets, setID)
 }
 
 /*

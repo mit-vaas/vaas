@@ -4,7 +4,9 @@ import (
 	"./skyhook"
 	_ "./builtins"
 
+	"io/ioutil"
 	"log"
+	"os"
 	"net/http"
 	"sync"
 )
@@ -61,10 +63,53 @@ func main() {
 			return buf
 		}()
 
-		err := buf.(skyhook.DataBufferWithIO).ToWriter(w)
+		err := buf.(skyhook.DataBufferIOWriter).ToWriter(w)
 		if err != nil {
 			log.Printf("[node %s %v] error writing buffer: %v", node.Name, context.Slice, err)
 		}
+	})
+
+	http.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+
+		r.ParseForm()
+		nodeID := skyhook.ParseInt(r.Form.Get("node_id"))
+
+		mu.Lock()
+		e := executors[nodeID]
+		mu.Unlock()
+		if e == nil {
+			http.Error(w, "no such node", 404)
+		}
+		statsProvider, ok := e.(skyhook.StatsProvider)
+		if !ok {
+			skyhook.JsonResponse(w, skyhook.StatsSample{})
+			return
+		}
+		sample := statsProvider.Stats()
+		skyhook.JsonResponse(w, sample)
+	})
+
+	http.HandleFunc("/allstats", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+		var stats skyhook.StatsSample
+		mu.Lock()
+		for _, e := range executors {
+			statsProvider, ok := e.(skyhook.StatsProvider)
+			if !ok {
+				continue
+			}
+			sample := statsProvider.Stats()
+			stats = stats.Add(sample)
+		}
+		mu.Unlock()
+		skyhook.JsonResponse(w, stats)
 	})
 
 	http.HandleFunc("/query/finish", func(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +119,19 @@ func main() {
 		delete(buffers, uuid)
 		mu.Unlock()
 	})
+
+	// kill when stdin is closed
+	go func() {
+		_, err := ioutil.ReadAll(os.Stdin)
+		if err != nil {
+			panic(err)
+		}
+		mu.Lock()
+		for _, e := range executors {
+			e.Close()
+		}
+		os.Exit(0)
+	}()
 
 	log.Printf("starting on :8082")
 	if err := http.ListenAndServe(":8082", nil); err != nil {

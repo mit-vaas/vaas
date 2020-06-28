@@ -100,6 +100,11 @@ Vue.component('new-node-modal', {
 							Name: "Downsample",
 							Description: "Downsample inputs to lower framerate",
 						},
+						{
+							ID: "rescale-resample",
+							Name: "Rescale/Resample",
+							Description: "Rescale/Resample",
+						},
 					],
 				},
 			],
@@ -115,7 +120,7 @@ Vue.component('new-node-modal', {
 				query_id: this.query_id,
 				name: this.newNodeFields.name,
 				type: this.newNodeFields.type.ID,
-				dataType: this.newNodeFields.dataType,
+				data_type: this.newNodeFields.dataType,
 			};
 			$.post('/queries/nodes', params, () => {
 				$(this.$refs.modal).modal('hide');

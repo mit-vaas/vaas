@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Yolov3 struct {
@@ -22,6 +23,7 @@ type Yolov3 struct {
 	rd *bufio.Reader
 	cmd *skyhook.Cmd
 	mu sync.Mutex
+	samples []skyhook.StatsSample
 }
 
 func NewYolov3(node *skyhook.Node) skyhook.Executor {
@@ -133,9 +135,13 @@ func (m *Yolov3) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 			if m.stdin == nil {
 				m.start(im.Width, im.Height)
 			}
+			t0 := time.Now()
 			m.stdin.Write([]byte(fname + "\n"))
 			lines := m.getLines()
 			boxes := parseLines(lines)
+			m.samples = append(m.samples, skyhook.StatsSample{
+				Time: time.Now().Sub(t0),
+			})
 			m.mu.Unlock()
 			buf.Write(skyhook.DetectionData{boxes})
 			return nil
@@ -148,6 +154,12 @@ func (m *Yolov3) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 func (m *Yolov3) Close() {
 	m.stdin.Close()
 	m.cmd.Wait()
+}
+
+func (m *Yolov3) GetStats() skyhook.StatsSample {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return skyhook.AverageStats(m.samples)
 }
 
 func init() {
