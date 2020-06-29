@@ -2,9 +2,11 @@ package builtins
 
 import (
 	"../skyhook"
+
+	"github.com/googollee/go-socket.io"
+
 	"fmt"
 	"log"
-	"net/http"
 	"strings"
 	"sync"
 )
@@ -91,145 +93,160 @@ func (m RescaleResample) Close() {}
 func init() {
 	skyhook.Executors["rescale-resample"] = NewRescaleResample
 
-	http.HandleFunc("/nodes/rescale-resample", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			w.WriteHeader(404)
-			return
+	skyhook.SetupFuncs = append(skyhook.SetupFuncs, func(server *socketio.Server) {
+		type TuneRequest struct {
+			NodeID int
+			Vector string
+			MetricSeries int
+			MetricNode int
 		}
 
-		r.ParseForm()
-		nodeID := skyhook.ParseInt(r.Form.Get("node_id"))
-		vectorStr := r.Form.Get("vector")
-		metricSeriesID := skyhook.ParseInt(r.Form.Get("metric_series"))
-		metricNodeID := skyhook.ParseInt(r.Form.Get("metric_node"))
+		server.OnConnect("/nodes/rescale-resample", func(s socketio.Conn) error {
+			return nil
+		})
 
-		origNode := skyhook.GetNode(nodeID)
-		if origNode == nil || origNode.Type != "rescale-resample" {
-			http.Error(w, "no such rescale-resample node", 404)
-			return
-		}
-		vector := skyhook.ParseVector(vectorStr)
-		metricSeries := skyhook.GetSeries(metricSeriesID)
-		if metricSeries == nil {
-			http.Error(w, "no such series", 404)
-			return
-		}
+		server.OnError("/nodes/rescale-resample", func (s socketio.Conn, err error) {
+			log.Printf("[socket.io] error on client %v: %v", s.ID(), err)
+		})
 
-		query := skyhook.GetQuery(origNode.QueryID)
-		query.Load()
-
-		// load ground truth data
-		metricItems := metricSeries.ListItems()
-		var gtlist []skyhook.Data
-		sliceToIdx := make(map[string]int)
-		for i, item := range metricItems {
-			data, err := item.Load(item.Slice).Reader().Read(item.Slice.Length())
-			if err != nil {
-				panic(err)
+		server.OnEvent("/nodes/rescale-resample", "tune", func(s socketio.Conn, request TuneRequest) []RescaleResampleConfig {
+			origNode := skyhook.GetNode(request.NodeID)
+			if origNode == nil || origNode.Type != "rescale-resample" {
+				s.Emit("error", "no such rescale-resample node")
+				return nil
 			}
-			gtlist = append(gtlist, data)
-			sliceToIdx[item.Slice.String()] = i
-		}
-
-		// enumerate the configurations that we want to test
-		// only adjust freq if at least one item includes multiple frames
-		freqs := []int{1}
-		for _, data := range gtlist {
-			if data.Length() > 1 {
-				freqs = []int{1, 2, 4, 8, 16}
-				break
+			vector := skyhook.ParseVector(request.Vector)
+			metricSeries := skyhook.GetSeries(request.MetricSeries)
+			if metricSeries == nil {
+				s.Emit("error", "no such metric series")
+				return nil
 			}
-		}
-		var cfgs []RescaleResampleConfig
-		for _, dims := range [][2]int{{1280, 720}, {960, 540}, {640, 360}, {480, 270}} {
-			for _, freq := range freqs {
-				cfgs = append(cfgs, RescaleResampleConfig{freq, dims[0], dims[1]})
+			metricNode := skyhook.GetNode(request.MetricNode)
+			if metricNode == nil {
+				s.Emit("error", "no such metric node")
+				return nil
 			}
-		}
 
-		type Result struct {
-			outputs []skyhook.Data
-			score float64
-			stats skyhook.StatsSample
-		}
-		results := make(map[RescaleResampleConfig]Result)
+			query := skyhook.GetQuery(origNode.QueryID)
+			query.Load()
 
-		for _, cfg := range cfgs {
-			// TODO: we can parallelize this if we have extra resources
-			// to do so, we can do each one in goroutine and set different query IDs
-			// so the allocater itself will handle the de-allocation
-			skyhook.GetAllocator().Deallocate(skyhook.EnvSetID{"query", query.ID})
-
-			qcopy := *query
-			qcopy.Outputs = [][]skyhook.Parent{{skyhook.Parent{
-				Type: skyhook.NodeParent,
-				NodeID: metricNodeID,
-			}}}
-			qcopy.Selector = nil
-			nodesCopy := make(map[int]*skyhook.Node)
-			for id, node := range qcopy.Nodes {
-				nodesCopy[id] = node
+			// load ground truth data
+			metricItems := metricSeries.ListItems()
+			var gtlist []skyhook.Data
+			sliceToIdx := make(map[string]int)
+			for i, item := range metricItems {
+				data, err := item.Load(item.Slice).Reader().Read(item.Slice.Length())
+				if err != nil {
+					panic(err)
+				}
+				gtlist = append(gtlist, data)
+				sliceToIdx[item.Slice.String()] = i
 			}
-			qcopy.Nodes = nodesCopy
-			nodeCopy := *origNode
-			nodeCopy.Code = string(skyhook.JsonMarshal(cfg))
-			qcopy.Nodes[nodeID] = &nodeCopy
 
-			sampler := func() func() *skyhook.Slice {
-				idx := 0
-				return func() *skyhook.Slice {
-					if idx >= len(metricItems) {
-						return nil
+			// enumerate the configurations that we want to test
+			// only adjust freq if at least one item includes multiple frames
+			freqs := []int{1}
+			for _, data := range gtlist {
+				if data.Length() > 1 {
+					freqs = []int{1, 2, 4, 8, 16}
+					break
+				}
+			}
+			var cfgs []RescaleResampleConfig
+			for _, dims := range [][2]int{{1280, 720}, {960, 540}, {640, 360}, {480, 270}} {
+				for _, freq := range freqs {
+					cfgs = append(cfgs, RescaleResampleConfig{freq, dims[0], dims[1]})
+				}
+			}
+
+			go func() {
+				for cfgIdx, cfg := range cfgs {
+					// TODO: we can parallelize this if we have extra resources
+					// to do so, we can do each one in goroutine and set different query IDs
+					// so the allocater itself will handle the de-allocation
+					skyhook.GetAllocator().Deallocate(skyhook.EnvSetID{"query", query.ID})
+
+					qcopy := *query
+					qcopy.Outputs = [][]skyhook.Parent{{skyhook.Parent{
+						Type: skyhook.NodeParent,
+						NodeID: metricNode.ID,
+					}}}
+					qcopy.Selector = nil
+					nodesCopy := make(map[int]*skyhook.Node)
+					for id, node := range qcopy.Nodes {
+						nodesCopy[id] = node
 					}
-					item := metricItems[idx]
-					idx++
-					return &item.Slice
+					qcopy.Nodes = nodesCopy
+					nodeCopy := *origNode
+					nodeCopy.Code = string(skyhook.JsonMarshal(cfg))
+					qcopy.Nodes[origNode.ID] = &nodeCopy
+
+					sampler := func() func() *skyhook.Slice {
+						idx := 0
+						return func() *skyhook.Slice {
+							if idx >= len(metricItems) {
+								return nil
+							}
+							item := metricItems[idx]
+							idx++
+							return &item.Slice
+						}
+					}()
+
+					var mu sync.Mutex
+					outputs := make([]skyhook.Data, len(gtlist))
+					var wg sync.WaitGroup
+					wg.Add(1)
+					stream := skyhook.NewExecStream(&qcopy, vector, sampler, 4, func(slice skyhook.Slice, curOutputs [][]skyhook.DataReader, err error) {
+						if err != nil {
+							if strings.Contains(err.Error(), "sample error") {
+								wg.Done()
+							} else if err != nil {
+								log.Printf("[test] warning: got callback error: %v", err)
+							}
+							return
+						}
+						wg.Add(1)
+						go func() {
+							rd := curOutputs[0][0]
+							data, err := rd.Read(slice.Length())
+							if err != nil {
+								log.Printf("[test] warning: error reading buffer: %v", err)
+								return
+							}
+							mu.Lock()
+							idx := sliceToIdx[slice.String()]
+							outputs[idx] = skyhook.AdjustDataFreq(data, slice.Length(), rd.Freq(), 1)
+							mu.Unlock()
+							wg.Done()
+						}()
+					})
+					stream.Get(len(metricItems)+1)
+					wg.Wait()
+
+					// compute score
+					score := skyhook.Metrics["detectionf1-50"](gtlist, outputs)
+
+					// add up the stats samples after averaging per node
+					samples := skyhook.GetAverageStatsByNode(skyhook.GetAllocator().GetContainers(skyhook.EnvSetID{"query", query.ID}))
+					var stats skyhook.StatsSample
+					for _, sample := range samples {
+						stats = stats.Add(sample)
+					}
+
+					log.Printf("[rescale-resample] tuning result for %v: score=%v stats=%v", cfg, score, stats)
+
+					type Result struct {
+						CfgIdx int
+						Score float64
+						Stats skyhook.StatsSample
+					}
+
+					s.Emit("tune-result", Result{cfgIdx, score, stats})
 				}
 			}()
 
-			var mu sync.Mutex
-			outputs := make([]skyhook.Data, len(gtlist))
-			var wg sync.WaitGroup
-			wg.Add(1)
-			stream := skyhook.NewExecStream(&qcopy, vector, sampler, 4, func(slice skyhook.Slice, curOutputs [][]skyhook.DataReader, err error) {
-				if err != nil {
-					if strings.Contains(err.Error(), "sample error") {
-						wg.Done()
-					} else if err != nil {
-						log.Printf("[test] warning: got callback error: %v", err)
-					}
-					return
-				}
-				wg.Add(1)
-				go func() {
-					rd := curOutputs[0][0]
-					data, err := rd.Read(slice.Length())
-					if err != nil {
-						log.Printf("[test] warning: error reading buffer: %v", err)
-						return
-					}
-					mu.Lock()
-					idx := sliceToIdx[slice.String()]
-					outputs[idx] = skyhook.AdjustDataFreq(data, slice.Length(), rd.Freq(), 1)
-					mu.Unlock()
-					wg.Done()
-				}()
-			})
-			stream.Get(len(metricItems)+1)
-			wg.Wait()
-
-			// compute score
-			score := skyhook.Metrics["detectionf1-50"](gtlist, outputs)
-
-			// add up the stats samples after averaging per node
-			samples := skyhook.GetAverageStatsByNode(skyhook.GetAllocator().GetContainers(skyhook.EnvSetID{"query", query.ID}))
-			var stats skyhook.StatsSample
-			for _, sample := range samples {
-				stats = stats.Add(sample)
-			}
-
-			results[cfg] = Result{outputs, score, stats}
-			log.Println("got for cfg", cfg, score, stats)
-		}
+			return cfgs
+		})
 	})
 }

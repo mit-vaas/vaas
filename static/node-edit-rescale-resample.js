@@ -12,6 +12,8 @@ Vue.component('node-edit-rescale-resample', {
 			inputSeries: '',
 			metricSeries: '',
 			metricNode: '',
+
+			tuneResults: null,
 		};
 	},
 	props: ['initNode'],
@@ -34,6 +36,21 @@ Vue.component('node-edit-rescale-resample', {
 				this.nodes.push(query.Nodes[nodeID]);
 			}
 		})
+
+		this.socket = io('/nodes/rescale-resample');
+		this.socket.on('tune-result', (resp) => {
+			if(this.tuneResults == null || resp.CfgIdx >= this.tuneResults.length) {
+				return;
+			}
+			let result = this.tuneResults[resp.CfgIdx];
+			Vue.set(result, 'done', true);
+			Vue.set(result, 'Score', resp.Score);
+			Vue.set(result, 'Stats', resp.Stats);
+			Vue.set(result.Stats, 'timeMS', parseInt(result.Stats.Time/1000000));
+		});
+	},
+	destroyed: function() {
+		this.socket.disconnect();
 	},
 	methods: {
 		save: function() {
@@ -47,13 +64,15 @@ Vue.component('node-edit-rescale-resample', {
 			});
 		},
 		optimize: function() {
-			var params = {
-				node_id: this.initNode.ID,
-				vector: this.inputSeries,
-				metric_series: this.metricSeries,
-				metric_node: this.metricNode,
+			var request = {
+				NodeID: parseInt(this.initNode.ID),
+				Vector: this.inputSeries+'',
+				MetricSeries: parseInt(this.metricSeries),
+				MetricNode: parseInt(this.metricNode),
 			};
-			$.post('/nodes/rescale-resample', params);
+			this.socket.emit('tune', request, (cfgs) => {
+				this.tuneResults = cfgs;
+			});
 		},
 	},
 	template: `
@@ -94,6 +113,28 @@ Vue.component('node-edit-rescale-resample', {
 		</select>
 		<button type="submit" class="btn btn-primary mx-2">Select</button>
 	</form>
+	<table v-if="tuneResults != null" class="table">
+		<thead>
+			<tr>
+				<th>Config</th>
+				<th>Score</th>
+				<th>Time</th>
+			</tr>
+		</thead>
+		<tbody>
+			<tr v-for="cfg in tuneResults">
+				<td>{{ cfg.Width }}x{{ cfg.Height }} at rate {{ cfg.Freq }}</td>
+				<template v-if="cfg.done">
+					<td>{{ cfg.Score }}</td>
+					<td>{{ cfg.Stats.timeMS }}ms per frame</td>
+				</template>
+				<template v-else>
+					<td>Loading</td>
+					<td>Loading</td>
+				</template>
+			</tr>
+		</tbody>
+	</table>
 </div>
 	`,
 });
