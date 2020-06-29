@@ -63,8 +63,12 @@ func main() {
 		r.ParseForm()
 		uuid := r.Form.Get("uuid")
 		mu.Lock()
-		containers[uuid].stdin.Close()
-		containers[uuid].cmd.Wait()
+		cmd, ok := containers[uuid]
+		if ok {
+			cmd.stdin.Close()
+			cmd.cmd.Wait()
+			delete(containers, uuid)
+		}
 		mu.Unlock()
 		log.Printf("[machine] container %s stopped", uuid)
 	})

@@ -1,6 +1,7 @@
 package skyhook
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -114,6 +115,34 @@ func (node *Node) Update(code *string, parents *string) {
 	if parents != nil {
 		db.Exec("UPDATE nodes SET parents = ? WHERE id = ?", *parents, node.ID)
 	}
+	node.OnChange()
+}
+
+func (node *Node) encodeParents() string {
+	var parts []string
+	for _, parent := range node.Parents {
+		if parent.Type == NodeParent {
+			parts = append(parts, fmt.Sprintf("%s%d", NodeParent, parent.NodeID))
+		} else if parent.Type == SeriesParent {
+			parts = append(parts, fmt.Sprintf("%s%d", SeriesParent, parent.SeriesIdx))
+		}
+	}
+	return strings.Join(parts, ",")
+}
+
+func (node *Node) encodeParentTypes() string {
+	var parts []string
+	for _, dt := range node.ParentTypes {
+		parts = append(parts, string(dt))
+	}
+	return strings.Join(parts, ",")
+}
+
+func (node *Node) Save() {
+	db.Exec(
+		"UPDATE nodes SET name = ?, parent_types = ?, parents = ?, type = ?, data_type = ?, code = ? WHERE id = ?",
+		node.Name, node.encodeParentTypes(), node.encodeParents(), node.Type, node.DataType, node.Code, node.ID,
+	)
 }
 
 func (node *Node) OnChange() {
@@ -317,6 +346,18 @@ func (query *Query) GetOutputVectors(inputs []*Series) [][]*Series {
 	return outputs
 }
 
+func (query *Query) AddNode(name string, t string, dataType DataType) *Node {
+	res := db.Exec(
+		"INSERT INTO nodes (name, parents, type, data_type, code, query_id, parent_types) VALUES (?, '', ?, ?, '', ?, '')",
+		name, t, dataType, query.ID,
+	)
+	node := GetNode(res.LastInsertId())
+	if query.Nodes != nil {
+		query.Nodes[node.ID] = node
+	}
+	return node
+}
+
 func init() {
 	http.HandleFunc("/queries/nodes", func(w http.ResponseWriter, r *http.Request) {
 		// list nodes for a query, or create new node
@@ -335,10 +376,7 @@ func init() {
 		name := r.PostForm.Get("name")
 		t := r.PostForm.Get("type")
 		dataType := r.PostForm.Get("data_type")
-		db.Exec(
-			"INSERT INTO nodes (name, parents, type, data_type, code, query_id, parent_types) VALUES (?, '', ?, ?, '', ?, '')",
-			name, t, dataType, queryID,
-		)
+		query.AddNode(name, t, DataType(dataType))
 	})
 
 	http.HandleFunc("/queries/node", func(w http.ResponseWriter, r *http.Request) {

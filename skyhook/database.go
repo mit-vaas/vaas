@@ -100,6 +100,14 @@ func init() {
 		type TEXT NOT NULL,
 		detail TEXT NOT NULL DEFAULT ''
 	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS suggestions (
+		id INTEGER PRIMARY KEY ASC,
+		query_id TEXT NOT NULL,
+		text TEXT NOT NULL,
+		action_label TEXT NOT NULL,
+		type TEXT NOT NULL,
+		config TEXT NOT NULL DEFAULT ''
+	)`)
 }
 
 func (this *Database) Query(q string, args ...interface{}) *Rows {

@@ -59,20 +59,20 @@ Vue.component('node-edit-rescale-resample', {
 	template: `
 <div class="small-container m-2">
 	<div class="form-group row">
-		<label class="col-sm-2 col-form-label">Output Width</label>
-		<div class="col-sm-10">
+		<label class="col-sm-5 col-form-label">Output Width</label>
+		<div class="col-sm-7">
 			<input v-model="width" type="text" class="form-control">
 		</div>
 	</div>
 	<div class="form-group row">
-		<label class="col-sm-2 col-form-label">Output Height</label>
-		<div class="col-sm-10">
+		<label class="col-sm-5 col-form-label">Output Height</label>
+		<div class="col-sm-7">
 			<input v-model="height" type="text" class="form-control">
 		</div>
 	</div>
 		<div class="form-group row">
-			<label class="col-sm-2 col-form-label">Re-sample Rate</label>
-			<div class="col-sm-10">
+			<label class="col-sm-5 col-form-label">Re-sample Rate</label>
+			<div class="col-sm-7">
 				<input v-model="freq" type="text" class="form-control">
 				<small id="emailHelp" class="form-text text-muted">
 					This rate is measured relative to the query input rate (not the parent).

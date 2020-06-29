@@ -2,6 +2,7 @@ package skyhook
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"sync"
@@ -45,11 +46,17 @@ type Container struct {
 // when callers need to use those environments.
 type Allocator interface {
 	// assign a container for each environment needed by the caller
-	GetContainers(EnvSet) []Container
+	Allocate(EnvSet) []Container
 
 	// de-allocate an entire environment set
 	// either when job finished or query is updated
 	Deallocate(EnvSetID)
+
+	GetEnvSets() []EnvSetID
+
+	// returns all containers allocated for this env
+	// does not allocate any new containers
+	GetContainers(EnvSetID) [][]Container
 }
 
 // Allocate the minimum number of containers to satisfy the requested environment sets.
@@ -79,7 +86,7 @@ func (a *MinimalAllocator) FlatContainers() []Container {
 	return containers
 }
 
-func (a *MinimalAllocator) GetContainers(set EnvSet) []Container {
+func (a *MinimalAllocator) Allocate(set EnvSet) []Container {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.containers[set.ID] != nil {
@@ -151,6 +158,7 @@ func (a *MinimalAllocator) tryAllocate(set EnvSet) bool {
 		container.MachineIdx = allocation[envIdx]
 		containers = append(containers, container)
 	}
+	a.envSets[set.ID] = set
 	a.containers[set.ID] = containers
 
 	return true
@@ -163,6 +171,7 @@ func (a *MinimalAllocator) Deallocate(setID EnvSetID) {
 		return
 	}
 	for _, container := range a.containers[setID] {
+		log.Printf("[allocator] begin de-allocating container %s", container.UUID)
 		resp, err := http.PostForm(Machines[container.MachineIdx].BaseURL + "/deallocate", url.Values{"uuid": {container.UUID}})
 		if err != nil {
 			panic(fmt.Errorf("de-allocation error: %v", err))
@@ -170,9 +179,33 @@ func (a *MinimalAllocator) Deallocate(setID EnvSetID) {
 			panic(fmt.Errorf("de-allocation error: got status code %v", resp.StatusCode))
 		}
 		resp.Body.Close()
+		log.Printf("[allocator] successfully de-allocated container %s", container.UUID)
 	}
-	delete(a.containers, setID)
 	delete(a.envSets, setID)
+	delete(a.containers, setID)
+}
+
+func (a *MinimalAllocator) GetEnvSets() []EnvSetID {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var ids []EnvSetID
+	for id := range a.envSets {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func (a *MinimalAllocator) GetContainers(setID EnvSetID) [][]Container {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.containers[setID] == nil {
+		return nil
+	}
+	containers := make([][]Container, len(a.containers[setID]))
+	for i, container := range a.containers[setID] {
+		containers[i] = []Container{container}
+	}
+	return containers
 }
 
 /*

@@ -48,6 +48,22 @@ func TracksToDetections(tracks [][]DetectionWithFrame) [][]Detection {
 	return detections
 }
 
+func ResizeDetections(detections [][]Detection, scale [2]float64) [][]Detection {
+	var out [][]Detection
+	for frameIdx := range detections {
+		var cur []Detection
+		for _, detection := range detections[frameIdx] {
+			detection.Left = int(float64(detection.Left) * scale[0])
+			detection.Right = int(float64(detection.Right) * scale[0])
+			detection.Top = int(float64(detection.Top) * scale[1])
+			detection.Bottom = int(float64(detection.Bottom) * scale[1])
+			cur = append(cur, detection)
+		}
+		out = append(out, cur)
+	}
+	return out
+}
+
 type DetectionData [][]Detection
 func (d DetectionData) IsEmpty() bool {
 	for _, dlist := range d {

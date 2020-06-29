@@ -118,17 +118,37 @@ func init() {
 		query := skyhook.GetQuery(origNode.QueryID)
 		query.Load()
 
+		// load ground truth data
+		metricItems := metricSeries.ListItems()
+		var gtlist []skyhook.Data
+		sliceToIdx := make(map[string]int)
+		for i, item := range metricItems {
+			data, err := item.Load(item.Slice).Reader().Read(item.Slice.Length())
+			if err != nil {
+				panic(err)
+			}
+			gtlist = append(gtlist, data)
+			sliceToIdx[item.Slice.String()] = i
+		}
+
+		// enumerate the configurations that we want to test
+		// only adjust freq if at least one item includes multiple frames
+		freqs := []int{1}
+		for _, data := range gtlist {
+			if data.Length() > 1 {
+				freqs = []int{1, 2, 4, 8, 16}
+				break
+			}
+		}
 		var cfgs []RescaleResampleConfig
-		for _, dims := range [][2]int{{1920, 1080}, {1280, 720}, {960, 540}, {640, 360}, {480, 270}} {
-			for _, freq := range []int{1, 2, 4, 8, 16} {
+		for _, dims := range [][2]int{{1280, 720}, {960, 540}, {640, 360}, {480, 270}} {
+			for _, freq := range freqs {
 				cfgs = append(cfgs, RescaleResampleConfig{freq, dims[0], dims[1]})
 			}
 		}
 
-		metricItems := metricSeries.ListItems()
-
 		type Result struct {
-			outputs map[string]skyhook.Data
+			outputs []skyhook.Data
 			score float64
 			stats skyhook.StatsSample
 		}
@@ -167,18 +187,20 @@ func init() {
 				}
 			}()
 
-			donech := make(chan bool)
 			var mu sync.Mutex
-			outputs := make(map[string]skyhook.Data)
+			outputs := make([]skyhook.Data, len(gtlist))
+			var wg sync.WaitGroup
+			wg.Add(1)
 			stream := skyhook.NewExecStream(&qcopy, vector, sampler, 4, func(slice skyhook.Slice, curOutputs [][]skyhook.DataReader, err error) {
 				if err != nil {
 					if strings.Contains(err.Error(), "sample error") {
-						donech <- true
+						wg.Done()
 					} else if err != nil {
 						log.Printf("[test] warning: got callback error: %v", err)
 					}
 					return
 				}
+				wg.Add(1)
 				go func() {
 					rd := curOutputs[0][0]
 					data, err := rd.Read(slice.Length())
@@ -187,30 +209,27 @@ func init() {
 						return
 					}
 					mu.Lock()
-					outputs[slice.String()] = skyhook.AdjustDataFreq(data, slice.Length(), rd.Freq(), 1)
+					idx := sliceToIdx[slice.String()]
+					outputs[idx] = skyhook.AdjustDataFreq(data, slice.Length(), rd.Freq(), 1)
 					mu.Unlock()
+					wg.Done()
 				}()
 			})
 			stream.Get(len(metricItems)+1)
-			<- donech
+			wg.Wait()
 
 			// compute score
-			var score float64 = 1
+			score := skyhook.Metrics["detectionf1-50"](gtlist, outputs)
 
-			// average the stats samples
-			// TODO: need an allocator.GetAllContainers function
-			var samples []skyhook.StatsSample
-			for _, container := range skyhook.GetAllocator().GetContainers(query.GetEnvSet()) {
-				var sample skyhook.StatsSample
-				err := skyhook.JsonPost(container.BaseURL, "/allstats", nil, &sample)
-				if err != nil {
-					panic(err)
-				}
-				samples = append(samples, sample)
+			// add up the stats samples after averaging per node
+			samples := skyhook.GetAverageStatsByNode(skyhook.GetAllocator().GetContainers(skyhook.EnvSetID{"query", query.ID}))
+			var stats skyhook.StatsSample
+			for _, sample := range samples {
+				stats = stats.Add(sample)
 			}
 
-			results[cfg] = Result{outputs, score, skyhook.AverageStats(samples)}
-			log.Println("got for cfg", cfg, score, skyhook.AverageStats(samples))
+			results[cfg] = Result{outputs, score, stats}
+			log.Println("got for cfg", cfg, score, stats)
 		}
 	})
 }

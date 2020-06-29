@@ -4,18 +4,10 @@ package builtins
 
 import (
 	"../skyhook"
-	gomapinfer "github.com/mitroadmaps/gomapinfer/common"
 	goslgraph "github.com/cpmech/gosl/graph"
 
 	"fmt"
 )
-
-func DetectionToRectangle(d skyhook.Detection) gomapinfer.Rectangle {
-	return gomapinfer.Rectangle{
-		gomapinfer.Point{float64(d.Left), float64(d.Top)},
-		gomapinfer.Point{float64(d.Right), float64(d.Bottom)},
-	}
-}
 
 type TrackWithID struct {
 	ID int
@@ -120,10 +112,10 @@ func hungarianMatcher(activeTracks map[int]*TrackWithID, detections []skyhook.De
 	costMatrix := make([][]float64, len(trackList))
 	for i, track := range trackList {
 		costMatrix[i] = make([]float64, len(detections))
-		trackRect := DetectionToRectangle(track.Last())
+		trackRect := skyhook.DetectionToRectangle(track.Last())
 
 		for j, detection := range detections {
-			curRect := DetectionToRectangle(detection)
+			curRect := skyhook.DetectionToRectangle(detection)
 			iou := trackRect.IOU(curRect)
 			var cost float64
 			if iou > 0.99 {

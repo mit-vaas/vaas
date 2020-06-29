@@ -9,6 +9,7 @@ import (
 	"os"
 	"net/http"
 	"sync"
+	"time"
 )
 
 /*
@@ -25,6 +26,7 @@ func main() {
 	executors := make(map[int]skyhook.Executor)
 	buffers := make(map[string]map[int]skyhook.DataBuffer)
 	var mu sync.Mutex
+	cond := sync.NewCond(&mu)
 
 	http.HandleFunc("/query/start", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
@@ -43,14 +45,22 @@ func main() {
 
 		buf := func() skyhook.DataBuffer {
 			// if we already have the buffer for it, just use that
+			// synchronization is a bit complicated because e.Run call may recursively
+			// request more buffers, and we can't hold the lock here on the recursive calls
 			mu.Lock()
-			defer mu.Unlock()
 			if buffers[context.UUID] == nil {
 				buffers[context.UUID] = make(map[int]skyhook.DataBuffer)
 			}
-			buf := buffers[context.UUID][node.ID]
+			buf, ok := buffers[context.UUID][node.ID]
 			if buf != nil {
+				mu.Unlock()
 				return buf
+			} else if ok {
+				for buffers[context.UUID][node.ID] == nil {
+					cond.Wait()
+				}
+				mu.Unlock()
+				return buffers[context.UUID][node.ID]
 			}
 
 			// init the executor if it's not already present
@@ -58,8 +68,19 @@ func main() {
 				executors[node.ID] = skyhook.Executors[node.Type](node)
 			}
 			e := executors[node.ID]
+
+			// placeholder buffer
+			buffers[context.UUID][node.ID] = nil
+			mu.Unlock()
+
 			buf = e.Run(context)
+			time.Sleep(time.Second)
+
+			mu.Lock()
 			buffers[context.UUID][node.ID] = buf
+			cond.Broadcast()
+			mu.Unlock()
+
 			return buf
 		}()
 
@@ -98,18 +119,17 @@ func main() {
 			w.WriteHeader(404)
 			return
 		}
-		var stats skyhook.StatsSample
+		m := make(map[int]skyhook.StatsSample)
 		mu.Lock()
-		for _, e := range executors {
+		for nodeID, e := range executors {
 			statsProvider, ok := e.(skyhook.StatsProvider)
 			if !ok {
 				continue
 			}
-			sample := statsProvider.Stats()
-			stats = stats.Add(sample)
+			m[nodeID] = statsProvider.Stats()
 		}
 		mu.Unlock()
-		skyhook.JsonResponse(w, stats)
+		skyhook.JsonResponse(w, m)
 	})
 
 	http.HandleFunc("/query/finish", func(w http.ResponseWriter, r *http.Request) {

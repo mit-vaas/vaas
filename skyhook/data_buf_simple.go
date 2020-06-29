@@ -184,7 +184,9 @@ func (buf *SimpleBuffer) ToWriter(w io.Writer) error {
 	pos := 0
 	for {
 		data, err := buf.read(pos, FPS)
-		if err != nil {
+		if err == io.EOF {
+			break
+		} else if err != nil {
 			return err
 		}
 		pos += data.Length()

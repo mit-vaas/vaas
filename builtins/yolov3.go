@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -16,21 +17,37 @@ import (
 	"time"
 )
 
+type Yolov3Config struct {
+	CanvasSize [2]int
+	InputSize [2]int
+}
+
 type Yolov3 struct {
+	cfg Yolov3Config
 	node *skyhook.Node
+
 	cfgFname string
 	stdin io.WriteCloser
 	rd *bufio.Reader
 	cmd *skyhook.Cmd
+	width int
+	height int
 	mu sync.Mutex
-	samples []skyhook.StatsSample
+
+	stats *skyhook.WeightedStats
 }
 
 func NewYolov3(node *skyhook.Node) skyhook.Executor {
-	return &Yolov3{node: node}
+	var cfg Yolov3Config
+	skyhook.JsonUnmarshal([]byte(node.Code), &cfg)
+	return &Yolov3{
+		node: node,
+		cfg: cfg,
+		stats: &skyhook.WeightedStats{},
+	}
 }
 
-func (m *Yolov3) start(width int, height int) {
+func (m *Yolov3) start() {
 	// prepare configuration with this width/height
 	bytes, err := ioutil.ReadFile("darknet/cfg/yolov3.cfg")
 	if err != nil {
@@ -44,9 +61,9 @@ func (m *Yolov3) start(width int, height int) {
 	for _, line := range strings.Split(string(bytes), "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "width=") {
-			line = fmt.Sprintf("width=%d", width)
+			line = fmt.Sprintf("width=%d", m.width)
 		} else if strings.HasPrefix(line, "height=") {
-			line = fmt.Sprintf("height=%d", height)
+			line = fmt.Sprintf("height=%d", m.height)
 		}
 		file.Write([]byte(line+"\n"))
 	}
@@ -133,16 +150,31 @@ func (m *Yolov3) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 			}
 			m.mu.Lock()
 			if m.stdin == nil {
-				m.start(im.Width, im.Height)
+				if m.cfg.InputSize[0] == 0 || m.cfg.InputSize[1] == 0 {
+					m.width = (im.Width + 31) / 32 * 32
+					m.height = (im.Height + 31) / 32 * 32
+				} else {
+					m.width = m.cfg.InputSize[0]
+					m.height = m.cfg.InputSize[1]
+				}
+				log.Printf("[yolo] convert input %dx%d to %dx%d", im.Width, im.Height, m.width, m.height)
+				m.start()
 			}
 			t0 := time.Now()
 			m.stdin.Write([]byte(fname + "\n"))
 			lines := m.getLines()
 			boxes := parseLines(lines)
-			m.samples = append(m.samples, skyhook.StatsSample{
+			m.stats.Add(skyhook.StatsSample{
 				Time: time.Now().Sub(t0),
 			})
 			m.mu.Unlock()
+			if m.cfg.CanvasSize[0] != 0 && m.cfg.CanvasSize[1] != 0 {
+				scale := [2]float64{
+					float64(m.cfg.CanvasSize[0]) / float64(im.Width),
+					float64(m.cfg.CanvasSize[1]) / float64(im.Height),
+				}
+				boxes = skyhook.ResizeDetections([][]skyhook.Detection{boxes}, scale)[0]
+			}
 			buf.Write(skyhook.DetectionData{boxes})
 			return nil
 		})
@@ -156,10 +188,10 @@ func (m *Yolov3) Close() {
 	m.cmd.Wait()
 }
 
-func (m *Yolov3) GetStats() skyhook.StatsSample {
+func (m *Yolov3) Stats() skyhook.StatsSample {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return skyhook.AverageStats(m.samples)
+	return m.stats.Sample
 }
 
 func init() {

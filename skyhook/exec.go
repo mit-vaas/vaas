@@ -88,7 +88,7 @@ func (query *Query) GetEnvSet() EnvSet {
 func (query *Query) Run(vector []*Series, slice Slice) ([][]DataReader, error) {
 	uuid := gouuid.New().String()
 
-	containers := allocator.GetContainers(query.GetEnvSet())
+	containers := allocator.Allocate(query.GetEnvSet())
 	nodeContainers := make(map[int]Container)
 	for _, node := range query.Nodes {
 		nodeContainers[node.ID] = containers[0]
