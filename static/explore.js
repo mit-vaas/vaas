@@ -206,6 +206,7 @@ Vue.component('explore-tab', {
 				</div>
 			</div>
 			<button v-if="resultRows.length > 0" v-on:click="addMore" class="btn btn-primary">More</button>
+			<query-suggestions v-if="query != ''" v-bind:query_id="query"></query-suggestions>
 		</div>
 	</template>
 	<template v-else>

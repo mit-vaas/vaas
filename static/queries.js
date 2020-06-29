@@ -417,6 +417,7 @@ Vue.component('queries-tab', {
 				return;
 			}
 			this.fetchQueries(true);
+			this.update();
 		},
 	},
 	template: `

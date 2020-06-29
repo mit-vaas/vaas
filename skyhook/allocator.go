@@ -67,9 +67,11 @@ type MinimalAllocator struct {
 	mu sync.Mutex
 }
 
-var allocator Allocator = &MinimalAllocator{
-	envSets: make(map[EnvSetID]EnvSet),
-	containers: make(map[EnvSetID][]Container),
+var allocator = &EventAllocator{
+	allocator: &MinimalAllocator{
+		envSets: make(map[EnvSetID]EnvSet),
+		containers: make(map[EnvSetID][]Container),
+	},
 }
 
 func GetAllocator() Allocator {
@@ -206,6 +208,36 @@ func (a *MinimalAllocator) GetContainers(setID EnvSetID) [][]Container {
 		containers[i] = []Container{container}
 	}
 	return containers
+}
+
+type EventAllocator struct {
+	allocator Allocator
+	onAllocate []func(EnvSet)
+	onDeallocate []func(EnvSetID)
+	mu sync.Mutex
+}
+
+func (a *EventAllocator) Allocate(set EnvSet) []Container {
+	containers := a.allocator.Allocate(set)
+	for _, f := range a.onAllocate {
+		f(set)
+	}
+	return containers
+}
+
+func (a *EventAllocator) Deallocate(setID EnvSetID) {
+	a.allocator.Deallocate(setID)
+	for _, f := range a.onDeallocate {
+		f(setID)
+	}
+}
+
+func (a *EventAllocator) GetEnvSets() []EnvSetID {
+	return a.allocator.GetEnvSets()
+}
+
+func (a *EventAllocator) GetContainers(setID EnvSetID) [][]Container {
+	return a.allocator.GetContainers(setID)
 }
 
 /*

@@ -2,61 +2,17 @@ package skyhook
 
 import (
 	"log"
+	"net/http"
 	"sync"
 	"time"
 )
 
 type Suggestion struct {
-	ID *int
 	QueryID int
 	Text string
 	ActionLabel string
 	Type string
 	Config string
-}
-
-func (s *Suggestion) Save() {
-	if s.ID == nil {
-		res := db.Exec(
-			"INSERT INTO suggestions (query_id, text, action_label, type, config) VALUES (?, ?, ?, ?, ?)",
-			s.QueryID, s.Text, s.ActionLabel, s.Type, s.Config,
-		)
-		s.ID = new(int)
-		*s.ID = res.LastInsertId()
-	} else {
-		db.Exec(
-			"UPDATE suggestions SET query_id = ?, text = ?, action_label = ?, type = ?, config = ? WHERE id = ?",
-			s.QueryID, s.Text, s.ActionLabel, s.Type, s.Config, s.ID,
-		)
-	}
-}
-
-const SuggestionQuery = "SELECT id, query_id, text, action_label, type, config FROM suggestions"
-
-func suggestionListHelper(rows *Rows) []Suggestion {
-	suggestions := []Suggestion{}
-	for rows.Next() {
-		var suggestion Suggestion
-		rows.Scan(&suggestion.ID, &suggestion.QueryID, &suggestion.Text, &suggestion.ActionLabel, &suggestion.Type, &suggestion.Config)
-		suggestions = append(suggestions, suggestion)
-	}
-	return suggestions
-}
-
-func ListQuerySuggestions(queryID int) []Suggestion {
-	rows := db.Query(SuggestionQuery + " ORDER BY id DESC")
-	return suggestionListHelper(rows)
-}
-
-func GetSuggestion(id int) *Suggestion {
-	rows := db.Query(SuggestionQuery + " WHERE id = ?", id)
-	suggestions := suggestionListHelper(rows)
-	if len(suggestions) == 1 {
-		suggestion := suggestions[0]
-		return &suggestion
-	} else {
-		return nil
-	}
 }
 
 type WatcherFunc func(map[int]StatsSample) *Suggestion
@@ -71,39 +27,40 @@ var Watchers = make(map[string]Watcher)
 type WatchManager struct {
 	mu sync.Mutex
 	watcherFuncs map[int][]WatcherFunc
+	suggestions map[int][]Suggestion
 }
 
-// Query was updated, reload the WatcherFuncs.
-func (w *WatchManager) Reload(query *Query) {
+// Reload the WatcherFuncs whenever a query is allocated.
+// TODO: maybe change this from allocator listener to a generic query change listener interface
+func (w *WatchManager) OnAllocate(env EnvSet) {
+	if env.ID.Type != "query" {
+		return
+	}
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	existing := ListQuerySuggestions(query.ID)
+	w.suggestions[env.ID.RefID] = nil
+	w.reload(GetQuery(env.ID.RefID))
+	w.mu.Unlock()
+}
+
+func (w *WatchManager) reload(query *Query) {
+	query.Load()
 	var funcs []WatcherFunc
 	for _, watcher := range Watchers {
-		f := watcher.Get(query, existing)
+		f := watcher.Get(query, w.suggestions[query.ID])
 		if f != nil {
 			funcs = append(funcs, f)
 		}
 	}
+	log.Printf("[watcher] watching query %s with %d funcs", query.Name, len(w.watcherFuncs[query.ID]))
 	w.watcherFuncs[query.ID] = funcs
 }
 
 // Background go-routine iteration.
 func (w *WatchManager) iter() {
-	for _, setID := range GetAllocator().GetEnvSets() {
-		if setID.Type != "query" {
-			continue
-		}
-		query := GetQuery(setID.RefID)
-		query.Load()
-		w.Reload(query)
-	}
-
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	for queryID := range w.watcherFuncs {
-		log.Printf("watching %d with %d funcs", queryID, len(w.watcherFuncs[queryID]))
 		// collect stats
 		containers := GetAllocator().GetContainers(EnvSetID{"query", queryID})
 		if containers == nil {
@@ -121,10 +78,22 @@ func (w *WatchManager) iter() {
 			}
 		}
 		if suggestion != nil {
-			log.Printf("[watcher] adding new suggestion: %v", suggestion)
-			suggestion.Save()
+			log.Printf("[watcher] adding new suggestion: %v", *suggestion)
+			w.suggestions[queryID] = append(w.suggestions[queryID], *suggestion)
+			w.reload(GetQuery(queryID))
 		}
 	}
+}
+
+func (w *WatchManager) ListSuggestions(queryID int) []Suggestion {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	suggestions := w.suggestions[queryID]
+	if suggestions == nil {
+		// don't want JSON null
+		return []Suggestion{}
+	}
+	return suggestions
 }
 
 var watchman *WatchManager
@@ -132,11 +101,36 @@ var watchman *WatchManager
 func init() {
 	watchman = &WatchManager{
 		watcherFuncs: make(map[int][]WatcherFunc),
+		suggestions: make(map[int][]Suggestion),
 	}
+	allocator.onAllocate = append(allocator.onAllocate, watchman.OnAllocate)
 	go func() {
 		for {
 			time.Sleep(5*time.Second)
 			watchman.iter()
 		}
 	}()
+
+	http.HandleFunc("/suggestions", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		queryID := ParseInt(r.Form.Get("query_id"))
+		JsonResponse(w, watchman.ListSuggestions(queryID))
+	})
+
+	http.HandleFunc("/suggestions/apply", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+
+		var suggestion Suggestion
+		if err := ParseJsonRequest(w, r, &suggestion); err != nil {
+			return
+		}
+		query := GetQuery(suggestion.QueryID)
+		query.Load()
+		log.Printf("[watcher] applying suggestion [%s] (%s) for query %s", suggestion.Text, suggestion.Type, query.Name)
+		Watchers[suggestion.Type].Apply(query, suggestion)
+		allocator.Deallocate(EnvSetID{"query", query.ID})
+	})
 }

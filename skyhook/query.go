@@ -143,6 +143,7 @@ func (node *Node) Save() {
 		"UPDATE nodes SET name = ?, parent_types = ?, parents = ?, type = ?, data_type = ?, code = ? WHERE id = ?",
 		node.Name, node.encodeParentTypes(), node.encodeParents(), node.Type, node.DataType, node.Code, node.ID,
 	)
+	node.OnChange()
 }
 
 func (node *Node) OnChange() {
@@ -172,11 +173,6 @@ func (node *Node) OnChange() {
 			vn.Clear()
 		}
 	}
-}
-
-func (node *Node) Remove() {
-	node.OnChange()
-	db.Exec("DELETE FROM nodes WHERE id = ?", node.ID)
 }
 
 type VNode struct {
@@ -358,6 +354,25 @@ func (query *Query) AddNode(name string, t string, dataType DataType) *Node {
 	return node
 }
 
+func (query *Query) RemoveNode(node *Node) {
+	query.Load()
+	node.OnChange()
+	db.Exec("DELETE FROM nodes WHERE id = ?", node.ID)
+	for _, n := range query.Nodes {
+		idx := -1
+		for i, parent := range n.Parents {
+			if parent.Type != NodeParent || parent.NodeID != node.ID {
+				continue
+			}
+			idx = i
+			break
+		}
+		copy(n.Parents[idx:], n.Parents[idx+1:])
+		n.Parents = n.Parents[0:len(n.Parents)-1]
+		n.Save()
+	}
+}
+
 func init() {
 	http.HandleFunc("/queries/nodes", func(w http.ResponseWriter, r *http.Request) {
 		// list nodes for a query, or create new node
@@ -422,7 +437,8 @@ func init() {
 			return
 		}
 		allocator.Deallocate(EnvSetID{"query", node.QueryID})
-		node.Remove()
+		query := GetQuery(node.QueryID)
+		query.RemoveNode(node)
 	})
 
 	http.HandleFunc("/queries", func(w http.ResponseWriter, r *http.Request) {

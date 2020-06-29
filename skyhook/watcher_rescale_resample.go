@@ -58,6 +58,9 @@ func init() {
 			rrNode.Save()
 
 			for _, node := range query.Nodes {
+				if node == rrNode {
+					continue
+				}
 				updated := false
 				for i, parent := range node.Parents {
 					if parent.Type != SeriesParent || parent.SeriesIdx != 0 {
