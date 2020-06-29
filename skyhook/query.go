@@ -367,6 +367,9 @@ func (query *Query) RemoveNode(node *Node) {
 			idx = i
 			break
 		}
+		if idx == -1 {
+			continue
+		}
 		copy(n.Parents[idx:], n.Parents[idx+1:])
 		n.Parents = n.Parents[0:len(n.Parents)-1]
 		n.Save()

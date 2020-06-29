@@ -25,6 +25,9 @@ Vue.component('query-suggestions', {
 				url: '/suggestions/apply',
 				data: JSON.stringify(suggestion),
 				processData: false,
+				success: () => {
+					app.$emit('showQuery', suggestion.QueryID);
+				},
 			});
 		},
 	},

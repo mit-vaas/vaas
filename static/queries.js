@@ -21,6 +21,13 @@ Vue.component('queries-tab', {
 	mounted: function() {
 		this.fetchQueries(true);
 		setInterval(this.fetchQueries, 5000);
+		Vue.nextTick(() => {
+			app.$on('showQuery', (query_id) => {
+				this.selectedQueryID = query_id;
+				this.update();
+				app.changeTab('#queries-panel');
+			});
+		});
 	},
 	methods: {
 		fetchQueries: function(force) {

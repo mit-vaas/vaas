@@ -22,4 +22,10 @@ var app = new Vue({
 	data: {
 		tab: $('a[data-toggle="tab"].active').attr('href'),
 	},
+	methods: {
+		changeTab: function(tab) {
+			$('#myTab a[href="'+tab+'"]').tab('show');
+			this.tab = tab;
+		},
+	},
 });
