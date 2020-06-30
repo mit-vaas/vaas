@@ -133,6 +133,14 @@ func (v Vector) List() []vaas.Series {
 	return l
 }
 
+func VectorFromList(l []vaas.Series) Vector {
+	var vector Vector
+	for _, series := range l {
+		vector = append(vector, GetSeries(series.ID))
+	}
+	return vector
+}
+
 const SegmentQuery = "SELECT id, timeline_id, name, frames, fps FROM segments"
 
 func segmentListHelper(rows *Rows) []DBSegment {
@@ -407,5 +415,40 @@ func init() {
 		} else if contentType == "meta" {
 			vaas.JsonResponse(w, item)
 		}
+	})
+
+	// called from container
+	http.HandleFunc("/series/add-output-item", func(w http.ResponseWriter, r *http.Request) {
+		var request vaas.AddOutputItemRequest
+		if err := vaas.ParseJsonRequest(w, r, &request); err != nil {
+			return
+		}
+
+		// if no outputs series, create one to store the exec outputs
+		node := &DBNode{Node: request.Node}
+		vector := VectorFromList(request.Vector)
+		vn := GetOrCreateVNode(node, vector)
+		if vn.Series == nil {
+			db.Transaction(func(tx Tx) {
+				var seriesID *int
+				tx.QueryRow("SELECT series_id FROM vnodes WHERE id = ?", vn.ID).Scan(&seriesID)
+				if seriesID != nil {
+					vn.SeriesID = seriesID
+					return
+				}
+				name := fmt.Sprintf("exec-%v-%d", vn.Node.Name, vn.ID)
+				res := tx.Exec(
+					"INSERT INTO series (timeline_id, name, type, data_type, src_vector, node_id) VALUES (?, ?, 'outputs', ?, ?, ?)",
+					vector[0].Timeline.ID, name, vn.Node.DataType, Vector(vector).String(), vn.Node.ID,
+				)
+				vn.SeriesID = new(int)
+				*vn.SeriesID = res.LastInsertId()
+				tx.Exec("UPDATE vnodes SET series_id = ? WHERE id = ?", vn.SeriesID, vn.ID)
+			})
+			vn.Series = &GetSeries(*vn.SeriesID).Series
+		}
+
+		item := DBSeries{Series: *vn.Series}.AddItem(request.Slice, request.Format, request.Dims, request.Freq)
+		vaas.JsonResponse(w, item)
 	})
 }

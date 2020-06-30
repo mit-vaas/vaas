@@ -9,18 +9,9 @@ import (
 	"os"
 	"net/http"
 	"sync"
-	"time"
 )
 
-/*
-TODO:
-- DataBuffer: expose BinaryReader function
-	for SimpleBuffer it just reads Data, encodes it, and returns a []byte packet
-	for VideoBuffer it should read the video bytes instead of decoding
-- exec: add convenience function to get the buffers of the parents
-	because now we are doing bottom-up approach where parents aren't provided already, node has to request them
-	so the convenience function loads buffers
-*/
+const CoordinatorURL string = "http://localhost:8080"
 
 func main() {
 	executors := make(map[int]vaas.Executor)
@@ -74,7 +65,28 @@ func main() {
 			mu.Unlock()
 
 			buf = e.Run(context)
-			time.Sleep(time.Second)
+
+			if node.DataType != vaas.VideoType {
+				// asynchronously persist the outputs
+				go func() {
+					rd := buf.Reader()
+					data, err := rd.Read(context.Slice.Length())
+					if err != nil {
+						return
+					}
+
+					request := vaas.AddOutputItemRequest{
+						Node: *node,
+						Vector: context.Vector,
+						Slice: context.Slice,
+						Format: "json",
+						Freq: rd.Freq(),
+					}
+					var item vaas.Item
+					vaas.JsonPost(CoordinatorURL, "/series/add-output-item", request, &item)
+					item.UpdateData(data)
+				}()
+			}
 
 			mu.Lock()
 			buffers[context.UUID][node.ID] = buf

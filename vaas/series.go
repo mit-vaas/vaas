@@ -2,8 +2,9 @@ package vaas
 
 import (
 	"fmt"
-	"log"
 	"io/ioutil"
+	"log"
+	"os"
 )
 
 // we assume all videos are constant 25 fps
@@ -111,6 +112,7 @@ func (item Item) Load(slice Slice) DataBuffer {
 }
 
 func (item Item) UpdateData(data Data) {
+	os.Mkdir(fmt.Sprintf("items/%d", item.Series.ID), 0755)
 	if err := ioutil.WriteFile(item.Fname(0), data.Encode(), 0644); err != nil {
 		panic(err)
 	}
