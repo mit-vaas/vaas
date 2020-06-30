@@ -1,7 +1,7 @@
 package builtins
 
 import (
-	"../skyhook"
+	"../vaas"
 	"github.com/mitroadmaps/gomapinfer/common"
 	"fmt"
 )
@@ -24,7 +24,7 @@ func (shp Shape) Polygon() common.Polygon {
 	return poly
 }
 
-func (shp Shape) Contains(d skyhook.Detection) bool {
+func (shp Shape) Contains(d vaas.Detection) bool {
 	cx := (d.Left + d.Right)/2
 	cy := (d.Top + d.Bottom)/2
 	point := common.Point{float64(cx), float64(cy)}
@@ -50,13 +50,13 @@ type TrackFilterConfig struct {
 }
 
 type TrackFilter struct {
-	node *skyhook.Node
+	node vaas.Node
 	cfg TrackFilterConfig
 }
 
-func NewTrackFilter(node *skyhook.Node) skyhook.Executor {
+func NewTrackFilter(node vaas.Node) vaas.Executor {
 	var cfg TrackFilterConfig
-	skyhook.JsonUnmarshal([]byte(node.Code), &cfg)
+	vaas.JsonUnmarshal([]byte(node.Code), &cfg)
 	for i := range cfg.Shapes {
 		for j := range cfg.Shapes[i] {
 			for k, p := range cfg.Shapes[i][j] {
@@ -73,12 +73,12 @@ func NewTrackFilter(node *skyhook.Node) skyhook.Executor {
 	}
 }
 
-func (m TrackFilter) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
+func (m TrackFilter) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 	parents, err := GetParents(ctx, m.node)
 	if err != nil {
-		return skyhook.GetErrorBuffer(m.node.DataType, fmt.Errorf("track-filter error reading parents: %v", err))
+		return vaas.GetErrorBuffer(m.node.DataType, fmt.Errorf("track-filter error reading parents: %v", err))
 	}
-	buf := skyhook.NewSimpleBuffer(skyhook.TrackType)
+	buf := vaas.NewSimpleBuffer(vaas.TrackType)
 
 	go func() {
 		buf.SetMeta(parents[0].Freq())
@@ -88,9 +88,9 @@ func (m TrackFilter) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 			return
 		}
 		parents[0].Close()
-		detections := data.(skyhook.TrackData)
-		tracks := skyhook.DetectionsToTracks(detections)
-		var out [][]skyhook.DetectionWithFrame
+		detections := data.(vaas.TrackData)
+		tracks := vaas.DetectionsToTracks(detections)
+		var out [][]vaas.DetectionWithFrame
 		for _, track := range tracks {
 			ok := false
 			for _, alt := range m.cfg.Shapes {
@@ -132,8 +132,8 @@ func (m TrackFilter) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 				out = append(out, track)
 			}
 		}
-		detections = skyhook.TracksToDetections(out)
-		buf.Write(skyhook.TrackData(detections).EnsureLength(data.Length()))
+		detections = vaas.TracksToDetections(out)
+		buf.Write(vaas.TrackData(detections).EnsureLength(data.Length()))
 		buf.Close()
 	}()
 
@@ -143,5 +143,5 @@ func (m TrackFilter) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 func (m TrackFilter) Close() {}
 
 func init() {
-	skyhook.Executors["filter-track"] = NewTrackFilter
+	vaas.Executors["filter-track"] = NewTrackFilter
 }

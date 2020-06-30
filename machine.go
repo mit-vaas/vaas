@@ -1,7 +1,7 @@
 package main
 
 import (
-	"./skyhook"
+	"./vaas"
 	gouuid "github.com/google/uuid"
 
 	"log"
@@ -27,8 +27,8 @@ func main() {
 			return
 		}
 
-		var request skyhook.Environment
-		if err := skyhook.ParseJsonRequest(w, r, &request); err != nil {
+		var request vaas.Environment
+		if err := vaas.ParseJsonRequest(w, r, &request); err != nil {
 			return
 		}
 
@@ -49,7 +49,7 @@ func main() {
 		mu.Unlock()
 
 		time.Sleep(time.Second)
-		skyhook.JsonResponse(w, skyhook.Container{
+		vaas.JsonResponse(w, vaas.Container{
 			UUID: uuid,
 			BaseURL: "http://localhost:8082",
 		})

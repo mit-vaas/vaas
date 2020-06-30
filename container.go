@@ -1,7 +1,7 @@
 package main
 
 import (
-	"./skyhook"
+	"./vaas"
 	_ "./builtins"
 
 	"io/ioutil"
@@ -23,8 +23,8 @@ TODO:
 */
 
 func main() {
-	executors := make(map[int]skyhook.Executor)
-	buffers := make(map[string]map[int]skyhook.DataBuffer)
+	executors := make(map[int]vaas.Executor)
+	buffers := make(map[string]map[int]vaas.DataBuffer)
 	var mu sync.Mutex
 	cond := sync.NewCond(&mu)
 
@@ -34,22 +34,22 @@ func main() {
 			return
 		}
 
-		var context skyhook.ExecContext
-		if err := skyhook.ParseJsonRequest(w, r, &context); err != nil {
+		var context vaas.ExecContext
+		if err := vaas.ParseJsonRequest(w, r, &context); err != nil {
 			return
 		}
 
 		r.ParseForm()
-		nodeID := skyhook.ParseInt(r.Form.Get("node_id"))
+		nodeID := vaas.ParseInt(r.Form.Get("node_id"))
 		node := context.Nodes[nodeID]
 
-		buf := func() skyhook.DataBuffer {
+		buf := func() vaas.DataBuffer {
 			// if we already have the buffer for it, just use that
 			// synchronization is a bit complicated because e.Run call may recursively
 			// request more buffers, and we can't hold the lock here on the recursive calls
 			mu.Lock()
 			if buffers[context.UUID] == nil {
-				buffers[context.UUID] = make(map[int]skyhook.DataBuffer)
+				buffers[context.UUID] = make(map[int]vaas.DataBuffer)
 			}
 			buf, ok := buffers[context.UUID][node.ID]
 			if buf != nil {
@@ -65,7 +65,7 @@ func main() {
 
 			// init the executor if it's not already present
 			if executors[node.ID] == nil {
-				executors[node.ID] = skyhook.Executors[node.Type](node)
+				executors[node.ID] = vaas.Executors[node.Type](*node)
 			}
 			e := executors[node.ID]
 
@@ -84,7 +84,7 @@ func main() {
 			return buf
 		}()
 
-		err := buf.(skyhook.DataBufferIOWriter).ToWriter(w)
+		err := buf.(vaas.DataBufferIOWriter).ToWriter(w)
 		if err != nil {
 			log.Printf("[node %s %v] error writing buffer: %v", node.Name, context.Slice, err)
 		}
@@ -97,7 +97,7 @@ func main() {
 		}
 
 		r.ParseForm()
-		nodeID := skyhook.ParseInt(r.Form.Get("node_id"))
+		nodeID := vaas.ParseInt(r.Form.Get("node_id"))
 
 		mu.Lock()
 		e := executors[nodeID]
@@ -105,13 +105,13 @@ func main() {
 		if e == nil {
 			http.Error(w, "no such node", 404)
 		}
-		statsProvider, ok := e.(skyhook.StatsProvider)
+		statsProvider, ok := e.(vaas.StatsProvider)
 		if !ok {
-			skyhook.JsonResponse(w, skyhook.StatsSample{})
+			vaas.JsonResponse(w, vaas.StatsSample{})
 			return
 		}
 		sample := statsProvider.Stats()
-		skyhook.JsonResponse(w, sample)
+		vaas.JsonResponse(w, sample)
 	})
 
 	http.HandleFunc("/allstats", func(w http.ResponseWriter, r *http.Request) {
@@ -119,17 +119,17 @@ func main() {
 			w.WriteHeader(404)
 			return
 		}
-		m := make(map[int]skyhook.StatsSample)
+		m := make(map[int]vaas.StatsSample)
 		mu.Lock()
 		for nodeID, e := range executors {
-			statsProvider, ok := e.(skyhook.StatsProvider)
+			statsProvider, ok := e.(vaas.StatsProvider)
 			if !ok {
 				continue
 			}
 			m[nodeID] = statsProvider.Stats()
 		}
 		mu.Unlock()
-		skyhook.JsonResponse(w, m)
+		vaas.JsonResponse(w, m)
 	})
 
 	http.HandleFunc("/query/finish", func(w http.ResponseWriter, r *http.Request) {

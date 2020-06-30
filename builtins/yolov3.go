@@ -1,7 +1,7 @@
 package builtins
 
 import (
-	"../skyhook"
+	"../vaas"
 
 	"bufio"
 	"fmt"
@@ -24,26 +24,26 @@ type Yolov3Config struct {
 
 type Yolov3 struct {
 	cfg Yolov3Config
-	node *skyhook.Node
+	node vaas.Node
 
 	cfgFname string
 	stdin io.WriteCloser
 	rd *bufio.Reader
-	cmd *skyhook.Cmd
+	cmd *vaas.Cmd
 	width int
 	height int
 	mu sync.Mutex
 
-	stats *skyhook.WeightedStats
+	stats *vaas.WeightedStats
 }
 
-func NewYolov3(node *skyhook.Node) skyhook.Executor {
+func NewYolov3(node vaas.Node) vaas.Executor {
 	var cfg Yolov3Config
-	skyhook.JsonUnmarshal([]byte(node.Code), &cfg)
+	vaas.JsonUnmarshal([]byte(node.Code), &cfg)
 	return &Yolov3{
 		node: node,
 		cfg: cfg,
-		stats: &skyhook.WeightedStats{},
+		stats: &vaas.WeightedStats{},
 	}
 }
 
@@ -68,9 +68,9 @@ func (m *Yolov3) start() {
 		file.Write([]byte(line+"\n"))
 	}
 	file.Close()
-	m.cmd = skyhook.Command(
+	m.cmd = vaas.Command(
 		"darknet",
-		skyhook.CommandOptions{F: func(cmd *exec.Cmd) {
+		vaas.CommandOptions{F: func(cmd *exec.Cmd) {
 			cmd.Dir = "darknet/"
 		}},
 		"./darknet", "detect", m.cfgFname, "yolov3.weights", "-thresh", "0.1",
@@ -95,20 +95,20 @@ func (m *Yolov3) getLines() []string {
 	return strings.Split(output, "\n")
 }
 
-func (m *Yolov3) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
+func (m *Yolov3) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 	parents, err := GetParents(ctx, m.node)
 	if err != nil {
-		return skyhook.GetErrorBuffer(m.node.DataType, fmt.Errorf("yolov3 error reading parents: %v", err))
+		return vaas.GetErrorBuffer(m.node.DataType, fmt.Errorf("yolov3 error reading parents: %v", err))
 	}
-	buf := skyhook.NewSimpleBuffer(skyhook.DetectionType)
+	buf := vaas.NewSimpleBuffer(vaas.DetectionType)
 
-	parseLines := func(lines []string) []skyhook.Detection {
-		var boxes []skyhook.Detection
+	parseLines := func(lines []string) []vaas.Detection {
+		var boxes []vaas.Detection
 		for i := 0; i < len(lines); i++ {
 			if !strings.Contains(lines[i], "%") {
 				continue
 			}
-			var box skyhook.Detection
+			var box vaas.Detection
 			parts := strings.Split(lines[i], ": ")
 			box.Class = parts[0]
 			score, _ := strconv.Atoi(strings.Trim(parts[1], "%"))
@@ -143,8 +143,8 @@ func (m *Yolov3) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 		buf.SetMeta(parents[0].Freq())
 		fname := fmt.Sprintf("%s/%d.jpg", os.TempDir(), rand.Int63())
 		defer os.Remove(fname)
-		PerFrame(parents, ctx.Slice, buf, skyhook.VideoType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
-			im := data.(skyhook.VideoData)[0]
+		PerFrame(parents, ctx.Slice, buf, vaas.VideoType, func(idx int, data vaas.Data, buf vaas.DataWriter) error {
+			im := data.(vaas.VideoData)[0]
 			if err := ioutil.WriteFile(fname, im.AsJPG(), 0644); err != nil {
 				return err
 			}
@@ -164,7 +164,7 @@ func (m *Yolov3) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 			m.stdin.Write([]byte(fname + "\n"))
 			lines := m.getLines()
 			boxes := parseLines(lines)
-			m.stats.Add(skyhook.StatsSample{
+			m.stats.Add(vaas.StatsSample{
 				Time: time.Now().Sub(t0),
 			})
 			m.mu.Unlock()
@@ -173,9 +173,9 @@ func (m *Yolov3) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 					float64(m.cfg.CanvasSize[0]) / float64(im.Width),
 					float64(m.cfg.CanvasSize[1]) / float64(im.Height),
 				}
-				boxes = skyhook.ResizeDetections([][]skyhook.Detection{boxes}, scale)[0]
+				boxes = vaas.ResizeDetections([][]vaas.Detection{boxes}, scale)[0]
 			}
-			buf.Write(skyhook.DetectionData{boxes})
+			buf.Write(vaas.DetectionData{boxes})
 			return nil
 		})
 	}()
@@ -188,12 +188,12 @@ func (m *Yolov3) Close() {
 	m.cmd.Wait()
 }
 
-func (m *Yolov3) Stats() skyhook.StatsSample {
+func (m *Yolov3) Stats() vaas.StatsSample {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.stats.Sample
 }
 
 func init() {
-	skyhook.Executors["yolov3"] = NewYolov3
+	vaas.Executors["yolov3"] = NewYolov3
 }

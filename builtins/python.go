@@ -1,7 +1,7 @@
 package builtins
 
 import (
-	"../skyhook"
+	"../vaas"
 
 	"encoding/binary"
 	"fmt"
@@ -14,16 +14,16 @@ import (
 )
 
 type pendingSlice struct {
-	slice skyhook.Slice
-	parents []skyhook.DataReader
-	w skyhook.DataWriter
+	slice vaas.Slice
+	parents []vaas.DataReader
+	w vaas.DataWriter
 }
 
 type PythonExecutor struct {
-	query *skyhook.Query
-	node *skyhook.Node
+	query *vaas.Query
+	node vaas.Node
 	tempFile *os.File
-	cmd *skyhook.Cmd
+	cmd *vaas.Cmd
 	stdin io.WriteCloser
 	stdout io.ReadCloser
 	pending map[int]*pendingSlice
@@ -34,7 +34,7 @@ type PythonExecutor struct {
 }
 
 func (e *PythonExecutor) writeJSONPacket(x interface{}) {
-	bytes := skyhook.JsonMarshal(x)
+	bytes := vaas.JsonMarshal(x)
 	buf := make([]byte, 5)
 	binary.BigEndian.PutUint32(buf[0:4], uint32(len(bytes)))
 	buf[4] = 'j'
@@ -42,7 +42,7 @@ func (e *PythonExecutor) writeJSONPacket(x interface{}) {
 	e.stdin.Write(bytes)
 }
 
-func (e *PythonExecutor) writeVideoPacket(images []skyhook.Image) {
+func (e *PythonExecutor) writeVideoPacket(images []vaas.Image) {
 	buf := make([]byte, 21)
 	l := 16+len(images)*images[0].Width*images[0].Height*3
 	binary.BigEndian.PutUint32(buf[0:4], uint32(l))
@@ -60,7 +60,7 @@ func (e *PythonExecutor) writeVideoPacket(images []skyhook.Image) {
 func (e *PythonExecutor) Init() {
 	// prepare meta
 	var meta struct {
-		Type skyhook.DataType
+		Type vaas.DataType
 		Parents int
 	}
 	meta.Type = e.node.DataType
@@ -70,22 +70,22 @@ func (e *PythonExecutor) Init() {
 	e.writeLock.Unlock()
 }
 
-func (e *PythonExecutor) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
+func (e *PythonExecutor) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 	parents, err := GetParents(ctx, e.node)
 	if err != nil {
-		return skyhook.GetErrorBuffer(e.node.DataType, fmt.Errorf("python error reading parents: %v", err))
+		return vaas.GetErrorBuffer(e.node.DataType, fmt.Errorf("python error reading parents: %v", err))
 	}
 
-	var w skyhook.DataWriter
-	if e.node.DataType == skyhook.VideoType {
-		w = skyhook.NewVideoWriter()
+	var w vaas.DataWriter
+	if e.node.DataType == vaas.VideoType {
+		w = vaas.NewVideoWriter()
 	} else {
-		w = skyhook.NewSimpleBuffer(e.node.DataType)
+		w = vaas.NewSimpleBuffer(e.node.DataType)
 	}
 
 	go func() {
 		slice := ctx.Slice
-		freq := skyhook.MinFreq(parents)
+		freq := vaas.MinFreq(parents)
 		w.SetMeta(freq)
 
 		// prepare pendingSlice
@@ -107,7 +107,7 @@ func (e *PythonExecutor) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 		e.writeJSONPacket(initPacket)
 		e.writeLock.Unlock()
 
-		f := func(index int, datas []skyhook.Data) error {
+		f := func(index int, datas []vaas.Data) error {
 			var job struct {
 				SliceIdx int
 				Range [2]int
@@ -120,8 +120,8 @@ func (e *PythonExecutor) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 			e.writeLock.Lock()
 			e.writeJSONPacket(job)
 			for _, data := range datas {
-				if data.Type() == skyhook.VideoType {
-					vdata := data.(skyhook.VideoData)
+				if data.Type() == vaas.VideoType {
+					vdata := data.(vaas.VideoData)
 					e.writeVideoPacket(vdata)
 				} else {
 					e.writeJSONPacket(data)
@@ -132,7 +132,7 @@ func (e *PythonExecutor) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 		}
 		// TODO: look at the return error
 		// currently we don't because w is controlled by ReadLoop
-		err := skyhook.ReadMultiple(slice.Length(), freq, parents, f)
+		err := vaas.ReadMultiple(slice.Length(), freq, parents, f)
 		if err != nil {
 			panic(fmt.Errorf("ReadMultiple error at node %s: %v", e.node.Name, err))
 		}
@@ -174,21 +174,21 @@ func (e *PythonExecutor) ReadLoop() {
 			setErr(fmt.Errorf("error reading from python: %v", err))
 			return
 		}
-		var data skyhook.Data
-		if t == skyhook.VideoType {
+		var data vaas.Data
+		if t == vaas.VideoType {
 			nframes := int(binary.BigEndian.Uint32(buf[0:4]))
 			height := int(binary.BigEndian.Uint32(buf[4:8]))
 			width := int(binary.BigEndian.Uint32(buf[8:12]))
 			// TODO: channels buf[12:16]
 			chunkSize := width*height*3
 			buf = buf[16:]
-			var vdata skyhook.VideoData
+			var vdata vaas.VideoData
 			for i := 0; i < nframes; i++ {
-				vdata = append(vdata, skyhook.ImageFromBytes(width, height, buf[i*chunkSize:(i+1)*chunkSize]))
+				vdata = append(vdata, vaas.ImageFromBytes(width, height, buf[i*chunkSize:(i+1)*chunkSize]))
 			}
 			data = vdata
 		} else {
-			data = skyhook.DecodeData(t, buf)
+			data = vaas.DecodeData(t, buf)
 		}
 		data = data.EnsureLength(end-start)
 
@@ -210,7 +210,7 @@ func (e *PythonExecutor) Close() {
 	os.Remove(e.tempFile.Name())
 }
 
-func NewPythonExecutor(node *skyhook.Node) skyhook.Executor {
+func NewPythonExecutor(node vaas.Node) vaas.Executor {
 	log.Printf("[python (%s)] launching python script", node.Name)
 	template, err := ioutil.ReadFile("tmpl.py")
 	if err != nil {
@@ -227,8 +227,8 @@ func NewPythonExecutor(node *skyhook.Node) skyhook.Executor {
 	if err := tempFile.Close(); err != nil {
 		panic(err)
 	}
-	cmd := skyhook.Command(
-		fmt.Sprintf("exec-python-%s", node.Name), skyhook.CommandOptions{},
+	cmd := vaas.Command(
+		fmt.Sprintf("exec-python-%s", node.Name), vaas.CommandOptions{},
 		"/usr/bin/python3", tempFile.Name(),
 	)
 
@@ -246,5 +246,5 @@ func NewPythonExecutor(node *skyhook.Node) skyhook.Executor {
 }
 
 func init() {
-	skyhook.Executors["python"] = NewPythonExecutor
+	vaas.Executors["python"] = NewPythonExecutor
 }

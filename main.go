@@ -1,8 +1,9 @@
 package main
 
 import (
-	"./skyhook"
+	"./app"
 	_ "./builtins"
+	_ "./builtins/app"
 
 	"github.com/googollee/go-socket.io"
 
@@ -19,7 +20,7 @@ func main() {
 	server.OnConnect("/", func(s socketio.Conn) error {
 		return nil
 	})
-	for _, f := range skyhook.SetupFuncs {
+	for _, f := range app.SetupFuncs {
 		f(server)
 	}
 	go server.Serve()

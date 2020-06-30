@@ -417,6 +417,12 @@ Vue.component('queries-tab', {
 			outputs[i] = outputs[i].filter((parent) => parent.Spec != spec);
 			this.saveOutputs(outputs);
 		},
+		setSelector: function() {
+			var selector = this.selectedQuery.SelectorID;
+			$.post('/queries/query?query_id='+this.selectedQuery.ID, {selector: this.selectedQuery.SelectorID}, () => {
+				this.update();
+			});
+		},
 	},
 	watch: {
 		tab: function() {
@@ -454,6 +460,18 @@ Vue.component('queries-tab', {
 					</queries-parents-table>
 				</template>
 				<button type="button" class="btn btn-primary" v-on:click="addOutputRow">Add Output</button>
+				<div>
+					<form class="form-inline" v-on:submit.prevent="setSelector">
+						<label class="ml-1">Selector:</label>
+						<select v-model="selectedQuery.SelectorID" class="form-control ml-1">
+							<option value="">None</option>
+							<template v-for="node in selectedQuery.Nodes">
+								<option :value="node.ID">{{ node.Name }}</option>
+							</template>
+						</select>
+						<button type="submit" class="btn btn-primary ml-1">Set Selector</button>
+					</form>
+				</div>
 			</div>
 		</div>
 		<div>

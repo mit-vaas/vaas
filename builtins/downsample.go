@@ -1,7 +1,7 @@
 package builtins
 
 import (
-	"../skyhook"
+	"../vaas"
 	"fmt"
 )
 
@@ -12,23 +12,23 @@ type DownsampleConfig struct {
 }
 
 type Downsample struct {
-	node *skyhook.Node
+	node vaas.Node
 	cfg DownsampleConfig
 }
 
-func NewDownsample(node *skyhook.Node) skyhook.Executor {
+func NewDownsample(node vaas.Node) vaas.Executor {
 	var cfg DownsampleConfig
-	skyhook.JsonUnmarshal([]byte(node.Code), &cfg)
+	vaas.JsonUnmarshal([]byte(node.Code), &cfg)
 	return Downsample{
 		node: node,
 		cfg: cfg,
 	}
 }
 
-func (m Downsample) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
+func (m Downsample) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 	parents, err := GetParents(ctx, m.node)
 	if err != nil {
-		return skyhook.GetErrorBuffer(m.node.DataType, fmt.Errorf("downsample error reading parents: %v", err))
+		return vaas.GetErrorBuffer(m.node.DataType, fmt.Errorf("downsample error reading parents: %v", err))
 	}
 	if len(parents) != 1 {
 		panic(fmt.Errorf("downsample takes one parent"))
@@ -37,18 +37,18 @@ func (m Downsample) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 	expectedLength := (ctx.Slice.Length() + m.cfg.Freq-1) / m.cfg.Freq
 
 	// push-down the re-sample if possible
-	if vbufReader, ok := parent.(*skyhook.VideoBufferReader); ok {
+	if vbufReader, ok := parent.(*vaas.VideoBufferReader); ok {
 		vbufReader.Resample(m.cfg.Freq / vbufReader.Freq())
 		vbufReader.SetLength(expectedLength)
 		return vbufReader
 	}
 
-	buf := skyhook.NewSimpleBuffer(parent.Type())
+	buf := vaas.NewSimpleBuffer(parent.Type())
 	buf.SetMeta(m.cfg.Freq)
 
 	go func() {
 		var count int = 0
-		err := skyhook.ReadMultiple(ctx.Slice.Length(), m.cfg.Freq, parents, func(index int, datas []skyhook.Data) error {
+		err := vaas.ReadMultiple(ctx.Slice.Length(), m.cfg.Freq, parents, func(index int, datas []vaas.Data) error {
 			data := datas[0]
 			count += data.Length()
 			buf.Write(data)
@@ -70,5 +70,5 @@ func (m Downsample) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 func (m Downsample) Close() {}
 
 func init() {
-	skyhook.Executors["downsample"] = NewDownsample
+	vaas.Executors["downsample"] = NewDownsample
 }

@@ -3,7 +3,7 @@ package builtins
 // Simple overlap-based multi-object tracker.
 
 import (
-	"../skyhook"
+	"../vaas"
 	goslgraph "github.com/cpmech/gosl/graph"
 
 	"fmt"
@@ -11,48 +11,48 @@ import (
 
 type TrackWithID struct {
 	ID int
-	Detections []skyhook.Detection
+	Detections []vaas.Detection
 	LastFrame int
 }
-func (t TrackWithID) Last() skyhook.Detection {
+func (t TrackWithID) Last() vaas.Detection {
 	return t.Detections[len(t.Detections)-1]
 }
 
 type IOU struct {
-	node *skyhook.Node
+	node vaas.Node
 	maxAge int
 }
 
-func NewIOU(node *skyhook.Node) skyhook.Executor {
+func NewIOU(node vaas.Node) vaas.Executor {
 	type Config struct {
 		MaxAge int `json:"maxAge"`
 	}
 	var cfg Config
-	skyhook.JsonUnmarshal([]byte(node.Code), &cfg)
+	vaas.JsonUnmarshal([]byte(node.Code), &cfg)
 	return IOU{
 		node: node,
 		maxAge: cfg.MaxAge,
 	}
 }
 
-func (m IOU) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
+func (m IOU) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 	parents, err := GetParents(ctx, m.node)
 	if err != nil {
-		return skyhook.GetErrorBuffer(m.node.DataType, fmt.Errorf("iou error reading parents: %v", err))
+		return vaas.GetErrorBuffer(m.node.DataType, fmt.Errorf("iou error reading parents: %v", err))
 	}
-	buf := skyhook.NewSimpleBuffer(skyhook.TrackType)
+	buf := vaas.NewSimpleBuffer(vaas.TrackType)
 
 	go func() {
 		buf.SetMeta(parents[0].Freq())
 
 		var nextID int = 1
 		activeTracks := make(map[int]*TrackWithID)
-		PerFrame(parents, ctx.Slice, buf, skyhook.DetectionType, func(idx int, data skyhook.Data, buf skyhook.DataWriter) error {
-			detections := data.(skyhook.DetectionData)[0]
-			var out []skyhook.Detection
+		PerFrame(parents, ctx.Slice, buf, vaas.DetectionType, func(idx int, data vaas.Data, buf vaas.DataWriter) error {
+			detections := data.(vaas.DetectionData)[0]
+			var out []vaas.Detection
 
 			matches := hungarianMatcher(activeTracks, detections)
-			unmatched := make(map[int]skyhook.Detection)
+			unmatched := make(map[int]vaas.Detection)
 			for detectionIdx := range detections {
 				unmatched[detectionIdx] = detections[detectionIdx]
 			}
@@ -70,7 +70,7 @@ func (m IOU) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 				detection.TrackID = trackID
 				track := &TrackWithID{
 					ID: trackID,
-					Detections: []skyhook.Detection{detection},
+					Detections: []vaas.Detection{detection},
 					LastFrame: idx,
 				}
 				activeTracks[track.ID] = track
@@ -84,7 +84,7 @@ func (m IOU) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 				delete(activeTracks, track.ID)
 			}
 
-			buf.Write(skyhook.TrackData{out})
+			buf.Write(vaas.TrackData{out})
 			return nil
 		})
 	}()
@@ -95,7 +95,7 @@ func (m IOU) Run(ctx skyhook.ExecContext) skyhook.DataBuffer {
 func (m IOU) Close() {}
 
 // Returns map from track idx to detection idx that should be added corresponding to that track.
-func hungarianMatcher(activeTracks map[int]*TrackWithID, detections []skyhook.Detection) map[int]int {
+func hungarianMatcher(activeTracks map[int]*TrackWithID, detections []vaas.Detection) map[int]int {
 	if len(activeTracks) == 0 || len(detections) == 0 {
 		return nil
 	}
@@ -112,10 +112,10 @@ func hungarianMatcher(activeTracks map[int]*TrackWithID, detections []skyhook.De
 	costMatrix := make([][]float64, len(trackList))
 	for i, track := range trackList {
 		costMatrix[i] = make([]float64, len(detections))
-		trackRect := skyhook.DetectionToRectangle(track.Last())
+		trackRect := vaas.DetectionToRectangle(track.Last())
 
 		for j, detection := range detections {
-			curRect := skyhook.DetectionToRectangle(detection)
+			curRect := vaas.DetectionToRectangle(detection)
 			iou := trackRect.IOU(curRect)
 			var cost float64
 			if iou > 0.99 {
@@ -146,5 +146,5 @@ func hungarianMatcher(activeTracks map[int]*TrackWithID, detections []skyhook.De
 }
 
 func init() {
-	skyhook.Executors["iou"] = NewIOU
+	vaas.Executors["iou"] = NewIOU
 }
