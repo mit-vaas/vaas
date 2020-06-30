@@ -66,25 +66,56 @@ func main() {
 
 			buf = e.Run(context)
 
+			// asynchronously persist the outputs
+			addOutputItem := func(format string, freq int) vaas.Item {
+					request := vaas.AddOutputItemRequest{
+						Node: *node,
+						Vector: context.Vector,
+						Slice: context.Slice,
+						Format: format,
+						Freq: freq,
+					}
+					var item vaas.Item
+					vaas.JsonPost(CoordinatorURL, "/series/add-output-item", request, &item)
+					return item
+			}
 			if node.DataType != vaas.VideoType {
-				// asynchronously persist the outputs
 				go func() {
 					rd := buf.Reader()
 					data, err := rd.Read(context.Slice.Length())
 					if err != nil {
 						return
 					}
-
-					request := vaas.AddOutputItemRequest{
-						Node: *node,
-						Vector: context.Vector,
-						Slice: context.Slice,
-						Format: "json",
-						Freq: rd.Freq(),
-					}
-					var item vaas.Item
-					vaas.JsonPost(CoordinatorURL, "/series/add-output-item", request, &item)
+					item := addOutputItem("json", rd.Freq())
 					item.UpdateData(data)
+				}()
+			} else if context.Opts.PersistVideo {
+				go func() {
+					rd := buf.Reader()
+					if context.Slice.Length() == 1 {
+						data, err := rd.Read(1)
+						if err != nil {
+							return
+						}
+						im := data.(vaas.VideoData)[0]
+						item := addOutputItem("jpeg", rd.Freq())
+						item.Mkdir()
+						err = ioutil.WriteFile(item.Fname(0), im.AsJPG(), 0644)
+						if err != nil {
+							panic(err)
+						}
+					} else {
+						item := addOutputItem("mp4", rd.Freq())
+						file, err := os.Create(item.Fname(0))
+						if err != nil {
+							panic(err)
+						}
+						err = rd.(vaas.MP4Reader).ReadMP4(file)
+						if err != nil {
+							panic(err)
+						}
+						file.Close()
+					}
 				}()
 			}
 

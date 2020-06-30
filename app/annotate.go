@@ -31,11 +31,13 @@ func NewLabelSeries(name string, src []*DBSeries, dataType vaas.DataType) (*DBSe
 }
 
 type LabelsResponse struct {
-	URL string
-	Width int
-	Height int
+	// URLs for the source series (cached DataBuffers)
+	URLs []string
+	// Index in the label series of this item, or -1 if we're labeling something new.
 	Index int
+	// Slice that we are labeling
 	Slice vaas.Slice
+	// If Index != -1, this contains the encoded annotation data.
 	Labels interface{}
 }
 
@@ -104,34 +106,38 @@ func init() {
 			return
 		}
 		series.Load()
-		background := series.SrcVector[0]
 
+		// get labels for existing item, or sample a new slice
+		var resp LabelsResponse
 		item := series.Get(index)
 		if item != nil {
 			data, err := item.Load(item.Slice).Reader().Read(item.Slice.Length())
 			if err != nil {
 				panic(err)
 			}
-			bgItem := DBSeries{Series: background}.GetItem(item.Slice)
-			vaas.JsonResponse(w, LabelsResponse{
-				URL: fmt.Sprintf("/series/get-item?series_id=%d&segment_id=%d&start=%d&end=%d", background.ID, item.Slice.Segment.ID, item.Slice.Start, item.Slice.End),
-				Width: bgItem.Width,
-				Height: bgItem.Height,
-				Index: index,
-				Labels: data,
-			})
-			return
+			resp.Index = index
+			resp.Slice = item.Slice
+			resp.Labels = data
+		} else {
+			resp.Index = -1
+			resp.Slice = series.Next()
 		}
 
-		slice := series.Next()
-		bgItem := DBSeries{Series: background}.GetItem(slice)
-		vaas.JsonResponse(w, LabelsResponse{
-			URL: fmt.Sprintf("/series/get-item?series_id=%d&segment_id=%d&start=%d&end=%d", background.ID, slice.Segment.ID, slice.Start, slice.End),
-			Width: bgItem.Width,
-			Height: bgItem.Height,
-			Index: -1,
-			Slice: slice,
-		})
+		// fetch buffers for the source series
+		resp.URLs = make([]string, len(series.SrcVector))
+		for i, src := range VectorFromList(series.SrcVector) {
+			buf, err := src.RequireData(resp.Slice)
+			if err != nil {
+				panic(err)
+			}
+			cacheID := cache.Add(&CachedDataBuffer{
+				Buf: buf,
+				Slice: resp.Slice,
+			})
+			resp.URLs[i] = fmt.Sprintf("/cache/view?id=%s", cacheID)
+		}
+
+		vaas.JsonResponse(w, resp)
 	})
 
 	http.HandleFunc("/series/detection-label", func(w http.ResponseWriter, r *http.Request) {

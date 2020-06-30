@@ -6,7 +6,6 @@ import (
 
 	"fmt"
 	"log"
-	"net/http"
 	"strings"
 	"sync"
 )
@@ -23,7 +22,8 @@ func (query *DBQuery) GetEnvSet() vaas.EnvSet {
 	return vaas.EnvSet{envSetID, environments}
 }
 
-func (query *DBQuery) Run(vector []*DBSeries, slice vaas.Slice) ([][]vaas.DataReader, error) {
+func (query *DBQuery) Allocate(vector []*DBSeries, slice vaas.Slice) vaas.ExecContext {
+	query.Load()
 	uuid := gouuid.New().String()
 
 	containers := allocator.Allocate(query.GetEnvSet())
@@ -64,18 +64,13 @@ func (query *DBQuery) Run(vector []*DBSeries, slice vaas.Slice) ([][]vaas.DataRe
 		context.Inputs = append(context.Inputs, item.Item)
 	}
 
-	// make sure we release the associated buffers after we return
-	// (we won't be done rendering the video, but the containers can remove the global
-	// reference to the buffers since the HTTP calls for the rendering will already have
-	// been initialized)
-	defer func() {
-		for _, container := range containers {
-			resp, _ := http.Post(container.BaseURL + "/query/finish?uuid=" + uuid, "", nil)
-			if resp.Body != nil {
-				resp.Body.Close()
-			}
-		}
-	}()
+	return context
+}
+
+func (query *DBQuery) Run(vector []*DBSeries, slice vaas.Slice, opts vaas.ExecOptions) ([][]vaas.DataReader, error) {
+	context := query.Allocate(vector, slice)
+	context.Opts = opts
+	defer context.Release()
 
 	// get the selector
 	selector := query.Selector
@@ -215,7 +210,7 @@ func (ctx *ExecStream) Close() {
 
 func (ctx *ExecStream) tryOne(slice vaas.Slice, wg *sync.WaitGroup) {
 	defer wg.Done()
-	outputs, err := ctx.query.Run(ctx.vector, slice)
+	outputs, err := ctx.query.Run(ctx.vector, slice, vaas.ExecOptions{})
 	if err != nil && strings.Contains(err.Error(), "selector reject") {
 		log.Printf("[task context] selector reject on slice %v, we will retry", slice)
 		ctx.callback(slice, outputs, err)

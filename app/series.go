@@ -295,6 +295,28 @@ func (series DBSeries) GetItem(slice vaas.Slice) *DBItem {
 	}
 }
 
+// Returns data for the specified slice.
+// For output series, computes the data if needed.
+// Currently the computed data is persisted so that we didn't need to change how DataRefs work.
+// (Export will use the persisted data.)
+func (series *DBSeries) RequireData(slice vaas.Slice) (vaas.DataBuffer, error) {
+	series.Load()
+	item := series.GetItem(slice)
+	if item != nil {
+		return item.Load(slice), nil
+	}
+	if series.Node == nil {
+		return nil, fmt.Errorf("series %s has no item for slice %v", series.Name, slice)
+	}
+	query := GetQuery(series.Node.QueryID)
+	vector := VectorFromList(series.SrcVector)
+	context := query.Allocate(vector, slice)
+	context.Opts = vaas.ExecOptions{PersistVideo: true}
+	buf, err := context.GetBuffer(*series.Node)
+	context.Release()
+	return buf, err
+}
+
 func (series DBSeries) Get(index int) *DBItem {
 	items := series.ListItems()
 	if index < 0 || index >= len(items) {

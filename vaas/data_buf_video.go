@@ -5,8 +5,38 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"sync"
 )
+
+/*
+
+VideoBuffer stores encoded video bytes.
+More bytes can be added in a streaming way.
+
+VideoBuffer is used in two ways:
+
+First, VideoWriter writes an image sequence to a VideoBuffer by encoding the
+image sequence as video through ffmpeg. This is used e.g. to store video
+outputs of executors.
+
+Second, VideoBufferFromReader takes a binary IO stream containing video bytes
+and writes it to a VideoBuffer.
+
+VideoFileBuffer is an alternative DataBuffer for video data when the video is
+already stored on disk. It just stores the file metadata.
+
+VideoBufferReader is a DataReader for video data that reads from either a
+VideoBuffer or a VideoFileBuffer. It decodes the video and returns it as an
+image sequence. It supports push-down of rescale and re-sample operations.
+
+VideoBufferReader also supports a ReadMP4 to read the VideoBuffer or
+VideoFileBuffer directly as an MP4 file. Ordinarily reading the bytes directly
+from the file or the VideoBuffer would be sufficient. However, if rescale or
+re-sample was pushed down, then we need to transcode that video. So that is why
+ReadMP4 exists.
+
+*/
 
 type VideoWriter struct {
 	freq int
@@ -189,6 +219,30 @@ func (buf *VideoBuffer) ToWriter(w io.Writer) error {
 	return buf.Reader().(*VideoBufferReader).ToWriter(w)
 }
 
+// unlike ToWriter, this writes the video data directly without metadata
+func (buf *VideoBuffer) writeBuffer(w io.Writer) error {
+	p := make([]byte, 4096)
+	pos := 0
+	for {
+		n, err := buf.Read(pos, p)
+		if err == io.EOF {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		w.Write(p[0:n])
+		pos += n
+	}
+}
+
+type MP4Reader interface {
+	ReadMP4(io.Writer) error
+}
+
+func (buf *VideoBuffer) ReadMP4(w io.Writer) error {
+	return buf.Reader().(*VideoBufferReader).ReadMP4(w)
+}
+
 type VideoFileBuffer struct {
 	Item Item
 	Slice Slice
@@ -294,6 +348,13 @@ func (rd *VideoBufferReader) getDims() [2]int {
 	}
 }
 
+func (rd *VideoBufferReader) getSample() int {
+	if rd.resample == 0 {
+		return 1
+	}
+	return rd.resample
+}
+
 func (rd *VideoBufferReader) start() {
 	if rd.buf != nil {
 		err := rd.buf.waitForMeta()
@@ -302,10 +363,7 @@ func (rd *VideoBufferReader) start() {
 			return
 		}
 		dims := rd.getDims()
-		sample := 1
-		if rd.resample != 0 {
-			sample = rd.resample
-		}
+		sample := rd.getSample()
 
 		cmd := Command(
 			"ffmpeg-vbufrd", CommandOptions{OnlyDebug: true},
@@ -318,18 +376,7 @@ func (rd *VideoBufferReader) start() {
 
 		go func() {
 			stdin := cmd.Stdin()
-			b := make([]byte, 4096)
-			pos := 0
-			for {
-				n, err := rd.buf.Read(pos, b)
-				if err != nil {
-					break
-				}
-				if _, err := stdin.Write(b[0:n]); err != nil {
-					break
-				}
-				pos += n
-			}
+			rd.buf.writeBuffer(stdin)
 			stdin.Close()
 		}()
 
@@ -517,19 +564,7 @@ func (rd *VideoBufferReader) ToWriter(w io.Writer) error {
 		meta.BufWidth = rd.buf.dims[0]
 		meta.BufHeight = rd.buf.dims[1]
 		writeMeta()
-
-		pos := 0
-		p := make([]byte, 4096)
-		for {
-			n, err := rd.buf.Read(pos, p)
-			if err == io.EOF {
-				return nil
-			} else if err != nil {
-				return err
-			}
-			w.Write(p[0:n])
-			pos += n
-		}
+		return rd.buf.writeBuffer(w)
 	} else {
 		item := rd.item
 		meta.Item = &item
@@ -538,4 +573,83 @@ func (rd *VideoBufferReader) ToWriter(w io.Writer) error {
 	}
 
 	return nil
+}
+
+// Read rd.buf or rd.item as an MP4 instead of an image sequence.
+// If rescale/resample are not set or match the input, then we can just return
+// the stored bytes directly. Otherwise, we need to transcade the video.
+func (rd *VideoBufferReader) ReadMP4(w io.Writer) error {
+	if rd.buf != nil {
+		rd.buf.waitForMeta()
+		needTranscode := false
+		if rd.rescale[0] != 0 && rd.rescale != rd.buf.dims {
+			needTranscode = true
+		}
+		if rd.resample != 0 && rd.resample > 1 {
+			needTranscode = true
+		}
+		if !needTranscode {
+			return rd.buf.writeBuffer(w)
+		}
+
+		dims := rd.getDims()
+		sample := rd.getSample()
+
+		cmd := Command(
+			"ffmpeg-vbufrd", CommandOptions{OnlyDebug: true},
+			"ffmpeg",
+			"-f", "mp4", "-i", "-",
+			"-vcodec", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-g", fmt.Sprintf("%v", FPS),
+			"-vf", fmt.Sprintf("scale=%dx%d,fps=%d/%d", dims[0], dims[1], FPS, sample),
+			"-f", "mp4", "-pix_fmt", "yuv420p", "-movflags", "faststart+frag_keyframe+empty_moov",
+			"-",
+		)
+
+		go func() {
+			stdin := cmd.Stdin()
+			rd.buf.writeBuffer(stdin)
+			stdin.Close()
+		}()
+		io.Copy(w, cmd.Stdout())
+		return cmd.Wait()
+	} else {
+		needTranscode := false
+		if rd.rescale[0] != 0 && rd.rescale != [2]int{rd.item.Width, rd.item.Height} {
+			needTranscode = true
+		}
+		if rd.resample != 0 && rd.resample > 1 {
+			needTranscode = true
+		}
+		if !needTranscode {
+			file, err := os.Open(rd.item.Fname(0))
+			if err != nil {
+				return err
+			}
+			_, err = io.Copy(w, file)
+			file.Close()
+			return err
+		}
+
+		dims := rd.getDims()
+		sample := rd.getSample()
+
+		cmd := Command(
+			"ffmpeg-vbufrd", CommandOptions{NoStdin: true, OnlyDebug: true},
+			"ffmpeg",
+			"-ss", ffmpegTime(rd.slice.Start - rd.item.Slice.Start),
+			"-i", rd.item.Fname(0),
+			"-to", ffmpegTime(rd.slice.Length()),
+			"-vf", fmt.Sprintf("scale=%dx%d,fps=%d/%d", dims[0], dims[1], FPS, sample),
+			"-f", "mp4", "-pix_fmt", "yuv420p", "-movflags", "faststart+frag_keyframe+empty_moov",
+			"-",
+		)
+
+		go func() {
+			stdin := cmd.Stdin()
+			rd.buf.writeBuffer(stdin)
+			stdin.Close()
+		}()
+		io.Copy(w, cmd.Stdout())
+		return cmd.Wait()
+	}
 }

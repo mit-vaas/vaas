@@ -111,8 +111,15 @@ func (item Item) Load(slice Slice) DataBuffer {
 	return buf
 }
 
-func (item Item) UpdateData(data Data) {
+func (item Item) Mkdir() {
 	os.Mkdir(fmt.Sprintf("items/%d", item.Series.ID), 0755)
+	if item.Format == "jpeg" {
+		os.Mkdir(fmt.Sprintf("items/%d/%d", item.Series.ID, item.ID), 0755)
+	}
+}
+
+func (item Item) UpdateData(data Data) {
+	item.Mkdir()
 	if err := ioutil.WriteFile(item.Fname(0), data.Encode(), 0644); err != nil {
 		panic(err)
 	}

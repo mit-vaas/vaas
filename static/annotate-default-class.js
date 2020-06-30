@@ -1,7 +1,8 @@
 Vue.component('annotate-default-class', {
 	data: function() {
 		return {
-			image: null,
+			response: null,
+			imMeta: null,
 		};
 	},
 	props: ['series'],
@@ -9,30 +10,34 @@ Vue.component('annotate-default-class', {
 		$.get('/series/labels?id='+this.series.ID+'&index=-1', this.updateImage, 'json');
 	},
 	methods: {
-		updateImage: function(image) {
-			this.image = image;
+		updateImage: function(response) {
+			this.response = response;
+			this.imMeta = null;
+			$.get(this.response.URLs[0]+'&type=meta', (meta) => {
+				this.imMeta = meta;
+			});
 		},
 		prev: function() {
-			if(this.image.Index < 0) {
+			if(this.response.Index < 0) {
 				$.get('/series/labels?id='+this.series.ID+'&index=0', this.updateImage, 'json');
 			} else {
-				var i = this.image.Index - 1;
+				var i = this.response.Index - 1;
 				$.get('/series/labels?id='+this.series.ID+'&index='+i, this.updateImage, 'json');
 			}
 		},
 		next: function() {
-			if(this.image.Index < 0) {
+			if(this.response.Index < 0) {
 				$.get('/series/labels?id='+this.series.ID+'&index=-1', this.updateImage, 'json');
 			} else {
-				var i = this.image.Index+1;
+				var i = this.response.Index+1;
 				$.get('/series/labels?id='+this.series.ID+'&index='+i, this.updateImage, 'json');
 			}
 		},
 		label: function(cls) {
 			var params = {
 				id: this.series.ID,
-				index: this.image.Index,
-				slice: this.image.Slice,
+				index: this.response.Index,
+				slice: this.response.Slice,
 				labels: [cls],
 			};
 			$.ajax({
@@ -41,10 +46,10 @@ Vue.component('annotate-default-class', {
 				data: JSON.stringify(params),
 				processData: false,
 				success: function() {
-					if(this.image.Index < 0) {
+					if(this.response.Index < 0) {
 						$.get('/series/labels?id='+this.series.ID+'&index=-1', this.updateImage, 'json');
 					} else {
-						var i = this.image.Index+1;
+						var i = this.response.Index+1;
 						$.get('/series/labels?id='+this.series.ID+'&index='+i, this.updateImage, 'json');
 					}
 				}.bind(this),
@@ -54,13 +59,13 @@ Vue.component('annotate-default-class', {
 	template: `
 <div>
 	<div>
-		<template v-if="image != null">
+		<template v-if="imMeta != null">
 			<div :style="{
-					width: image.Width + 'px',
-					height: image.Height + 'px',
+					width: imMeta.Width + 'px',
+					height: imMeta.Height + 'px',
 				}"
 				>
-				<img :src="image.URL + '&type=jpeg'" />
+				<img :src="response.URLs[0] + '&type=jpeg'" />
 			</div>
 		</template>
 	</div>
@@ -69,12 +74,12 @@ Vue.component('annotate-default-class', {
 			<button v-on:click="prev" type="button" class="btn btn-primary">Prev</button>
 		</div>
 		<div class="col-auto">
-			<template v-if="image != null">
-				<span v-if="image.Index < 0">[New]</span>
-				<span v-else>{{ image.Index }}</span>
-				<template v-if="image.Labels">
-					<span v-if="image.Labels[0] == 1">(Positive)</span>
-					<span v-else-if="image.Labels[0] == 0">(Negative)</span>
+			<template v-if="response != null">
+				<span v-if="response.Index < 0">[New]</span>
+				<span v-else>{{ response.Index }}</span>
+				<template v-if="response.Labels">
+					<span v-if="response.Labels[0] == 1">(Positive)</span>
+					<span v-else-if="response.Labels[0] == 0">(Negative)</span>
 				</template>
 			</template>
 		</div>

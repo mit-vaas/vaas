@@ -43,7 +43,7 @@ cb_checkpoint = keras.callbacks.ModelCheckpoint(
     filepath=model_path,
     save_weights_only=True,
     monitor='val_loss',
-    mode='max',
+    mode='min',
     save_best_only=True
 )
 cb_stop = keras.callbacks.EarlyStopping(

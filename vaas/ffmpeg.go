@@ -142,9 +142,7 @@ func MakeVideo(rd VideoReader, width int, height int) (io.ReadCloser, *Cmd) {
 		//"-r", fmt.Sprintf("%v", FPS),
 		"-pix_fmt", "rgb24", "-i", "-",
 		"-vcodec", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-g", fmt.Sprintf("%v", FPS),
-		//"-vcodec", "mpeg4",
 		"-vf", fmt.Sprintf("fps=%v", FPS),
-		//"-f", "flv",
 		"-f", "mp4", "-pix_fmt", "yuv420p", "-movflags", "faststart+frag_keyframe+empty_moov",
 		"-",
 	)

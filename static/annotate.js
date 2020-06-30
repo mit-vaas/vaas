@@ -4,7 +4,7 @@ Vue.component('annotate-tab', {
 			mode: 'list',
 			labelSeries: [],
 
-			dataSeries: [],
+			allSeries: [],
 			newSetFields: {},
 
 			annotateTool: '',
@@ -27,8 +27,8 @@ Vue.component('annotate-tab', {
 			}.bind(this));
 		},
 		showNewLabelSeriesModal: function() {
-			$.get('/datasets', function(data) {
-				this.dataSeries = data;
+			$.get('/series', function(data) {
+				this.allSeries = data;
 				this.newSetFields = {
 					name: '',
 					type: 'detection',
@@ -133,7 +133,7 @@ Vue.component('annotate-tab', {
 								<label class="col-sm-2 col-form-label">Source</label>
 								<div class="col-sm-10">
 									<select v-model="newSetFields.series" class="form-control">
-										<option v-for="series in dataSeries" :value="series.ID">{{ series.Name }}</option>
+										<option v-for="series in allSeries" :value="series.ID">{{ series.Name }}</option>
 									</select>
 								</div>
 							</div>

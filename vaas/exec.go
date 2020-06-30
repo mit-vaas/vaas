@@ -6,6 +6,10 @@ import (
 	"net/http"
 )
 
+type ExecOptions struct {
+	PersistVideo bool
+}
+
 type ExecContext struct {
 	// all nodes in the query
 	Nodes map[int]*Node
@@ -28,12 +32,14 @@ type ExecContext struct {
 	// other info
 	Vector []Series
 	Slice Slice
+
+	Opts ExecOptions
 }
 
-func (context ExecContext) GetReader(node Node) (DataReader, error) {
+func (context ExecContext) GetBuffer(node Node) (DataBuffer, error) {
 	item := context.Items[node.ID]
 	if item != nil {
-		return item.Load(context.Slice).Reader(), nil
+		return item.Load(context.Slice), nil
 	}
 	container := context.Containers[node.ID]
 	path := fmt.Sprintf("/query/start?node_id=%d", node.ID)
@@ -58,7 +64,33 @@ func (context ExecContext) GetReader(node Node) (DataReader, error) {
 		buf = sbuf
 	}
 
+	return buf, nil
+}
+
+func (context ExecContext) GetReader(node Node) (DataReader, error) {
+	buf, err := context.GetBuffer(node)
+	if err != nil {
+		return nil, err
+	}
 	return buf.Reader(), nil
+}
+
+// Notifies containers that they can release the buffers for this context.
+// This can be called as soon as the last GetReader call is made.
+// Releasing will remove pointer to buffer but existing readers can finish reading.
+func (context ExecContext) Release() {
+	// release each unique container
+	seen := make(map[string]bool)
+	for _, container := range context.Containers {
+		if seen[container.UUID] {
+			continue
+		}
+		seen[container.UUID] = true
+		resp, _ := http.Post(container.BaseURL + "/query/finish?uuid=" + context.UUID, "", nil)
+		if resp.Body != nil {
+			resp.Body.Close()
+		}
+	}
 }
 
 type Executor interface {
