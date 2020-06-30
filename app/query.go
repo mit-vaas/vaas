@@ -421,6 +421,7 @@ func init() {
 		if r.Method == "GET" {
 			query.Load()
 			vaas.JsonResponse(w, query)
+			return
 		} else if r.Method != "POST" {
 			w.WriteHeader(404)
 			return
