@@ -4,16 +4,18 @@ import (
 	"./vaas"
 	_ "./builtins"
 
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
+	"net"
 	"net/http"
 	"sync"
 )
 
-const CoordinatorURL string = "http://localhost:8080"
-
 func main() {
+	coordinatorURL := os.Args[1]
+
 	executors := make(map[int]vaas.Executor)
 	buffers := make(map[string]map[int]vaas.DataBuffer)
 	var mu sync.Mutex
@@ -76,7 +78,7 @@ func main() {
 						Freq: freq,
 					}
 					var item vaas.Item
-					vaas.JsonPost(CoordinatorURL, "/series/add-output-item", request, &item)
+					vaas.JsonPost(coordinatorURL, "/series/add-output-item", request, &item)
 					return item
 			}
 			if node.DataType != vaas.VideoType {
@@ -183,6 +185,14 @@ func main() {
 		mu.Unlock()
 	})
 
+	ln, err := net.Listen("tcp", "")
+	if err != nil {
+		panic(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	log.Printf("starting on port %d", port)
+	os.Stdout.Write([]byte(fmt.Sprintf("%d\n", port)))
+
 	// kill when stdin is closed
 	go func() {
 		_, err := ioutil.ReadAll(os.Stdin)
@@ -193,11 +203,11 @@ func main() {
 		for _, e := range executors {
 			e.Close()
 		}
+		ln.Close()
 		os.Exit(0)
 	}()
 
-	log.Printf("starting on :8082")
-	if err := http.ListenAndServe(":8082", nil); err != nil {
-		panic(err)
+	if err := http.Serve(ln, nil); err != nil {
+		log.Println("serve error:", err)
 	}
 }

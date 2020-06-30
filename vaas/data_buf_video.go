@@ -99,7 +99,6 @@ func (w *VideoWriter) Write(data Data) {
 
 func (w *VideoWriter) Close() {
 	w.stdin.Close()
-	w.buf.Wait()
 }
 
 func (w *VideoWriter) Error(err error) {
@@ -480,9 +479,6 @@ func (rd *VideoBufferReader) Peek(n int) (Data, error) {
 
 func (rd *VideoBufferReader) Close() {
 	if rd.rd != nil {
-		for !rd.eof && rd.err == nil {
-			rd.Read(FPS)
-		}
 		rd.rd.Close()
 	}
 	rd.err = fmt.Errorf("closed")

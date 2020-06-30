@@ -4,16 +4,22 @@ import (
 	"./vaas"
 	gouuid "github.com/google/uuid"
 
+	"bufio"
+	"fmt"
 	"log"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 )
 
 func main() {
+	myIP := os.Args[1]
+	coordinatorURL := os.Args[2]
+
 	type Cmd struct {
 		cmd *exec.Cmd
 		stdin io.WriteCloser
@@ -32,12 +38,15 @@ func main() {
 			return
 		}
 
-		cmd := exec.Command("./container")
+		cmd := exec.Command("./container", coordinatorURL)
 		stdin, err := cmd.StdinPipe()
 		if err != nil {
 			panic(err)
 		}
-		cmd.Stdout = os.Stdout
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			panic(err)
+		}
 		cmd.Stderr = os.Stderr
 		if err := cmd.Start(); err != nil {
 			panic(err)
@@ -48,10 +57,17 @@ func main() {
 		containers[uuid] = Cmd{cmd, stdin}
 		mu.Unlock()
 
+		rd := bufio.NewReader(stdout)
+		line, err := rd.ReadString('\n')
+		if err != nil {
+			panic(err)
+		}
+		port := vaas.ParseInt(strings.TrimSpace(line))
+
 		time.Sleep(time.Second)
 		vaas.JsonResponse(w, vaas.Container{
 			UUID: uuid,
-			BaseURL: "http://localhost:8082",
+			BaseURL: fmt.Sprintf("http://%s:%d", myIP, port),
 		})
 	})
 
