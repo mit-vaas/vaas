@@ -34,6 +34,10 @@ html, body, #app, #queries-panel {
 	border: 1px solid black;
 }
 
+.plaintext-div {
+	font-family: Courier New, monospace;
+}
+
 /* canvas on image */
 .canvas-container {
 	display: inline-block;
