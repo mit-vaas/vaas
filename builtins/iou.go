@@ -146,5 +146,5 @@ func hungarianMatcher(activeTracks map[int]*TrackWithID, detections []vaas.Detec
 }
 
 func init() {
-	vaas.Executors["iou"] = NewIOU
+	vaas.Executors["iou"] = vaas.ExecutorMeta{New: NewIOU}
 }

@@ -58,7 +58,7 @@ func main() {
 
 			// init the executor if it's not already present
 			if executors[node.ID] == nil {
-				executors[node.ID] = vaas.Executors[node.Type](*node)
+				executors[node.ID] = vaas.Executors[node.Type].New(*node)
 			}
 			e := executors[node.ID]
 

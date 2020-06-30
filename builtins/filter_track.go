@@ -143,5 +143,5 @@ func (m TrackFilter) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 func (m TrackFilter) Close() {}
 
 func init() {
-	vaas.Executors["filter-track"] = NewTrackFilter
+	vaas.Executors["filter-track"] = vaas.ExecutorMeta{New: NewTrackFilter}
 }

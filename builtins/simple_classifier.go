@@ -92,5 +92,14 @@ func (m *SimpleClassifier) Close() {
 }
 
 func init() {
-	vaas.Executors["simple-classifier"] = NewSimpleClassifier
+	vaas.Executors["simple-classifier"] = vaas.ExecutorMeta{
+		New: NewSimpleClassifier,
+		Environment: &vaas.Environment{
+			Template: "gpu",
+			Requirements: map[string]int{
+				"container": 1,
+				"gpu": 1,
+			},
+		},
+	}
 }

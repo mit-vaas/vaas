@@ -195,5 +195,14 @@ func (m *Yolov3) Stats() vaas.StatsSample {
 }
 
 func init() {
-	vaas.Executors["yolov3"] = NewYolov3
+	vaas.Executors["yolov3"] = vaas.ExecutorMeta{
+		New: NewYolov3,
+		Environment: &vaas.Environment{
+			Template: "gpu",
+			Requirements: map[string]int{
+				"container": 1,
+				"gpu": 1,
+			},
+		},
+	}
 }

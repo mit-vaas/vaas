@@ -19,6 +19,12 @@ func (query *DBQuery) GetEnvSet() vaas.EnvSet {
 			"container": 1,
 		},
 	})
+	for _, node := range query.Nodes {
+		meta := vaas.Executors[node.Type]
+		if meta.Environment != nil {
+			environments = append(environments, *meta.Environment)
+		}
+	}
 	return vaas.EnvSet{envSetID, environments}
 }
 

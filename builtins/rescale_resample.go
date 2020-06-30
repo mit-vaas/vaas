@@ -86,5 +86,5 @@ func (m RescaleResample) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 func (m RescaleResample) Close() {}
 
 func init() {
-	vaas.Executors["rescale-resample"] = NewRescaleResample
+	vaas.Executors["rescale-resample"] = vaas.ExecutorMeta{New: NewRescaleResample}
 }

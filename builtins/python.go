@@ -271,5 +271,5 @@ func NewPythonExecutor(node vaas.Node) vaas.Executor {
 }
 
 func init() {
-	vaas.Executors["python"] = NewPythonExecutor
+	vaas.Executors["python"] = vaas.ExecutorMeta{New: NewPythonExecutor}
 }

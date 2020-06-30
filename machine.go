@@ -17,15 +17,57 @@ import (
 )
 
 func main() {
+	if len(os.Args) < 4 {
+		fmt.Println("usage: ./machine [external IP] [coordinator URL] [num gpus]")
+		fmt.Println("example: ./machine localhost http://localhost:8080 2")
+		return
+	}
 	myIP := os.Args[1]
 	coordinatorURL := os.Args[2]
+	gpus := vaas.ParseInt(os.Args[3])
 
 	type Cmd struct {
 		cmd *exec.Cmd
 		stdin io.WriteCloser
+		gpus []int
 	}
 	containers := make(map[string]Cmd)
 	var mu sync.Mutex
+
+	gpusInUse := make(map[int]bool)
+	for i := 0; i < gpus; i++ {
+		gpusInUse[i] = false
+	}
+
+	getGPUs := func(num int) ([]int, error) {
+		var gpus []int
+		for i := 0; i < num; i++ {
+			var freeGPU int = -1
+			for idx, used := range gpusInUse {
+				if used {
+					continue
+				}
+				freeGPU = idx
+				break
+			}
+			if freeGPU == -1 {
+				return nil, fmt.Errorf("insufficient idle GPUs")
+			}
+			gpus = append(gpus, freeGPU)
+		}
+		for _, idx := range gpus {
+			gpusInUse[idx] = true
+		}
+		return gpus, nil
+	}
+
+	cudaStr := func(gpus []int) string {
+		var parts []string
+		for _, idx := range gpus {
+			parts = append(parts, fmt.Sprintf("%d", idx))
+		}
+		return strings.Join(parts, ",")
+	}
 
 	http.HandleFunc("/allocate", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
@@ -39,6 +81,24 @@ func main() {
 		}
 
 		cmd := exec.Command("./container", coordinatorURL)
+
+		// assign GPUs if needed
+		var gpus []int
+		if request.Requirements["gpu"] > 0 {
+			var err error
+			gpus, err = getGPUs(request.Requirements["gpu"])
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			for _, env := range os.Environ() {
+				if strings.Contains(env, "CUDA_VISIBLE_DEVICES") {
+					cmd.Env = append(cmd.Env, env)
+				}
+			}
+			cmd.Env = append(cmd.Env, cudaStr(gpus))
+		}
+
 		stdin, err := cmd.StdinPipe()
 		if err != nil {
 			panic(err)
@@ -54,7 +114,11 @@ func main() {
 		uuid := gouuid.New().String()
 		log.Printf("[machine] container %s started", uuid)
 		mu.Lock()
-		containers[uuid] = Cmd{cmd, stdin}
+		containers[uuid] = Cmd{
+			cmd: cmd,
+			stdin: stdin,
+			gpus: gpus,
+		}
 		mu.Unlock()
 
 		rd := bufio.NewReader(stdout)

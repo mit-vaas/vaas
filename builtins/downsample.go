@@ -70,5 +70,5 @@ func (m Downsample) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 func (m Downsample) Close() {}
 
 func init() {
-	vaas.Executors["downsample"] = NewDownsample
+	vaas.Executors["downsample"] = vaas.ExecutorMeta{New: NewDownsample}
 }

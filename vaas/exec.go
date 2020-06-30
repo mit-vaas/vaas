@@ -98,4 +98,11 @@ type Executor interface {
 	Close()
 }
 
-var Executors = map[string]func(Node) Executor{}
+type ExecutorMeta struct {
+	New func(Node) Executor
+
+	// only set for non-default environments
+	Environment *Environment
+}
+
+var Executors = map[string]ExecutorMeta{}

@@ -58,7 +58,7 @@ func (node *DBNode) ListVNodes() []*DBVNode {
 }
 
 func (node *DBNode) Exec(query *DBQuery) vaas.Executor {
-	return vaas.Executors[node.Type](node.Node)
+	return vaas.Executors[node.Type].New(node.Node)
 }
 
 func (node *DBNode) GetChildren(m map[int]*vaas.Node) []*DBNode {

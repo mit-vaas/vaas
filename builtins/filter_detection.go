@@ -62,5 +62,5 @@ func (m DetectionFilter) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 func (m DetectionFilter) Close() {}
 
 func init() {
-	vaas.Executors["filter-detection"] = NewDetectionFilter
+	vaas.Executors["filter-detection"] = vaas.ExecutorMeta{New: NewDetectionFilter}
 }

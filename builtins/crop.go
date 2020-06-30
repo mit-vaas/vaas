@@ -63,5 +63,5 @@ func (m Crop) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 func (m Crop) Close() {}
 
 func init() {
-	vaas.Executors["crop"] = NewCrop
+	vaas.Executors["crop"] = vaas.ExecutorMeta{New: NewCrop}
 }
