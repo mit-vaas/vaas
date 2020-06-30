@@ -23,13 +23,24 @@ type PythonExecutor struct {
 	query *vaas.Query
 	node vaas.Node
 	tempFile *os.File
+
+	// cmd is set to nil and err to "closed" after Close call
 	cmd *vaas.Cmd
 	stdin io.WriteCloser
 	stdout io.ReadCloser
+
+	// slices for which we are waiting for outputs
 	pending map[int]*pendingSlice
 	counter int
 
+	// error running python template
+	// this error is returned to any future Run calls
+	err error
+
+	// lock on stdin
 	writeLock sync.Mutex
+
+	// lock on internal structures (pending, err, counter, etc.)
 	mu sync.Mutex
 }
 
@@ -90,6 +101,11 @@ func (e *PythonExecutor) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 
 		// prepare pendingSlice
 		e.mu.Lock()
+		if e.err != nil {
+			w.Error(e.err)
+			e.mu.Unlock()
+			return
+		}
 		id := e.counter
 		e.counter++
 		ps := &pendingSlice{slice, parents, w}
@@ -145,24 +161,11 @@ func (e *PythonExecutor) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 func (e *PythonExecutor) ReadLoop() {
 	t := e.node.DataType
 
-	setErr := func(err error) {
-		e.mu.Lock()
-		defer e.mu.Unlock()
-		if len(e.pending) == 0 {
-			return
-		}
-		log.Printf("[python (%s)] error during python execution: %v", e.node.Name, err)
-		for _, ps := range e.pending {
-			ps.w.Error(err)
-		}
-	}
-
 	header := make([]byte, 16)
 	for {
 		_, err := io.ReadFull(e.stdout, header)
 		if err != nil {
-			setErr(fmt.Errorf("error reading from python: %v", err))
-			return
+			break
 		}
 		sliceIdx := int(binary.BigEndian.Uint32(header[0:4]))
 		start := int(binary.BigEndian.Uint32(header[4:8]))
@@ -171,8 +174,7 @@ func (e *PythonExecutor) ReadLoop() {
 		buf := make([]byte, size)
 		_, err = io.ReadFull(e.stdout, buf)
 		if err != nil {
-			setErr(fmt.Errorf("error reading from python: %v", err))
-			return
+			break
 		}
 		var data vaas.Data
 		if t == vaas.VideoType {
@@ -201,12 +203,35 @@ func (e *PythonExecutor) ReadLoop() {
 		}
 		e.mu.Unlock()
 	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if len(e.pending) == 0 && e.err != nil && e.err.Error() == "closed" {
+		return
+	}
+	if e.cmd != nil {
+		e.err = e.cmd.Wait()
+		e.cmd = nil
+	}
+	if e.err == nil {
+		e.err = fmt.Errorf("cmd closed unexpectdly")
+	}
+	log.Printf("[python (%s)] error during python execution: %v", e.node.Name, e.err)
+	for _, ps := range e.pending {
+		ps.w.Error(e.err)
+	}
 }
 
 func (e *PythonExecutor) Close() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	e.stdin.Close()
 	e.stdout.Close()
-	e.cmd.Wait()
+	if e.cmd != nil {
+		e.cmd.Wait()
+		e.cmd = nil
+		e.err = fmt.Errorf("closed")
+	}
 	os.Remove(e.tempFile.Name())
 }
 

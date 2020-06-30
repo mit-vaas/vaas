@@ -149,9 +149,11 @@ func (cmd *Cmd) Wait() error {
 	}
 	err := cmd.cmd.Wait()
 	if err != nil {
-		log.Printf("[%s] exit error: %v (%s)", cmd.prefix, err, lastLine)
+		myerr := fmt.Errorf("exit error: %v (%s)", err, lastLine)
+		log.Printf("[%s] %v", cmd.prefix, myerr)
+		return myerr
 	}
-	return err
+	return nil
 }
 
 func (cmd *Cmd) printStderr(onlyDebug bool) {

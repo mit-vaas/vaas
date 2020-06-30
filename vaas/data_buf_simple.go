@@ -147,51 +147,86 @@ func (buf *SimpleBuffer) Reader() DataReader {
 	}
 }
 
+type SimpleBufferIOMeta struct {
+	Freq int
+}
+
+// I/O begins with header containing the metadata (SimpleBufferIOMeta).
+// Then it is a sequence of packets, each packet has a 5-byte header.
+// First byte is 'e' for error or 'd' for data.
+// header[1:5] is the length of the packet.
+// Rest of packet is the error or data.
 func (buf *SimpleBuffer) FromReader(r io.Reader) {
-	header := make([]byte, 4)
-	_, err := io.ReadFull(r, header)
+	hlen := make([]byte, 4)
+	_, err := io.ReadFull(r, hlen)
 	if err != nil {
-		buf.Error(fmt.Errorf("error reading binary: %v", err))
+		buf.Error(fmt.Errorf("error SimpleBuffer from io.Reader: %v", err))
 		return
 	}
-	freq := int(binary.BigEndian.Uint32(header))
-	buf.SetMeta(freq)
+	l := int(binary.BigEndian.Uint32(hlen))
+	metaBytes := make([]byte, l)
+	_, err = io.ReadFull(r, metaBytes)
+	if err != nil {
+		buf.Error(fmt.Errorf("error reading SimpleBuffer from io.Reader: %v", err))
+		return
+	}
+	var meta SimpleBufferIOMeta
+	JsonUnmarshal(metaBytes, &meta)
+	buf.SetMeta(meta.Freq)
+
+	header := make([]byte, 5)
 	for {
 		_, err := io.ReadFull(r, header)
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			buf.Error(fmt.Errorf("error reading binary: %v", err))
+			buf.Error(fmt.Errorf("error reading SimpleBuffer from io.Reader: %v", err))
 			return
 		}
-		b := make([]byte, int(binary.BigEndian.Uint32(header)))
+		b := make([]byte, int(binary.BigEndian.Uint32(header[1:5])))
 		_, err = io.ReadFull(r, b)
 		if err != nil {
-			buf.Error(fmt.Errorf("error reading binary: %v", err))
+			buf.Error(fmt.Errorf("error reading SimpleBuffer from io.Reader: %v", err))
 			return
 		}
-		buf.Write(DecodeData(buf.Type(), b))
+		if header[0] == 'd' {
+			buf.Write(DecodeData(buf.Type(), b))
+		} else if header[0] == 'e' {
+			buf.Error(fmt.Errorf(string(b)))
+		}
 	}
 	buf.Close()
 }
 
 func (buf *SimpleBuffer) ToWriter(w io.Writer) error {
 	buf.waitForMeta()
-	header := make([]byte, 4)
-	binary.BigEndian.PutUint32(header, uint32(buf.freq))
-	w.Write(header)
+	meta := SimpleBufferIOMeta{
+		Freq: buf.freq,
+	}
+	metaBytes := JsonMarshal(meta)
+	hlen := make([]byte, 4)
+	binary.BigEndian.PutUint32(hlen, uint32(len(metaBytes)))
+	w.Write(hlen)
+	w.Write(metaBytes)
 
 	pos := 0
+	header := make([]byte, 5)
 	for {
 		data, err := buf.read(pos, FPS)
 		if err == io.EOF {
 			break
 		} else if err != nil {
+			errBytes := []byte(err.Error())
+			header[0] = 'e'
+			binary.BigEndian.PutUint32(header[1:5], uint32(len(errBytes)))
+			w.Write(header)
+			w.Write(errBytes)
 			return err
 		}
 		pos += data.Length()
 		bytes := data.Encode()
-		binary.BigEndian.PutUint32(header, uint32(len(bytes)))
+		header[0] = 'd'
+		binary.BigEndian.PutUint32(header[1:5], uint32(len(bytes)))
 		w.Write(header)
 		w.Write(bytes)
 	}

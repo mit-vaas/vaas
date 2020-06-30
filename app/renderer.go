@@ -115,7 +115,7 @@ func (r *VideoRenderer) render() {
 	}
 
 	// start video bytes writer goroutine after MakeVideo call
-	donech := make(chan bool)
+	var donech chan bool
 	writeFunc := func() {
 		buf := make([]byte, 4096)
 		for {
@@ -183,6 +183,7 @@ func (r *VideoRenderer) render() {
 			canvas = &im
 
 			stdout, cmd = vaas.MakeVideo(&vaas.ChanReader{ch}, width, height)
+			donech = make(chan bool)
 			go writeFunc()
 		}
 
@@ -204,7 +205,9 @@ func (r *VideoRenderer) render() {
 
 	err := vaas.ReadMultiple(r.slice.Length(), 1, flatInputs, f)
 	close(ch)
-	<- donech
+	if donech != nil {
+		<- donech
+	}
 
 	if err != nil {
 		r.setErr(err)
