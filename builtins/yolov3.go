@@ -34,7 +34,7 @@ type Yolov3 struct {
 	height int
 	mu sync.Mutex
 
-	stats *vaas.WeightedStats
+	stats vaas.StatsSample
 }
 
 func NewYolov3(node vaas.Node) vaas.Executor {
@@ -43,7 +43,6 @@ func NewYolov3(node vaas.Node) vaas.Executor {
 	return &Yolov3{
 		node: node,
 		cfg: cfg,
-		stats: &vaas.WeightedStats{},
 	}
 }
 
@@ -164,8 +163,9 @@ func (m *Yolov3) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 			m.stdin.Write([]byte(fname + "\n"))
 			lines := m.getLines()
 			boxes := parseLines(lines)
-			m.stats.Add(vaas.StatsSample{
+			m.stats = m.stats.Add(vaas.StatsSample{
 				Time: time.Now().Sub(t0),
+				Count: 1,
 			})
 			m.mu.Unlock()
 			if m.cfg.CanvasSize[0] != 0 && m.cfg.CanvasSize[1] != 0 {
@@ -191,7 +191,7 @@ func (m *Yolov3) Close() {
 func (m *Yolov3) Stats() vaas.StatsSample {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.stats.Sample
+	return m.stats
 }
 
 func init() {

@@ -39,11 +39,9 @@ type MinimalAllocator struct {
 	mu sync.Mutex
 }
 
-var allocator = &EventAllocator{
-	allocator: &MinimalAllocator{
-		envSets: make(map[vaas.EnvSetID]vaas.EnvSet),
-		containers: make(map[vaas.EnvSetID][]vaas.Container),
-	},
+var allocator = &MinimalAllocator{
+	envSets: make(map[vaas.EnvSetID]vaas.EnvSet),
+	containers: make(map[vaas.EnvSetID][]vaas.Container),
 }
 
 func GetAllocator() Allocator {
@@ -182,34 +180,10 @@ func (a *MinimalAllocator) GetContainers(setID vaas.EnvSetID) [][]vaas.Container
 	return containers
 }
 
-type EventAllocator struct {
-	allocator Allocator
-	onAllocate []func(vaas.EnvSet)
-	onDeallocate []func(vaas.EnvSetID)
-	mu sync.Mutex
-}
-
-func (a *EventAllocator) Allocate(set vaas.EnvSet) []vaas.Container {
-	containers := a.allocator.Allocate(set)
-	for _, f := range a.onAllocate {
-		f(set)
-	}
-	return containers
-}
-
-func (a *EventAllocator) Deallocate(setID vaas.EnvSetID) {
-	a.allocator.Deallocate(setID)
-	for _, f := range a.onDeallocate {
-		f(setID)
-	}
-}
-
-func (a *EventAllocator) GetEnvSets() []vaas.EnvSetID {
-	return a.allocator.GetEnvSets()
-}
-
-func (a *EventAllocator) GetContainers(setID vaas.EnvSetID) [][]vaas.Container {
-	return a.allocator.GetContainers(setID)
+func init() {
+	QueryChangeListeners = append(QueryChangeListeners, func(query *DBQuery) {
+		allocator.Deallocate(vaas.EnvSetID{"query", query.ID})
+	})
 }
 
 /*

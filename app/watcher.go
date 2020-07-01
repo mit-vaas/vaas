@@ -31,15 +31,11 @@ type WatchManager struct {
 	suggestions map[int][]Suggestion
 }
 
-// Reload the WatcherFuncs whenever a query is allocated.
-// TODO: maybe change this from allocator listener to a generic query change listener interface
-func (w *WatchManager) OnAllocate(env vaas.EnvSet) {
-	if env.ID.Type != "query" {
-		return
-	}
+// Unload the WatcherFuncs whenever a query is modified.
+func (w *WatchManager) OnQueryChanged(query *DBQuery) {
 	w.mu.Lock()
-	w.suggestions[env.ID.RefID] = nil
-	w.reload(GetQuery(env.ID.RefID))
+	delete(w.suggestions, query.ID)
+	delete(w.watcherFuncs, query.ID)
 	w.mu.Unlock()
 }
 
@@ -58,17 +54,19 @@ func (w *WatchManager) reload(query *DBQuery) {
 
 // Background go-routine iteration.
 func (w *WatchManager) iter() {
+
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	for queryID := range w.watcherFuncs {
-		// collect stats
-		containers := GetAllocator().GetContainers(vaas.EnvSetID{"query", queryID})
-		if containers == nil {
-			delete(w.watcherFuncs, queryID)
+	for _, setID := range GetAllocator().GetEnvSets() {
+		if setID.Type != "query" {
 			continue
 		}
-		stats := vaas.GetAverageStatsByNode(containers)
+		queryID := setID.RefID
+		if w.watcherFuncs[queryID] == nil {
+			w.reload(GetQuery(queryID))
+		}
+		stats := statsManager.GetStatsByNode(queryID)
 
 		// get one suggestion
 		var suggestion *Suggestion
@@ -104,7 +102,6 @@ func init() {
 		watcherFuncs: make(map[int][]WatcherFunc),
 		suggestions: make(map[int][]Suggestion),
 	}
-	allocator.onAllocate = append(allocator.onAllocate, watchman.OnAllocate)
 	go func() {
 		for {
 			time.Sleep(5*time.Second)

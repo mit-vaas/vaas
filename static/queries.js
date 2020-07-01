@@ -13,6 +13,8 @@ Vue.component('queries-tab', {
 			prevStage: null,
 			resizeObserver: null,
 
+			qtab: '#q-graph-panel',
+
 			addParentFields: {},
 		};
 	},
@@ -27,6 +29,12 @@ Vue.component('queries-tab', {
 				this.update();
 				app.changeTab('#queries-panel');
 			});
+		});
+
+		this.qtab = $('#q-nav a[data-toggle="tab"].active').attr('href');
+		$('#q-nav a[data-toggle="tab"]').on('shown.bs.tab', (e) => {
+			var target = $(e.target).attr('href');
+			this.qtab = target;
 		});
 	},
 	methods: {
@@ -527,7 +535,7 @@ Vue.component('queries-tab', {
 			</div>
 		</div>
 		<div class="tab-pane fade" id="q-stats-panel" role="tabpanel">
-
+			<query-stats :query="selectedQuery" :qtab="qtab"></query-stats>
 		</div>
 		<div class="tab-pane fade" id="q-tuning-panel" role="tabpanel">
 

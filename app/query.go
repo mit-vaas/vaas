@@ -19,6 +19,15 @@ type DBVNode struct{
 }
 type DBQuery struct{vaas.Query}
 
+// Several systems want to listen for when the query changes.
+// So we have a general interface for these listeners here.
+var QueryChangeListeners []func(*DBQuery)
+func OnQueryChanged(query *DBQuery) {
+	for _, f := range QueryChangeListeners {
+		f(query)
+	}
+}
+
 const NodeQuery = "SELECT id, name, parent_types, parents, type, data_type, code, query_id FROM nodes"
 
 func nodeListHelper(rows *Rows) []*DBNode {
@@ -55,10 +64,6 @@ func GetNode(id int) *DBNode {
 
 func (node *DBNode) ListVNodes() []*DBVNode {
 	return ListVNodesWithNode(node)
-}
-
-func (node *DBNode) Exec(query *DBQuery) vaas.Executor {
-	return vaas.Executors[node.Type].New(node.Node)
 }
 
 func (node *DBNode) GetChildren(m map[int]*vaas.Node) []*DBNode {
@@ -375,7 +380,7 @@ func init() {
 			*parents = r.PostForm.Get("parents")
 		}
 		node.Update(code, parents)
-		allocator.Deallocate(vaas.EnvSetID{"query", node.QueryID})
+		OnQueryChanged(GetQuery(node.QueryID))
 	})
 
 	http.HandleFunc("/queries/node/remove", func(w http.ResponseWriter, r *http.Request) {
@@ -390,9 +395,9 @@ func init() {
 			w.WriteHeader(404)
 			return
 		}
-		allocator.Deallocate(vaas.EnvSetID{"query", node.QueryID})
 		query := GetQuery(node.QueryID)
 		query.RemoveNode(node)
+		OnQueryChanged(query)
 	})
 
 	http.HandleFunc("/queries", func(w http.ResponseWriter, r *http.Request) {
@@ -439,7 +444,7 @@ func init() {
 				db.Exec("UPDATE queries SET selector = ? WHERE id = ?", selector, query.ID)
 			}
 		}
-		allocator.Deallocate(vaas.EnvSetID{"query", query.ID})
+		OnQueryChanged(query)
 	})
 
 	http.HandleFunc("/queries/render-meta", func(w http.ResponseWriter, r *http.Request) {

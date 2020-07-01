@@ -148,7 +148,7 @@ func init() {
 					score := app.Metrics["detectionf1-50"](gtlist, outputs)
 
 					// add up the stats samples after averaging per node
-					samples := vaas.GetAverageStatsByNode(app.GetAllocator().GetContainers(vaas.EnvSetID{"query", query.ID}))
+					samples := vaas.GetStatsByNode(app.GetAllocator().GetContainers(vaas.EnvSetID{"query", query.ID}))
 					var stats vaas.StatsSample
 					for _, sample := range samples {
 						stats = stats.Add(sample)

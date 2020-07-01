@@ -3,6 +3,7 @@ package vaas
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -86,10 +87,13 @@ func (context ExecContext) Release() {
 			continue
 		}
 		seen[container.UUID] = true
-		resp, _ := http.Post(container.BaseURL + "/query/finish?uuid=" + context.UUID, "", nil)
-		if resp.Body != nil {
-			resp.Body.Close()
+		resp, err := http.Post(container.BaseURL + "/query/finish?uuid=" + context.UUID, "", nil)
+		if err != nil {
+			// could be due to container de-allocation
+			log.Printf("[context] warning: error releasing container %s (%s): %v", container.BaseURL, container.UUID, err)
+			continue
 		}
+		resp.Body.Close()
 	}
 }
 

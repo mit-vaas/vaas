@@ -20,7 +20,7 @@ function myLoad(target, href, f) {
 var app = new Vue({
 	el: '#app',
 	data: {
-		tab: $('a[data-toggle="tab"].active').attr('href'),
+		tab: $('#myTab a[data-toggle="tab"].active').attr('href'),
 	},
 	methods: {
 		changeTab: function(tab) {
