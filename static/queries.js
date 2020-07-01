@@ -485,6 +485,7 @@ Vue.component('queries-tab', {
 							<queries-parents-table
 								:query="selectedQuery"
 								:parents="selectedNode.Parents"
+								:excluded="['n' + selectedNode.ID]"
 								label="Parents"
 								v-on:add="addParent($event)"
 								v-on:remove="removeParent($event)"

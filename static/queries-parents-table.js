@@ -5,7 +5,12 @@ Vue.component('queries-parents-table', {
 			specSet: {},
 		};
 	},
-	props: ['query', 'parents', 'label'],
+	props: [
+		'query', 'parents', 'label',
+
+		// list of specs to hide
+		'excluded',
+	],
 	created: function() {
 		this.updateSet();
 	},
@@ -15,6 +20,11 @@ Vue.component('queries-parents-table', {
 			this.parents.forEach((parent) => {
 				this.specSet[parent.Spec] = true;
 			});
+			if(this.excluded) {
+				this.excluded.forEach((spec) => {
+					this.specSet[spec] = true;
+				});
+			}
 		},
 		add: function() {
 			this.$emit('add', this.selected);
