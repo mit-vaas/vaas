@@ -148,6 +148,9 @@ func main() {
 			cmd.stdin.Close()
 			cmd.cmd.Wait()
 			delete(containers, uuid)
+			for gpuIdx := range cmd.gpus {
+				gpusInUse[gpuIdx] = false
+			}
 		}
 		mu.Unlock()
 		log.Printf("[machine] container %s stopped", uuid)
