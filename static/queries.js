@@ -435,19 +435,70 @@ Vue.component('queries-tab', {
 	},
 	template: `
 <div style="height: 100%">
-	<div v-if="editor == ''" id="q-div">
-		<div id="q-view" ref="view">
-			<form v-on:submit.prevent="createQuery" class="form-inline my-2">
-				<label class="ml-1">Query:</label>
-				<select v-model="selectedQueryID" @change="update" class="form-control ml-1">
-					<option v-for="query in queries" :value="query.ID">{{ query.Name }}</option>
-				</select>
-				<button type="button" class="btn btn-danger ml-1">Remove</button>
-				<input v-model="newQueryName" type="form-control" placeholder="Name" class="ml-4" />
-				<button type="submit" class="btn btn-primary ml-1">Add Query</button>
-			</form>
-			<div ref="layer"></div>
+	<form v-on:submit.prevent="createQuery" class="form-inline my-2">
+		<label class="ml-1">Query:</label>
+		<select v-model="selectedQueryID" @change="update" class="form-control ml-1">
+			<option v-for="query in queries" :value="query.ID">{{ query.Name }}</option>
+		</select>
+		<button type="button" class="btn btn-danger ml-1">Remove</button>
+		<input v-model="newQueryName" type="form-control" placeholder="Name" class="ml-4" />
+		<button type="submit" class="btn btn-primary ml-1">Add Query</button>
+	</form>
+	<ul class="nav nav-tabs" id="q-nav" role="tablist">
+		<li class="nav-item">
+			<a class="nav-link active" id="q-graph-tab" data-toggle="tab" href="#q-graph-panel" role="tab">Graph</a>
+		</li>
+		<li class="nav-item">
+		<a class="nav-link" id="q-outputs-tab" data-toggle="tab" href="#q-outputs-panel" role="tab">Predicate and Rendering</a>
+		</li>
+		<li class="nav-item">
+			<a class="nav-link" id="q-stats-tab" data-toggle="tab" href="#q-stats-panel" role="tab">Stats</a>
+		</li>
+		<li class="nav-item">
+			<a class="nav-link" id="q-tuning-tab" data-toggle="tab" href="#q-tuning-panel" role="tab">Tuning</a>
+		</li>
+	</ul>
+	<div class="tab-content mx-1 my-tab-content">
+		<div class="tab-pane fade show active" id="q-graph-panel" role="tabpanel">
+			<div v-if="editor == ''" id="q-div">
+				<div id="q-view" ref="view">
+					<div ref="layer"></div>
+				</div>
+				<div>
+					<div class="my-2">
+						<button type="button" class="btn btn-primary" v-on:click="showNewNodeModal = true">New Node</button>
+						<button type="button" class="btn btn-primary" :disabled="selectedNode == null" v-on:click="editNode">Edit Node</button>
+					</div>
+					<hr />
+					<div v-if="selectedNode != null" class="my-2">
+						<div>Node {{ selectedNode.Name }}</div>
+						<div><button type="button" class="btn btn-danger" v-on:click="removeNode">Remove Node</button></div>
+						<div>
+							<queries-parents-table
+								:query="selectedQuery"
+								:parents="selectedNode.Parents"
+								label="Parents"
+								v-on:add="addParent($event)"
+								v-on:remove="removeParent($event)"
+								>
+							</queries-parents-table>
+						</div>
+					</div>
+				</div>
+				<new-node-modal v-if="showNewNodeModal && selectedQueryID != ''" :query_id="selectedQueryID" v-on:closed="onNewNodeModalClosed"></new-node-modal>
+			</div>
+			<div v-else id="q-node-edit-container">
+				<div>
+					<button type="button" class="btn btn-primary" v-on:click="backFromEditing">Back</button>
+				</div>
+				<div id="q-node-edit-div">
+					<component v-bind:is="editor" v-bind:initNode="selectedNode"></component>
+				</div>
+			</div>
+		</div>
+		<div class="tab-pane fade" id="q-outputs-panel" role="tabpanel">
 			<div v-if="selectedQuery != null" class="small-container">
+				<h3>Rendering</h3>
 				<template v-for="(outputs, i) in selectedQuery.Outputs">
 					Output {{ i }} <button type="button" class="btn btn-danger" v-on:click="removeOutputRow(i)">Remove</button>
 					<queries-parents-table
@@ -460,6 +511,7 @@ Vue.component('queries-tab', {
 					</queries-parents-table>
 				</template>
 				<button type="button" class="btn btn-primary" v-on:click="addOutputRow">Add Output</button>
+				<h3 class="mt-4">Predicate</h3>
 				<div>
 					<form class="form-inline" v-on:submit.prevent="setSelector">
 						<label class="ml-1">Selector:</label>
@@ -474,35 +526,11 @@ Vue.component('queries-tab', {
 				</div>
 			</div>
 		</div>
-		<div>
-			<div class="my-2">
-				<button type="button" class="btn btn-primary" v-on:click="showNewNodeModal = true">New Node</button>
-				<button type="button" class="btn btn-primary" :disabled="selectedNode == null" v-on:click="editNode">Edit Node</button>
-			</div>
-			<hr />
-			<div v-if="selectedNode != null" class="my-2">
-				<div>Node {{ selectedNode.Name }}</div>
-				<div><button type="button" class="btn btn-danger" v-on:click="removeNode">Remove Node</button></div>
-				<div>
-					<queries-parents-table
-						:query="selectedQuery"
-						:parents="selectedNode.Parents"
-						label="Parents"
-						v-on:add="addParent($event)"
-						v-on:remove="removeParent($event)"
-						>
-					</queries-parents-table>
-				</div>
-			</div>
+		<div class="tab-pane fade" id="q-stats-panel" role="tabpanel">
+
 		</div>
-		<new-node-modal v-if="showNewNodeModal && selectedQueryID != ''" :query_id="selectedQueryID" v-on:closed="onNewNodeModalClosed"></new-node-modal>
-	</div>
-	<div v-else id="q-node-edit-container">
-		<div>
-			<button type="button" class="btn btn-primary" v-on:click="backFromEditing">Back</button>
-		</div>
-		<div id="q-node-edit-div">
-			<component v-bind:is="editor" v-bind:initNode="selectedNode"></component>
+		<div class="tab-pane fade" id="q-tuning-panel" role="tabpanel">
+
 		</div>
 	</div>
 </div>

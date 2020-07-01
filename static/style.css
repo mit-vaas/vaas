@@ -8,7 +8,7 @@ html, body, #app, #queries-panel {
 	flex-flow: column;
 }
 
-#content {
+.my-tab-content {
 	flex-grow: 1;
 }
 
