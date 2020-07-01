@@ -6,6 +6,11 @@ To run:
 	go get github.com/mitroadmaps/gomapinfer/common
 	go run main.go
 
+And run worker in a separate terminal on the same machine:
+
+	go build container.go
+	go run machine.go
+
 Go 1.11+ may be required. On most versions of Ubuntu you can use this PPA:
 
 	sudo add-apt-repository ppa:longsleep/golang-backports
