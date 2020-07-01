@@ -9,6 +9,7 @@ import (
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
+	"io"
 	"os"
 )
 
@@ -34,16 +35,11 @@ func ImageFromBytes(width int, height int, bytes []byte) Image {
 	}
 }
 
-func ImageFromFile(fname string) Image {
-	file, err := os.Open(fname)
+func ImageFromJPGReader(rd io.Reader) Image {
+	im, err := jpeg.Decode(rd)
 	if err != nil {
 		panic(err)
 	}
-	im, err := jpeg.Decode(file)
-	if err != nil {
-		panic(err)
-	}
-	file.Close()
 	rect := im.Bounds()
 	width := rect.Dx()
 	height := rect.Dy()
@@ -61,6 +57,16 @@ func ImageFromFile(fname string) Image {
 		Height: height,
 		Bytes: bytes,
 	}
+}
+
+func ImageFromFile(fname string) Image {
+	file, err := os.Open(fname)
+	if err != nil {
+		panic(err)
+	}
+	im := ImageFromJPGReader(file)
+	file.Close()
+	return im
 }
 
 func (im Image) AsImage() image.Image {

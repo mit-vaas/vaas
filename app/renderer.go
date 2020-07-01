@@ -68,8 +68,14 @@ func RenderFrames(canvas vaas.Image, datas [][]vaas.Data, f func(int)) {
 			}
 		} else if data.Type() == vaas.TextType {
 			texts := data.(vaas.TextData)
-			for _, text := range texts {
-				im.DrawText(text)
+			im.DrawText(texts[idx])
+		} else if data.Type() == vaas.ImListType {
+			imlist := data.(vaas.ImListData)[idx]
+			// draw the images one by one horizontally over the canvas
+			pos := 0
+			for _, el := range imlist {
+				im.DrawImage(pos, 0, el)
+				pos += el.Width
 			}
 		}
 	}

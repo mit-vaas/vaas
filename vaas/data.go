@@ -11,6 +11,7 @@ const (
 	TrackType = "track"
 	ClassType = "class"
 	VideoType = "video"
+	ImListType = "imlist"
 	TextType = "text"
 )
 

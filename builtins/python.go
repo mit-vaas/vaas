@@ -114,9 +114,11 @@ func (e *PythonExecutor) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 
 		// write init packet
 		var initPacket struct {
+			Type string
 			ID int
 			Length int
 		}
+		initPacket.Type = "init"
 		initPacket.ID = id
 		initPacket.Length = slice.Length()
 		e.writeLock.Lock()
@@ -125,13 +127,14 @@ func (e *PythonExecutor) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 
 		f := func(index int, datas []vaas.Data) error {
 			var job struct {
+				Type string
 				SliceIdx int
 				Range [2]int
-				IsLast bool
 			}
+			job.Type = "job"
 			job.SliceIdx = id
+			// TODO: this range is not very meaningful if freq > 1
 			job.Range = [2]int{index, index+datas[0].Length()}
-			job.IsLast = job.Range[1] == slice.Length()
 
 			e.writeLock.Lock()
 			e.writeJSONPacket(job)
@@ -153,6 +156,16 @@ func (e *PythonExecutor) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 			panic(fmt.Errorf("ReadMultiple error at node %s: %v", e.node.Name, err))
 		}
 		// we don't close w here since ReadLoop will close it
+		// just send a finish packet
+		var finishPacket struct {
+			Type string
+			ID int
+		}
+		finishPacket.Type = "finish"
+		finishPacket.ID = id
+		e.writeLock.Lock()
+		e.writeJSONPacket(finishPacket)
+		e.writeLock.Unlock()
 	}()
 
 	return w.Buffer()
@@ -171,37 +184,40 @@ func (e *PythonExecutor) ReadLoop() {
 		start := int(binary.BigEndian.Uint32(header[4:8]))
 		end := int(binary.BigEndian.Uint32(header[8:12]))
 		size := int(binary.BigEndian.Uint32(header[12:16]))
-		buf := make([]byte, size)
-		_, err = io.ReadFull(e.stdout, buf)
-		if err != nil {
-			break
-		}
-		var data vaas.Data
-		if t == vaas.VideoType {
-			nframes := int(binary.BigEndian.Uint32(buf[0:4]))
-			height := int(binary.BigEndian.Uint32(buf[4:8]))
-			width := int(binary.BigEndian.Uint32(buf[8:12]))
-			// TODO: channels buf[12:16]
-			chunkSize := width*height*3
-			buf = buf[16:]
-			var vdata vaas.VideoData
-			for i := 0; i < nframes; i++ {
-				vdata = append(vdata, vaas.ImageFromBytes(width, height, buf[i*chunkSize:(i+1)*chunkSize]))
+		if size > 0 {
+			buf := make([]byte, size)
+			_, err = io.ReadFull(e.stdout, buf)
+			if err != nil {
+				break
 			}
-			data = vdata
-		} else {
-			data = vaas.DecodeData(t, buf)
-		}
-		data = data.EnsureLength(end-start)
+			var data vaas.Data
+			if t == vaas.VideoType {
+				nframes := int(binary.BigEndian.Uint32(buf[0:4]))
+				height := int(binary.BigEndian.Uint32(buf[4:8]))
+				width := int(binary.BigEndian.Uint32(buf[8:12]))
+				// TODO: channels buf[12:16]
+				chunkSize := width*height*3
+				buf = buf[16:]
+				var vdata vaas.VideoData
+				for i := 0; i < nframes; i++ {
+					vdata = append(vdata, vaas.ImageFromBytes(width, height, buf[i*chunkSize:(i+1)*chunkSize]))
+				}
+				data = vdata
+			} else {
+				data = vaas.DecodeData(t, buf)
+			}
+			data = data.EnsureLength(end-start)
 
-		e.mu.Lock()
-		ps := e.pending[sliceIdx]
-		ps.w.Write(data)
-		if end >= ps.slice.Length() {
-			ps.w.Close()
+			e.mu.Lock()
+			e.pending[sliceIdx].w.Write(data)
+			e.mu.Unlock()
+		} else if start == 0 && end == 0 {
+			// finish
+			e.mu.Lock()
+			e.pending[sliceIdx].w.Close()
 			delete(e.pending, sliceIdx)
+			e.mu.Unlock()
 		}
-		e.mu.Unlock()
 	}
 
 	e.mu.Lock()
