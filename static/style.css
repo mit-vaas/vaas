@@ -2,7 +2,7 @@ html, body, #app, #queries-panel {
 	height: 100%;
 }
 
-#app {
+.my-tab-container {
 	height: 100%;
 	display: flex;
 	flex-flow: column;

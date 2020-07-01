@@ -442,7 +442,7 @@ Vue.component('queries-tab', {
 		},
 	},
 	template: `
-<div style="height: 100%">
+<div class="my-tab-container">
 	<form v-on:submit.prevent="createQuery" class="form-inline my-2">
 		<label class="ml-1">Query:</label>
 		<select v-model="selectedQueryID" @change="update" class="form-control ml-1">
@@ -467,7 +467,7 @@ Vue.component('queries-tab', {
 		</li>
 	</ul>
 	<div class="tab-content mx-1 my-tab-content">
-		<div class="tab-pane fade show active" id="q-graph-panel" role="tabpanel">
+		<div class="tab-pane fade show active" id="q-graph-panel" role="tabpanel" style="height:100%;">
 			<div v-if="editor == ''" id="q-div">
 				<div id="q-view" ref="view">
 					<div ref="layer"></div>
