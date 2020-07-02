@@ -1,7 +1,8 @@
 Vue.component('annotate-default-detection', {
 	data: function() {
 		return {
-			image: null,
+			response: null,
+			imMeta: null,
 			context1: null,
 			context2: null,
 			labels: [[]],
@@ -60,21 +61,24 @@ Vue.component('annotate-default-detection', {
 				}.bind(this));
 			}
 		},
-		updateImage: function(image) {
-			this.image = image;
-			if(image.Labels) {
-				this.labels = image.Labels;
+		updateImage: function(response) {
+			this.response = response;
+			if(response.Labels) {
+				this.labels = response.Labels;
 			} else {
 				this.labels = [[]];
 			}
 			this.working = [];
 			this.state = 'idle';
 
-			Vue.nextTick(function() {
-				this.context1 = this.$refs.layer1.getContext('2d');
-				this.context2 = this.$refs.layer2.getContext('2d');
-				this.render();
-			}.bind(this));
+			$.get(this.response.URLs[0]+'&type=meta', (meta) => {
+				this.imMeta = meta;
+				Vue.nextTick(function() {
+					this.context1 = this.$refs.layer1.getContext('2d');
+					this.context2 = this.$refs.layer2.getContext('2d');
+					this.render();
+				}.bind(this));
+			});
 		},
 		click: function(e) {
 			var rect = e.target.getBoundingClientRect();
@@ -138,26 +142,26 @@ Vue.component('annotate-default-detection', {
 			}
 		},
 		prev: function() {
-			if(this.image.Index < 0) {
+			if(this.response.Index < 0) {
 				$.get('/series/labels?id='+this.series.ID+'&index=0', this.updateImage, 'json');
 			} else {
-				var i = this.image.Index - 1;
+				var i = this.response.Index - 1;
 				$.get('/series/labels?id='+this.series.ID+'&index='+i, this.updateImage, 'json');
 			}
 		},
 		next: function() {
-			if(this.image.Index < 0) {
+			if(this.response.Index < 0) {
 				$.get('/series/labels?id='+this.series.ID+'&index=-1', this.updateImage, 'json');
 			} else {
-				var i = this.image.Index+1;
+				var i = this.response.Index+1;
 				$.get('/series/labels?id='+this.series.ID+'&index='+i, this.updateImage, 'json');
 			}
 		},
 		done: function() {
 			var params = {
 				id: this.series.ID,
-				index: this.image.Index,
-				slice: this.image.Slice,
+				index: this.response.Index,
+				slice: this.response.Slice,
 				labels: this.labels,
 			};
 			$.ajax({
@@ -166,10 +170,10 @@ Vue.component('annotate-default-detection', {
 				data: JSON.stringify(params),
 				processData: false,
 				success: function() {
-					if(this.image.Index < 0) {
+					if(this.response.Index < 0) {
 						$.get('/series/labels?id='+this.series.ID+'&index=-1', this.updateImage, 'json');
 					} else {
-						var i = this.image.Index+1;
+						var i = this.response.Index+1;
 						$.get('/series/labels?id='+this.series.ID+'&index='+i, this.updateImage, 'json');
 					}
 				}.bind(this),
@@ -188,15 +192,15 @@ Vue.component('annotate-default-detection', {
 	template: `
 <div>
 	<div v-on:click="click($event)" v-on:mousemove="mousemove($event)" class="canvas-container">
-		<template v-if="image != null">
+		<template v-if="imMeta != null">
 			<div :style="{
-					width: image.Width + 'px',
-					height: image.Height + 'px',
+					width: imMeta.Width + 'px',
+					height: imMeta.Height + 'px',
 				}"
 				>
-				<img :src="image.URL + '&type=jpeg'" />
-				<canvas :width="image.Width" :height="image.Height" ref="layer1"></canvas>
-				<canvas :width="image.Width" :height="image.Height" ref="layer2"></canvas>
+				<img :src="response.URLs[0] + '&type=jpeg'" />
+				<canvas :width="imMeta.Width" :height="imMeta.Height" ref="layer1"></canvas>
+				<canvas :width="imMeta.Width" :height="imMeta.Height" ref="layer2"></canvas>
 			</div>
 		</template>
 	</div>
@@ -212,9 +216,9 @@ Vue.component('annotate-default-detection', {
 			<button v-on:click="prev" type="button" class="btn btn-primary">Prev</button>
 		</div>
 		<div class="col-auto">
-			<template v-if="image != null">
-				<span v-if="image.Index < 0">[New]</span>
-				<span v-else>{{ image.Index }}</span>
+			<template v-if="response != null">
+				<span v-if="response.Index < 0">[New]</span>
+				<span v-else>{{ response.Index }}</span>
 			</template>
 		</div>
 		<div class="col-auto">
