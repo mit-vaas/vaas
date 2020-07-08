@@ -78,6 +78,10 @@ func (query *DBQuery) Run(vector []*DBSeries, slice vaas.Slice, opts vaas.ExecOp
 	context.Opts = opts
 	defer context.Release()
 
+	if context.Opts.IgnoreItems {
+		context.Items = nil
+	}
+
 	// get the selector
 	selector := query.Selector
 	if selector != nil {
@@ -128,6 +132,7 @@ type ExecStream struct {
 	vector []*DBSeries
 	sampler func() *vaas.Slice
 	perIter int
+	opts vaas.ExecOptions
 	callback func(vaas.Slice, [][]vaas.DataReader, error)
 	seenSegments map[string]bool
 	mu sync.Mutex
@@ -142,13 +147,14 @@ type ExecStream struct {
 	extras []extraOutput
 }
 
-func NewExecStream(query *DBQuery, vector []*DBSeries, sampler func() *vaas.Slice, perIter int, callback func(vaas.Slice, [][]vaas.DataReader, error)) *ExecStream {
+func NewExecStream(query *DBQuery, vector []*DBSeries, sampler func() *vaas.Slice, perIter int, opts vaas.ExecOptions, callback func(vaas.Slice, [][]vaas.DataReader, error)) *ExecStream {
 	return &ExecStream{
 		query: query,
 		vector: vector,
 		sampler: sampler,
 		perIter: perIter,
 		seenSegments: make(map[string]bool),
+		opts: opts,
 		callback: callback,
 	}
 }
@@ -216,7 +222,7 @@ func (ctx *ExecStream) Close() {
 
 func (ctx *ExecStream) tryOne(slice vaas.Slice, wg *sync.WaitGroup) {
 	defer wg.Done()
-	outputs, err := ctx.query.Run(ctx.vector, slice, vaas.ExecOptions{})
+	outputs, err := ctx.query.Run(ctx.vector, slice, ctx.opts)
 	if err != nil && strings.Contains(err.Error(), "selector reject") {
 		log.Printf("[task context] selector reject on slice %v, we will retry", slice)
 		ctx.callback(slice, outputs, err)

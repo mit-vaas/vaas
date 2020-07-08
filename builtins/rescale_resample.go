@@ -86,5 +86,28 @@ func (m RescaleResample) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 func (m RescaleResample) Close() {}
 
 func init() {
-	vaas.Executors["rescale-resample"] = vaas.ExecutorMeta{New: NewRescaleResample}
+	vaas.Executors["rescale-resample"] = vaas.ExecutorMeta{
+		New: NewRescaleResample,
+		HandleRescale: true,
+		HandleResample: true,
+		Tune: func(node vaas.Node, gtlist []vaas.Data) [][2]string {
+			// only adjust freq if at least one item includes multiple frames
+			freqs := []int{1}
+			for _, data := range gtlist {
+				if data.Length() > 1 {
+					freqs = []int{1, 2, 4, 8, 16}
+					break
+				}
+			}
+			var cfgs [][2]string
+			for _, dims := range [][2]int{{1280, 720}, {960, 540}, {640, 360}, {480, 270}} {
+				for _, freq := range freqs {
+					cfg := RescaleResampleConfig{freq, dims[0], dims[1]}
+					desc := fmt.Sprintf("%dx%d, rate %d", dims[0], dims[1], freq)
+					cfgs = append(cfgs, [2]string{string(vaas.JsonMarshal(cfg)), desc})
+				}
+			}
+			return cfgs
+		},
+	}
 }

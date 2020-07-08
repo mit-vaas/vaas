@@ -90,7 +90,7 @@ func init() {
 
 			log.Printf("[exec (%s) %v] beginning test for client %v", query.Name, vector, s.ID())
 			renderVectors := query.GetOutputVectors(vector)
-			stream := NewExecStream(query, vector, sampler, request.Count, func(slice vaas.Slice, outputs [][]vaas.DataReader, err error) {
+			stream := NewExecStream(query, vector, sampler, request.Count, vaas.ExecOptions{}, func(slice vaas.Slice, outputs [][]vaas.DataReader, err error) {
 				if err != nil {
 					s.Emit("exec-reject")
 					return

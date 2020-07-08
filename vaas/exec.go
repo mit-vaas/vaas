@@ -9,6 +9,17 @@ import (
 
 type ExecOptions struct {
 	PersistVideo bool
+
+	// during tuning, we ignore any input items, and don't persist any outputs
+	Tuning bool
+
+	// if true, don't persist any outputs
+	// handled by the container
+	NoPersist bool
+
+	// if true, don't use any persisted outputs
+	// handled by the coordinator
+	IgnoreItems bool
 }
 
 type ExecContext struct {
@@ -107,6 +118,19 @@ type ExecutorMeta struct {
 
 	// only set for non-default environments
 	Environment *Environment
+
+	// whether the system should erase items when inputs have been
+	// re-scaled and/or re-sampled with no other modifications
+	// e.g. an object detector can set these true if it will take control of deciding
+	// to re-compute detections (if the input resolution has increased) or reuse old
+	// outputs at reduced resolutions (if the opposite)
+	HandleRescale bool
+	HandleResample bool
+
+	// Returns list of configs that the node should be tested with.
+	// Tuples are (config, short description of the config).
+	// During tuning, node.Code is set to one of these configs.
+	Tune func(node Node, gtlist []Data) [][2]string
 }
 
 var Executors = map[string]ExecutorMeta{}

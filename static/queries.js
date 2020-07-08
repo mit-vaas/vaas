@@ -463,7 +463,7 @@ Vue.component('queries-tab', {
 			<a class="nav-link" id="q-stats-tab" data-toggle="tab" href="#q-stats-panel" role="tab">Stats</a>
 		</li>
 		<li class="nav-item">
-			<a class="nav-link" id="q-tuning-tab" data-toggle="tab" href="#q-tuning-panel" role="tab">Tuning</a>
+			<a class="nav-link" id="q-tune-tab" data-toggle="tab" href="#q-tune-panel" role="tab">Tuning</a>
 		</li>
 	</ul>
 	<div class="tab-content mx-1 my-tab-content">
@@ -536,10 +536,10 @@ Vue.component('queries-tab', {
 			</div>
 		</div>
 		<div class="tab-pane fade" id="q-stats-panel" role="tabpanel">
-			<query-stats :query="selectedQuery" :qtab="qtab"></query-stats>
+			<query-stats v-if="selectedQuery != null" :query="selectedQuery" :qtab="qtab"></query-stats>
 		</div>
-		<div class="tab-pane fade" id="q-tuning-panel" role="tabpanel">
-
+		<div class="tab-pane fade" id="q-tune-panel" role="tabpanel">
+			<query-tune v-if="selectedQuery != null" :query="selectedQuery" :qtab="qtab"></query-tune>
 		</div>
 	</div>
 </div>

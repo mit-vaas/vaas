@@ -81,7 +81,7 @@ func main() {
 					vaas.JsonPost(coordinatorURL, "/series/add-output-item", request, &item)
 					return item
 			}
-			if node.DataType != vaas.VideoType {
+			if !context.Opts.NoPersist && node.DataType != vaas.VideoType {
 				go func() {
 					rd := buf.Reader()
 					data, err := rd.Read(context.Slice.Length())
