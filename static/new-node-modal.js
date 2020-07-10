@@ -25,6 +25,13 @@ Vue.component('new-node-modal', {
 							DataType: "class",
 							Parents: ["video"],
 						},
+						{
+							ID: "tunable-classifier",
+							Name: "Tunable Classifier",
+							Description: "Tunable Classification Model",
+							DataType: "class",
+							Parents: ["video"],
+						},
 					],
 				},
 				{
