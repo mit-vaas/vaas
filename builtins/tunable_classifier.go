@@ -20,6 +20,17 @@ type TunableClassifierConfig struct {
 	Depth int
 }
 
+func (cfg TunableClassifierConfig) GetDims() [][2]int {
+	cur := [2]int{cfg.MaxWidth, cfg.MaxHeight}
+	var dims [][2]int
+	for cur[0] >= 4 && cur[1] >= 4 {
+		dims = append(dims, cur)
+		cur[0] = (cur[0]-2)/2
+		cur[1] = (cur[1]-2)/2
+	}
+	return dims
+}
+
 type TunableClassifier struct {
 	node vaas.Node
 	cfg TunableClassifierConfig
@@ -111,6 +122,23 @@ func init() {
 				"container": 1,
 				"gpu": 1,
 			},
+		},
+		Tune: func(node vaas.Node, gtlist []vaas.Data) [][2]string {
+			var cfg TunableClassifierConfig
+			vaas.JsonUnmarshal([]byte(node.Code), &cfg)
+			dims := cfg.GetDims()
+
+			var cfgs [][2]string
+			for scaleCount := 0; scaleCount < len(dims); scaleCount++ {
+				for depth := 1; scaleCount+depth <= len(dims); depth++ {
+					cp := cfg
+					cp.ScaleCount = scaleCount
+					cp.Depth = depth
+					desc := fmt.Sprintf("From %dx%d To %dx%d", dims[scaleCount][0], dims[scaleCount][1], dims[scaleCount+depth-1][0], dims[scaleCount+depth-1][1])
+					cfgs = append(cfgs, [2]string{string(vaas.JsonMarshal(cp)), desc})
+				}
+			}
+			return cfgs
 		},
 	}
 }

@@ -213,7 +213,7 @@ func init() {
 					wg.Wait()
 
 					// compute score
-					score := Metrics["detectionf1-50"](gtlist, outputs)
+					score := Metrics["class-accuracy"](gtlist, outputs)
 
 					// add up the stats samples after averaging per node
 					samples := vaas.GetStatsByNode(GetAllocator().GetContainers(vaas.EnvSetID{"query", query.ID}))

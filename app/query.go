@@ -66,22 +66,6 @@ func (node *DBNode) ListVNodes() []*DBVNode {
 	return ListVNodesWithNode(node)
 }
 
-func (node *DBNode) GetChildren(m map[int]*vaas.Node) []*DBNode {
-	var nodes []*DBNode
-	for _, other := range m {
-		for _, parent := range other.Parents {
-			if parent.Type != vaas.NodeParent {
-				continue
-			}
-			if parent.NodeID != node.ID {
-				continue
-			}
-			nodes = append(nodes, &DBNode{Node: *other})
-		}
-	}
-	return nodes
-}
-
 func (node *DBNode) Update(code *string, parents *string) {
 	if code != nil {
 		db.Exec("UPDATE nodes SET code = ? WHERE id = ?", *code, node.ID)
@@ -137,8 +121,9 @@ func (node *DBNode) OnChange() {
 			if affectedNodes[node.ID] != nil {
 				continue
 			}
-			affectedNodes[node.ID] = node
-			queue = append(queue, node)
+			dbnode := &DBNode{Node: node}
+			affectedNodes[node.ID] = dbnode
+			queue = append(queue, dbnode)
 		}
 	}
 

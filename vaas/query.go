@@ -46,6 +46,22 @@ type Node struct {
 	QueryID int
 }
 
+func (node Node) GetChildren(m map[int]*Node) []Node {
+	var nodes []Node
+	for _, other := range m {
+		for _, parent := range other.Parents {
+			if parent.Type != NodeParent {
+				continue
+			}
+			if parent.NodeID != node.ID {
+				continue
+			}
+			nodes = append(nodes, *other)
+		}
+	}
+	return nodes
+}
+
 type VNode struct {
 	ID int
 
