@@ -186,6 +186,29 @@ func (vn *DBVNode) Load() {
 	vn.loaded = true
 }
 
+func (vn *DBVNode) EnsureSeries() {
+	vn.Load()
+	if vn.Series == nil {
+		db.Transaction(func(tx Tx) {
+			var seriesID *int
+			tx.QueryRow("SELECT series_id FROM vnodes WHERE id = ?", vn.ID).Scan(&seriesID)
+			if seriesID != nil {
+				vn.SeriesID = seriesID
+				return
+			}
+			name := fmt.Sprintf("exec-%v-%d", vn.Node.Name, vn.ID)
+			res := tx.Exec(
+				"INSERT INTO series (timeline_id, name, type, data_type, src_vector, node_id) VALUES (?, ?, 'outputs', ?, ?, ?)",
+				vn.Vector[0].Timeline.ID, name, vn.Node.DataType, VectorFromList(vn.Vector).String(), vn.Node.ID,
+			)
+			vn.SeriesID = new(int)
+			*vn.SeriesID = res.LastInsertId()
+			tx.Exec("UPDATE vnodes SET series_id = ? WHERE id = ?", vn.SeriesID, vn.ID)
+		})
+		vn.Series = &GetSeries(*vn.SeriesID).Series
+	}
+}
+
 // clear saved labels at a node
 func (vn *DBVNode) Clear() {
 	vn.Load()
@@ -297,6 +320,17 @@ func (query *DBQuery) AddNode(name string, t string, dataType vaas.DataType) *DB
 
 func (query *DBQuery) RemoveNode(node *DBNode) {
 	query.Load()
+
+	// delete all vnode series
+	for _, vnode := range node.ListVNodes() {
+		vnode.Load()
+		db.Exec("DELETE FROM vnodes WHERE id = ?", vnode.ID)
+		if vnode.Series != nil {
+			series := &DBSeries{Series: *vnode.Series}
+			series.Delete()
+		}
+	}
+
 	node.OnChange()
 	db.Exec("DELETE FROM nodes WHERE id = ?", node.ID)
 	for _, n := range query.Nodes {

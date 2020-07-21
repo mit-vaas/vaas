@@ -450,26 +450,7 @@ func init() {
 		node := &DBNode{Node: request.Node}
 		vector := VectorFromList(request.Vector)
 		vn := GetOrCreateVNode(node, vector)
-		if vn.Series == nil {
-			db.Transaction(func(tx Tx) {
-				var seriesID *int
-				tx.QueryRow("SELECT series_id FROM vnodes WHERE id = ?", vn.ID).Scan(&seriesID)
-				if seriesID != nil {
-					vn.SeriesID = seriesID
-					return
-				}
-				name := fmt.Sprintf("exec-%v-%d", vn.Node.Name, vn.ID)
-				res := tx.Exec(
-					"INSERT INTO series (timeline_id, name, type, data_type, src_vector, node_id) VALUES (?, ?, 'outputs', ?, ?, ?)",
-					vector[0].Timeline.ID, name, vn.Node.DataType, Vector(vector).String(), vn.Node.ID,
-				)
-				vn.SeriesID = new(int)
-				*vn.SeriesID = res.LastInsertId()
-				tx.Exec("UPDATE vnodes SET series_id = ? WHERE id = ?", vn.SeriesID, vn.ID)
-			})
-			vn.Series = &GetSeries(*vn.SeriesID).Series
-		}
-
+		vn.EnsureSeries()
 		item := DBSeries{Series: *vn.Series}.AddItem(request.Slice, request.Format, request.Dims, request.Freq)
 		vaas.JsonResponse(w, item)
 	})
