@@ -59,6 +59,10 @@ func (slice Slice) Length() int {
 	return slice.End - slice.Start
 }
 
+func (slice Slice) Equals(other Slice) bool {
+	return slice.Segment.ID == other.Segment.ID && slice.Start == other.Start && slice.End == other.End
+}
+
 type Item struct {
 	ID int
 	Slice Slice

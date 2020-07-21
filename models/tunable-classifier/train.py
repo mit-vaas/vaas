@@ -17,8 +17,8 @@ max_height = int(sys.argv[5])
 
 onehots = []
 for i in range(num_classes):
-    onehot = numpy.zeros((1, num_classes,), dtype='float32')
-    onehot[0, i] = 1
+    onehot = numpy.zeros((num_classes,), dtype='float32')
+    onehot[i] = 1
     onehots.append(onehot)
 
 dims = model.get_dims(max_width, max_height)
@@ -43,20 +43,24 @@ for fname in os.listdir(export_path):
     examples.append((im, cls))
 
 class MyGenerator(keras.utils.Sequence):
-    def __init__(self, examples):
+    def __init__(self, examples, batch_size=1):
         self.examples = examples
+        self.batch_size = batch_size
 
     def __len__(self):
-        return len(self.examples)
+        return len(self.examples)//self.batch_size
 
     def __getitem__(self, idx):
-        im, cls = self.examples[idx]
-        x1 = numpy.expand_dims(im, axis=0)
-        x2 = numpy.ones((1, len(dims),), dtype='float32')
-        r = random.randint(0, len(dims)-1)
-        x2[0, 0:r] = 0
-        y = [onehots[cls]]*len(dims)
-        return [x1, x2], y
+        batch = self.examples[idx*self.batch_size:(idx+1)*self.batch_size]
+        ims = numpy.array([t[0] for t in batch], dtype='uint8')
+        weights = numpy.ones((self.batch_size, len(dims)), dtype='float32')
+        for i in range(self.batch_size):
+            r = random.randint(0, len(dims)-1)
+            weights[i, 0:r] = 0
+        y = numpy.zeros((self.batch_size, num_classes), dtype='float32')
+        for i, (_, cls) in enumerate(batch):
+            y[i, :] = onehots[cls]
+        return [ims, weights], [y]*len(dims)
 
 # train model
 m = model.get_model(num_classes, dims)
@@ -76,7 +80,7 @@ num_val = len(examples)//10+1
 val_examples = examples[0:num_val]
 train_examples = examples[num_val:]
 m.fit(
-    MyGenerator(train_examples),
+    MyGenerator(train_examples, batch_size=16),
     epochs=100,
     validation_data=MyGenerator(val_examples),
     callbacks=[cb_checkpoint, cb_stop]

@@ -11,6 +11,9 @@ type StatsSample struct {
 
 func (s StatsSample) Add(other StatsSample) StatsSample {
 	count := s.Count + other.Count
+	if count == 0 {
+		return s
+	}
 	return StatsSample{
 		Time: (s.Time*time.Duration(s.Count) + other.Time*time.Duration(other.Count)) / time.Duration(count),
 		Count: count,

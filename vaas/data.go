@@ -134,6 +134,9 @@ func ReadMultiple(length int, targetFreq int, inputs []DataReader, callback func
 	// note that on the last iteration, we may do a partial read on the highest freq readers
 	perIter := FPS
 	for _, input := range inputs {
+		if input.Freq() == 0 {
+			return fmt.Errorf("parent reported zero freq, maybe it had error")
+		}
 		perIter = (perIter / input.Freq()) * input.Freq()
 	}
 	if perIter == 0 {
