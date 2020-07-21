@@ -106,13 +106,18 @@ func EnumerateConcreteRefs(refs [][]ConcreteRef, f func(vaas.Slice, []ConcreteRe
 		for _, ref := range refs[i] {
 			segmentID := ref.Slice.Segment.ID
 			if len(bySegment[segmentID]) < i {
-				delete(bySegment, segmentID)
 				continue
 			}
 			if len(bySegment[segmentID]) == i {
 				bySegment[segmentID] = append(bySegment[segmentID], []ConcreteRef{})
 			}
 			bySegment[segmentID][i] = append(bySegment[segmentID][i], ref)
+		}
+	}
+	for segmentID := range bySegment {
+		if len(bySegment[segmentID]) < len(refs) {
+			delete(bySegment, segmentID)
+			continue
 		}
 	}
 
