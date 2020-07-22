@@ -248,7 +248,9 @@ func (e *PythonExecutor) Close() {
 		e.cmd = nil
 		e.err = fmt.Errorf("closed")
 	}
-	os.Remove(e.tempFile.Name())
+	if e.tempFile != nil {
+		os.Remove(e.tempFile.Name())
+	}
 }
 
 func NewPythonExecutor(node vaas.Node) vaas.Executor {

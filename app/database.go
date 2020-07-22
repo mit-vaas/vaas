@@ -5,7 +5,10 @@ import (
 
 	"database/sql"
 	"log"
-	"sync"
+
+	// use deadlock detector mutexes here since deadlocks in database operations
+	// will be common
+	sync "github.com/sasha-s/go-deadlock"
 )
 
 const DbDebug bool = false

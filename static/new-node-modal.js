@@ -32,6 +32,13 @@ Vue.component('new-node-modal', {
 							DataType: "class",
 							Parents: ["video"],
 						},
+						{
+							ID: "selfsupervised-tracker",
+							Name: "Self-Supervised Tracker",
+							Description: "Self-Supervised Tracker",
+							DataType: "track",
+							Parents: ["detection"],
+						},
 					],
 				},
 				{

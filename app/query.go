@@ -189,6 +189,10 @@ func (vn *DBVNode) Load() {
 func (vn *DBVNode) EnsureSeries() {
 	vn.Load()
 	if vn.Series == nil {
+		// process the []vaas.Series into vector outside of transaction
+		// since this involves database queries
+		vector := VectorFromList(vn.Vector)
+
 		db.Transaction(func(tx Tx) {
 			var seriesID *int
 			tx.QueryRow("SELECT series_id FROM vnodes WHERE id = ?", vn.ID).Scan(&seriesID)
@@ -199,7 +203,7 @@ func (vn *DBVNode) EnsureSeries() {
 			name := fmt.Sprintf("exec-%v-%d", vn.Node.Name, vn.ID)
 			res := tx.Exec(
 				"INSERT INTO series (timeline_id, name, type, data_type, src_vector, node_id) VALUES (?, ?, 'outputs', ?, ?, ?)",
-				vn.Vector[0].Timeline.ID, name, vn.Node.DataType, VectorFromList(vn.Vector).String(), vn.Node.ID,
+				vn.Vector[0].Timeline.ID, name, vn.Node.DataType, vector.String(), vn.Node.ID,
 			)
 			vn.SeriesID = new(int)
 			*vn.SeriesID = res.LastInsertId()
