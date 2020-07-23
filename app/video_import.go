@@ -103,14 +103,42 @@ func ProbeVideo(item *DBItem) {
 	db.Exec("UPDATE segments SET frames = ? WHERE id = ?", frames, item.Slice.Segment.ID)
 }
 
-func ImportLocal(fname string) func(series DBSeries) error {
+func ImportLocal(fname string, symlink bool, transcode bool) func(series DBSeries) error {
 	return func(series DBSeries) error {
 		// we will fix the frames/width/height later
 		segment := DBTimeline{Timeline: series.Timeline}.AddSegment(filepath.Base(fname), 1, vaas.FPS)
 		item := series.AddItem(segment.ToSlice(), "mp4", [2]int{1920, 1080}, 1)
-		err := Transcode(fname, item.Fname(0), series, 0)
-		if err != nil {
-			return err
+		if transcode {
+			err := Transcode(fname, item.Fname(0), series, 0)
+			if err != nil {
+				return err
+			}
+		} else if symlink {
+			err := os.Symlink(fname, item.Fname(0))
+			if err != nil {
+				return err
+			}
+		} else {
+			// copy the file
+			err := func() error {
+				src, err := os.Open(fname)
+				if err != nil {
+					return err
+				}
+				defer src.Close()
+				dst, err := os.Create(item.Fname(0))
+				if err != nil {
+					return err
+				}
+				defer dst.Close()
+				if _, err := io.Copy(dst, src); err != nil {
+					return err
+				}
+				return nil
+			}()
+			if err != nil {
+				return err
+			}
 		}
 		ProbeVideo(item)
 		return nil
@@ -187,7 +215,9 @@ func init() {
 		r.ParseForm()
 		name := r.PostForm.Get("name")
 		path := r.PostForm.Get("path")
-		go ImportVideo(name, ImportLocal(path))
+		symlink := r.PostForm.Get("symlink") == "yes"
+		transcode := r.PostForm.Get("transcode") == "yes"
+		go ImportVideo(name, ImportLocal(path, symlink, transcode))
 	})
 
 	http.HandleFunc("/import/youtube", func(w http.ResponseWriter, r *http.Request) {

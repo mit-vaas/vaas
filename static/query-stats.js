@@ -27,14 +27,16 @@ Vue.component('query-stats', {
 			<tr>
 				<th>Node</th>
 				<th>Execution Time</th>
+				<th>Idle Fraction</th>
 				<th>Runs</th>
 			</tr>
 		</thead>
 		<tbody>
 			<tr v-for="(el, nodeID) in stats">
 				<td>{{ query.Nodes[nodeID].Name }}</td>
-				<td>{{ parseInt(el.Time/1000000) }}ms</td>
-				<td>{{ el.Count }}</td>
+				<td>{{ parseInt(el.Time.T/1000000) }}ms</td>
+				<td>{{ el.Idle.Fraction }}</td>
+				<td>{{ el.Time.Count }}</td>
 			</tr>
 		</tbody>
 	</table>

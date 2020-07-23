@@ -39,9 +39,10 @@ type MinimalAllocator struct {
 	mu sync.Mutex
 }
 
-var allocator = &MinimalAllocator{
+var allocator = &SmartAllocator{
 	envSets: make(map[vaas.EnvSetID]vaas.EnvSet),
-	containers: make(map[vaas.EnvSetID][]vaas.Container),
+	containers: make(map[vaas.EnvSetID][][]vaas.Container),
+	roundRobinIdx: make(map[vaas.EnvSetID][]int),
 }
 
 func GetAllocator() Allocator {

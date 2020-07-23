@@ -14,8 +14,6 @@ Vue.component('queries-tab', {
 			resizeObserver: null,
 
 			qtab: '#q-graph-panel',
-
-			addParentFields: {},
 		};
 	},
 	props: ['tab'],
@@ -60,18 +58,24 @@ Vue.component('queries-tab', {
 			});
 		},
 		update: function() {
+			this.selectedQuery = null;
 			if(this.selectedQueryID == '') {
 				return;
 			}
-			$.get('/queries/query?query_id='+this.selectedQueryID, (query) => {
-				this.selectedQuery = query;
-				if(this.selectedNode && query.Nodes[this.selectedNode.ID]) {
-					this.selectNode(query.Nodes[this.selectedNode.ID]);
-				} else {
-					this.selectedNode = null;
-				}
-				this.render();
-			})
+			// do this in Vue.nextTick because otherwise some elements in child components
+			// aren't refreshed properly
+			// may be a bug in Vue.js?
+			Vue.nextTick(() => {
+				$.get('/queries/query?query_id='+this.selectedQueryID, (query) => {
+					this.selectedQuery = query;
+					if(this.selectedNode && query.Nodes[this.selectedNode.ID]) {
+						this.selectNode(query.Nodes[this.selectedNode.ID]);
+					} else {
+						this.selectedNode = null;
+					}
+					this.render();
+				});
+			});
 		},
 		render: function() {
 			var query = this.selectedQuery;
@@ -243,16 +247,14 @@ Vue.component('queries-tab', {
 				})
 				group.on('click', (e) => {
 					e.cancelBubble = true;
-					this.selectNode(node);
-					resetColors();
+					this.selectNode(node, resetColors);
 				});
 			}
 
 			resetColors();
 
 			stage.on('click', (e) => {
-				this.selectNode(null);
-				resetColors();
+				this.selectNode(null, resetColors);
 			});
 
 			// (3) render the arrows
@@ -349,15 +351,23 @@ Vue.component('queries-tab', {
 			this.showNewNodeModal = false;
 			this.update();
 		},
-		selectNode: function(node) {
-			this.selectedNode = node;
+		selectNode: function(node, callback) {
+			this.selectedNode = null;
+
 			if(node) {
-				node.parentSet = {};
-				node.Parents.forEach((parent) => {
-					node.parentSet[parent.Spec] = parent;
+				// do this in nextTick since we want to make sure any references to
+				// e.g. selectedNode.Parents get appropriately refreshed
+				Vue.nextTick(() => {
+					this.selectedNode = node;
+					node.parentSet = {};
+					node.Parents.forEach((parent) => {
+						node.parentSet[parent.Spec] = parent;
+					});
+					if(callback) {
+						callback();
+					}
 				});
 			}
-			this.addParentFields = {spec: ''};
 		},
 		editNode: function() {
 			if(this.selectedNode.Type == 'python') {

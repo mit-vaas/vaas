@@ -3,6 +3,8 @@ Vue.component('video-import-local', {
 		return {
 			name: '',
 			path: '',
+			optSymlink: false,
+			optTranscode: true,
 		};
 	},
 	mounted: function() {
@@ -20,6 +22,8 @@ Vue.component('video-import-local', {
 			var params = {
 				name: this.name,
 				path: this.path,
+				symlink: this.optSymlink ? 'yes' : 'no',
+				transcode: this.optTranscode ? 'yes' : 'no',
 			};
 			$.post('/import/local', params, function() {
 				$('#v-local-modal').modal('hide');
@@ -47,6 +51,25 @@ Vue.component('video-import-local', {
 								<input class="form-control" type="text" v-model="path" />
 							</div>
 						</div>
+						<fieldset class="form-group">
+							<div class="row">
+								<legend class="col-form-label col-sm-2 pt-0">Options</legend>
+								<div class="col-sm-10">
+									<div class="form-check">
+										<input class="form-check-input" type="checkbox" v-model="optSymlink" value="yes">
+										<label class="form-check-label">
+											Symlink
+										</label>
+									</div>
+									<div class="form-check">
+										<input class="form-check-input" type="checkbox" v-model="optTranscode" value="yes">
+										<label class="form-check-label">
+											Transcode
+										</label>
+									</div>
+								</div>
+							</div>
+						</fieldset>
 						<div class="form-group row">
 							<div class="col-sm-10">
 								<button type="submit" class="btn btn-primary">Import</button>

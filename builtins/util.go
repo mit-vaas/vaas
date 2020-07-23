@@ -26,8 +26,8 @@ func GetParents(ctx vaas.ExecContext, node vaas.Node) ([]vaas.DataReader, error)
 
 type PerFrameFunc func(idx int, data vaas.Data, outBuf vaas.DataWriter) error
 
-func PerFrame(parents []vaas.DataReader, slice vaas.Slice, buf vaas.DataWriter, t vaas.DataType, f PerFrameFunc) {
-	err := vaas.ReadMultiple(slice.Length(), vaas.MinFreq(parents), parents, func(index int, datas []vaas.Data) error {
+func PerFrame(parents []vaas.DataReader, slice vaas.Slice, buf vaas.DataWriter, t vaas.DataType, opts vaas.ReadMultipleOptions, f PerFrameFunc) {
+	err := vaas.ReadMultiple(slice.Length(), vaas.MinFreq(parents), parents, opts, func(index int, datas []vaas.Data) error {
 		if len(datas) != 1 {
 			panic(fmt.Errorf("expected exactly one input, but got %d", len(datas)))
 		} else if datas[0].Type() != t {

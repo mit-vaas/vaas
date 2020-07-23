@@ -16,15 +16,16 @@ Vue.component('queries-parents-table', {
 	},
 	methods: {
 		updateSet: function() {
-			this.specSet = {};
+			specSet = {};
 			this.parents.forEach((parent) => {
-				this.specSet[parent.Spec] = true;
+				specSet[parent.Spec] = true;
 			});
 			if(this.excluded) {
 				this.excluded.forEach((spec) => {
-					this.specSet[spec] = true;
+					specSet[spec] = true;
 				});
 			}
+			this.specSet = specSet;
 		},
 		add: function() {
 			this.$emit('add', this.selected);

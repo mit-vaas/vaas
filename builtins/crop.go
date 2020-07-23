@@ -15,6 +15,7 @@ type CropConfig struct {
 type Crop struct {
 	node vaas.Node
 	cfg CropConfig
+	stats *vaas.StatsHolder
 }
 
 func NewCrop(node vaas.Node) vaas.Executor {
@@ -23,6 +24,7 @@ func NewCrop(node vaas.Node) vaas.Executor {
 	return Crop{
 		node: node,
 		cfg: cfg,
+		stats: new(vaas.StatsHolder),
 	}
 }
 
@@ -36,31 +38,39 @@ func (m Crop) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 
 	go func() {
 		w.SetMeta(parents[0].Freq())
-		PerFrame(parents, ctx.Slice, w, vaas.VideoType, func(idx int, data vaas.Data, w vaas.DataWriter) error {
-			im := data.(vaas.VideoData)[0]
-			width := m.cfg.Right - m.cfg.Left
-			height := m.cfg.Bottom - m.cfg.Top
-			if width % 2 == 1 {
-				width++
-			}
-			if height % 2 == 1 {
-				height++
-			}
-			outim := vaas.NewImage(width, height)
-			for i := m.cfg.Left; i < m.cfg.Right; i++ {
-				for j := m.cfg.Top; j < m.cfg.Bottom; j++ {
-					outim.SetRGB(i - m.cfg.Left, j - m.cfg.Top, im.GetRGB(i, j))
+		PerFrame(
+			parents, ctx.Slice, w, vaas.VideoType,
+			vaas.ReadMultipleOptions{Stats: m.stats},
+			func(idx int, data vaas.Data, w vaas.DataWriter) error {
+				im := data.(vaas.VideoData)[0]
+				width := m.cfg.Right - m.cfg.Left
+				height := m.cfg.Bottom - m.cfg.Top
+				if width % 2 == 1 {
+					width++
 				}
-			}
-			w.Write(vaas.VideoData{outim})
-			return nil
-		})
+				if height % 2 == 1 {
+					height++
+				}
+				outim := vaas.NewImage(width, height)
+				for i := m.cfg.Left; i < m.cfg.Right; i++ {
+					for j := m.cfg.Top; j < m.cfg.Bottom; j++ {
+						outim.SetRGB(i - m.cfg.Left, j - m.cfg.Top, im.GetRGB(i, j))
+					}
+				}
+				w.Write(vaas.VideoData{outim})
+				return nil
+			},
+		)
 	}()
 
 	return w.Buffer()
 }
 
 func (m Crop) Close() {}
+
+func (m Crop) Stats() vaas.StatsSample {
+	return m.stats.Get()
+}
 
 func init() {
 	vaas.Executors["crop"] = vaas.ExecutorMeta{New: NewCrop}

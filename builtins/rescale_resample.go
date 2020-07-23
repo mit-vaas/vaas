@@ -18,6 +18,7 @@ type RescaleResampleConfig struct {
 type RescaleResample struct {
 	node vaas.Node
 	cfg RescaleResampleConfig
+	stats *vaas.StatsHolder
 }
 
 func NewRescaleResample(node vaas.Node) vaas.Executor {
@@ -29,6 +30,7 @@ func NewRescaleResample(node vaas.Node) vaas.Executor {
 	return RescaleResample{
 		node: node,
 		cfg: cfg,
+		stats: new(vaas.StatsHolder),
 	}
 }
 
@@ -64,12 +66,16 @@ func (m RescaleResample) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 
 	go func() {
 		var count int = 0
-		err := vaas.ReadMultiple(ctx.Slice.Length(), targetFreq, parents, func(index int, datas []vaas.Data) error {
-			data := datas[0]
-			count += data.Length()
-			buf.Write(data)
-			return nil
-		})
+		err := vaas.ReadMultiple(
+			ctx.Slice.Length(), targetFreq, parents,
+			vaas.ReadMultipleOptions{Stats: m.stats},
+			func(index int, datas []vaas.Data) error {
+				data := datas[0]
+				count += data.Length()
+				buf.Write(data)
+				return nil
+			},
+		)
 		if err != nil {
 			buf.Error(err)
 			return
@@ -84,6 +90,10 @@ func (m RescaleResample) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 }
 
 func (m RescaleResample) Close() {}
+
+func (m RescaleResample) Stats() vaas.StatsSample {
+	return m.stats.Get()
+}
 
 func init() {
 	vaas.Executors["rescale-resample"] = vaas.ExecutorMeta{

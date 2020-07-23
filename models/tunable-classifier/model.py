@@ -106,7 +106,7 @@ def get_model(num_classes, dims):
 	losses = {}
 	loss_weights = {}
 	for i, conv in enumerate(conv_outputs):
-		flat = keras.layers.Lambda(lambda im: tf.math.reduce_mean(im, axis=[1, 2]))(conv)
+		flat = keras.layers.Lambda(lambda im: tf.math.reduce_max(im, axis=[1, 2]))(conv)
 		out = keras.layers.Dense(num_classes, name='flat{}'.format(names[i]))(flat)
 
 		# bit of a hack

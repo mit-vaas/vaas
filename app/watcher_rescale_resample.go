@@ -31,7 +31,7 @@ func init() {
 					if node.DataType == vaas.VideoType {
 						continue
 					}
-					if sample.Time < time.Second/time.Duration(vaas.FPS) {
+					if sample.Time.T < time.Second/time.Duration(vaas.FPS) {
 						continue
 					}
 					suggest = true

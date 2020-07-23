@@ -67,6 +67,11 @@ Vue.component('annotate-tab', {
 			});
 			return '[' + parts.join(', ') + ']';
 		},
+		deleteSeries: function(series_id) {
+			$.post('/series/delete', {'series_id': series_id}, function() {
+				this.fetchLabelSeries(true);
+			}.bind(this));
+		},
 	},
 	watch: {
 		tab: function() {
@@ -103,6 +108,7 @@ Vue.component('annotate-tab', {
 					<td>
 						<button v-on:click="annotateLabels(series)" class="btn btn-primary btn-sm">Annotate</button>
 						<button v-on:click="visualizeLabels(series)" class="btn btn-primary btn-sm">Visualize</button>
+						<button v-on:click="deleteSeries(series.ID)" class="btn btn-danger btn-sm">Delete</button>
 					</td>
 				</tr>
 			</tbody>

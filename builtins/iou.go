@@ -21,6 +21,7 @@ func (t TrackWithID) Last() vaas.Detection {
 type IOU struct {
 	node vaas.Node
 	maxAge int
+	stats *vaas.StatsHolder
 }
 
 func NewIOU(node vaas.Node) vaas.Executor {
@@ -32,6 +33,7 @@ func NewIOU(node vaas.Node) vaas.Executor {
 	return IOU{
 		node: node,
 		maxAge: cfg.MaxAge,
+		stats: new(vaas.StatsHolder),
 	}
 }
 
@@ -47,46 +49,50 @@ func (m IOU) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 
 		var nextID int = 1
 		activeTracks := make(map[int]*TrackWithID)
-		PerFrame(parents, ctx.Slice, buf, vaas.DetectionType, func(idx int, data vaas.Data, buf vaas.DataWriter) error {
-			detections := data.(vaas.DetectionData)[0]
-			var out []vaas.Detection
+		PerFrame(
+			parents, ctx.Slice, buf, vaas.DetectionType,
+			vaas.ReadMultipleOptions{Stats: m.stats},
+			func(idx int, data vaas.Data, buf vaas.DataWriter) error {
+				detections := data.(vaas.DetectionData)[0]
+				var out []vaas.Detection
 
-			matches := hungarianMatcher(activeTracks, detections)
-			unmatched := make(map[int]vaas.Detection)
-			for detectionIdx := range detections {
-				unmatched[detectionIdx] = detections[detectionIdx]
-			}
-			for trackID, detectionIdx := range matches {
-				delete(unmatched, detectionIdx)
-				detection := detections[detectionIdx]
-				detection.TrackID = trackID
-				activeTracks[trackID].Detections = append(activeTracks[trackID].Detections, detection)
-				activeTracks[trackID].LastFrame = idx
-				out = append(out, detection)
-			}
-			for _, detection := range unmatched {
-				trackID := nextID
-				nextID++
-				detection.TrackID = trackID
-				track := &TrackWithID{
-					ID: trackID,
-					Detections: []vaas.Detection{detection},
-					LastFrame: idx,
+				matches := hungarianMatcher(activeTracks, detections)
+				unmatched := make(map[int]vaas.Detection)
+				for detectionIdx := range detections {
+					unmatched[detectionIdx] = detections[detectionIdx]
 				}
-				activeTracks[track.ID] = track
-				out = append(out, detection)
-			}
-			for _, track := range activeTracks {
-				// TODO: make 10 a maxAge configurable parameter
-				if idx - track.LastFrame < 10 {
-					continue
+				for trackID, detectionIdx := range matches {
+					delete(unmatched, detectionIdx)
+					detection := detections[detectionIdx]
+					detection.TrackID = trackID
+					activeTracks[trackID].Detections = append(activeTracks[trackID].Detections, detection)
+					activeTracks[trackID].LastFrame = idx
+					out = append(out, detection)
 				}
-				delete(activeTracks, track.ID)
-			}
+				for _, detection := range unmatched {
+					trackID := nextID
+					nextID++
+					detection.TrackID = trackID
+					track := &TrackWithID{
+						ID: trackID,
+						Detections: []vaas.Detection{detection},
+						LastFrame: idx,
+					}
+					activeTracks[track.ID] = track
+					out = append(out, detection)
+				}
+				for _, track := range activeTracks {
+					// TODO: make 10 a maxAge configurable parameter
+					if idx - track.LastFrame < 10 {
+						continue
+					}
+					delete(activeTracks, track.ID)
+				}
 
-			buf.Write(vaas.TrackData{out})
-			return nil
-		})
+				buf.Write(vaas.TrackData{out})
+				return nil
+			},
+		)
 	}()
 
 	return buf
@@ -143,6 +149,10 @@ func hungarianMatcher(activeTracks map[int]*TrackWithID, detections []vaas.Detec
 		matches[track.ID] = j
 	}
 	return matches
+}
+
+func (m IOU) Stats() vaas.StatsSample {
+	return m.stats.Get()
 }
 
 func init() {

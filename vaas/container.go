@@ -11,6 +11,9 @@ type EnvSetID struct {
 type Environment struct {
 	Template string
 	Requirements map[string]int
+
+	// e.g. the node ID
+	RefID int
 }
 
 type EnvSet struct {

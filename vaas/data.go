@@ -3,6 +3,7 @@ package vaas
 import (
 	"fmt"
 	"io"
+	"time"
 )
 
 type DataType string
@@ -119,10 +120,14 @@ func AdjustDataFreq(data Data, length int, freq int, target int) Data {
 	return out
 }
 
+type ReadMultipleOptions struct {
+	Stats *StatsHolder
+}
+
 // Read from multiple DataReaders in lockstep.
 // Output is limited by the slowest DataReader.
 // Also adjusts input data so that the Data provided to callback corresponds to targetFreq.
-func ReadMultiple(length int, targetFreq int, inputs []DataReader, callback func(int, []Data) error) error {
+func ReadMultiple(length int, targetFreq int, inputs []DataReader, opts ReadMultipleOptions, callback func(int, []Data) error) error {
 	defer func() {
 		for _, input := range inputs {
 			input.Close()
@@ -145,6 +150,8 @@ func ReadMultiple(length int, targetFreq int, inputs []DataReader, callback func
 
 	completed := 0
 	for completed < length {
+		t0 := time.Now()
+
 		// peek each input to see how much we can read
 		available := -1
 		for i, rd := range inputs {
@@ -174,12 +181,23 @@ func ReadMultiple(length int, targetFreq int, inputs []DataReader, callback func
 			datas[i] = AdjustDataFreq(data, available, rd.Freq(), targetFreq)
 		}
 
+		t1 := time.Now()
+
 		err := callback(completed, datas)
 		if err != nil {
 			return fmt.Errorf("error from callback: %v", err)
 		}
 
 		completed += available
+
+		// idle fraction stats
+		if opts.Stats != nil {
+			t2 := time.Now()
+			var sample StatsSample
+			sample.Idle.Fraction = float64(t1.Sub(t0)) / float64(t2.Sub(t0))
+			sample.Idle.Count = available
+			opts.Stats.Add(sample)
+		}
 	}
 
 	return nil

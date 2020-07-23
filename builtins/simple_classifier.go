@@ -22,6 +22,7 @@ type SimpleClassifier struct {
 	rd *bufio.Reader
 	cmd *vaas.Cmd
 	mu sync.Mutex
+	stats *vaas.StatsHolder
 }
 
 func NewSimpleClassifier(node vaas.Node) vaas.Executor {
@@ -30,6 +31,7 @@ func NewSimpleClassifier(node vaas.Node) vaas.Executor {
 	return &SimpleClassifier{
 		node: node,
 		cfg: cfg,
+		stats: new(vaas.StatsHolder),
 	}
 }
 
@@ -51,36 +53,40 @@ func (m *SimpleClassifier) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 
 	go func() {
 		buf.SetMeta(parents[0].Freq())
-		PerFrame(parents, ctx.Slice, buf, vaas.VideoType, func(idx int, data vaas.Data, buf vaas.DataWriter) error {
-			im := data.(vaas.VideoData)[0]
-			m.mu.Lock()
-			if m.stdin == nil {
-				m.start()
-			}
-			header := make([]byte, 8)
-			binary.BigEndian.PutUint32(header[0:4], uint32(im.Width))
-			binary.BigEndian.PutUint32(header[4:8], uint32(im.Height))
-			m.stdin.Write(header)
-			m.stdin.Write(im.Bytes)
-			line, err := m.rd.ReadString('\n')
-			m.mu.Unlock()
-			if err != nil {
-				return fmt.Errorf("error reading from simple-classifier model: %v", err)
-			}
-			line = strings.TrimSpace(line)
-			var pred []float64
-			vaas.JsonUnmarshal([]byte(line), &pred)
-			bestClass := 0
-			var bestP float64 = 0.0
-			for i, p := range pred {
-				if p > bestP {
-					bestP = p
-					bestClass = i
+		PerFrame(
+			parents, ctx.Slice, buf, vaas.VideoType,
+			vaas.ReadMultipleOptions{Stats: m.stats},
+			func(idx int, data vaas.Data, buf vaas.DataWriter) error {
+				im := data.(vaas.VideoData)[0]
+				m.mu.Lock()
+				if m.stdin == nil {
+					m.start()
 				}
-			}
-			buf.Write(vaas.ClassData{bestClass})
-			return nil
-		})
+				header := make([]byte, 8)
+				binary.BigEndian.PutUint32(header[0:4], uint32(im.Width))
+				binary.BigEndian.PutUint32(header[4:8], uint32(im.Height))
+				m.stdin.Write(header)
+				m.stdin.Write(im.Bytes)
+				line, err := m.rd.ReadString('\n')
+				m.mu.Unlock()
+				if err != nil {
+					return fmt.Errorf("error reading from simple-classifier model: %v", err)
+				}
+				line = strings.TrimSpace(line)
+				var pred []float64
+				vaas.JsonUnmarshal([]byte(line), &pred)
+				bestClass := 0
+				var bestP float64 = 0.0
+				for i, p := range pred {
+					if p > bestP {
+						bestP = p
+						bestClass = i
+					}
+				}
+				buf.Write(vaas.ClassData{bestClass})
+				return nil
+			},
+		)
 	}()
 
 	return buf
@@ -89,6 +95,10 @@ func (m *SimpleClassifier) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 func (m *SimpleClassifier) Close() {
 	m.stdin.Close()
 	m.cmd.Wait()
+}
+
+func (m *SimpleClassifier) Stats() vaas.StatsSample {
+	return m.stats.Get()
 }
 
 func init() {

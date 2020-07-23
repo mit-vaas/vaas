@@ -34,7 +34,7 @@ type Yolov3 struct {
 	height int
 	mu sync.Mutex
 
-	stats vaas.StatsSample
+	stats *vaas.StatsHolder
 }
 
 func NewYolov3(node vaas.Node) vaas.Executor {
@@ -43,6 +43,7 @@ func NewYolov3(node vaas.Node) vaas.Executor {
 	return &Yolov3{
 		node: node,
 		cfg: cfg,
+		stats: new(vaas.StatsHolder),
 	}
 }
 
@@ -142,42 +143,48 @@ func (m *Yolov3) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 		buf.SetMeta(parents[0].Freq())
 		fname := fmt.Sprintf("%s/%d.jpg", os.TempDir(), rand.Int63())
 		defer os.Remove(fname)
-		PerFrame(parents, ctx.Slice, buf, vaas.VideoType, func(idx int, data vaas.Data, buf vaas.DataWriter) error {
-			im := data.(vaas.VideoData)[0]
-			if err := ioutil.WriteFile(fname, im.AsJPG(), 0644); err != nil {
-				return err
-			}
-			m.mu.Lock()
-			if m.stdin == nil {
-				if m.cfg.InputSize[0] == 0 || m.cfg.InputSize[1] == 0 {
-					m.width = (im.Width + 31) / 32 * 32
-					m.height = (im.Height + 31) / 32 * 32
-				} else {
-					m.width = m.cfg.InputSize[0]
-					m.height = m.cfg.InputSize[1]
+		PerFrame(
+			parents, ctx.Slice, buf, vaas.VideoType,
+			vaas.ReadMultipleOptions{Stats: m.stats},
+			func(idx int, data vaas.Data, buf vaas.DataWriter) error {
+				im := data.(vaas.VideoData)[0]
+				if err := ioutil.WriteFile(fname, im.AsJPG(), 0644); err != nil {
+					return err
 				}
-				log.Printf("[yolo] convert input %dx%d to %dx%d", im.Width, im.Height, m.width, m.height)
-				m.start()
-			}
-			t0 := time.Now()
-			m.stdin.Write([]byte(fname + "\n"))
-			lines := m.getLines()
-			boxes := parseLines(lines)
-			m.stats = m.stats.Add(vaas.StatsSample{
-				Time: time.Now().Sub(t0),
-				Count: 1,
-			})
-			m.mu.Unlock()
-			if m.cfg.CanvasSize[0] != 0 && m.cfg.CanvasSize[1] != 0 {
-				scale := [2]float64{
-					float64(m.cfg.CanvasSize[0]) / float64(im.Width),
-					float64(m.cfg.CanvasSize[1]) / float64(im.Height),
+				m.mu.Lock()
+				if m.stdin == nil {
+					if m.cfg.InputSize[0] == 0 || m.cfg.InputSize[1] == 0 {
+						m.width = (im.Width + 31) / 32 * 32
+						m.height = (im.Height + 31) / 32 * 32
+					} else {
+						m.width = m.cfg.InputSize[0]
+						m.height = m.cfg.InputSize[1]
+					}
+					log.Printf("[yolo] convert input %dx%d to %dx%d", im.Width, im.Height, m.width, m.height)
+					m.start()
 				}
-				boxes = vaas.ResizeDetections([][]vaas.Detection{boxes}, scale)[0]
-			}
-			buf.Write(vaas.DetectionData{boxes})
-			return nil
-		})
+				t0 := time.Now()
+				m.stdin.Write([]byte(fname + "\n"))
+				lines := m.getLines()
+				boxes := parseLines(lines)
+
+				sample := vaas.StatsSample{}
+				sample.Time.T = time.Now().Sub(t0)
+				sample.Time.Count = 1
+				m.stats.Add(sample)
+
+				m.mu.Unlock()
+				if m.cfg.CanvasSize[0] != 0 && m.cfg.CanvasSize[1] != 0 {
+					scale := [2]float64{
+						float64(m.cfg.CanvasSize[0]) / float64(im.Width),
+						float64(m.cfg.CanvasSize[1]) / float64(im.Height),
+					}
+					boxes = vaas.ResizeDetections([][]vaas.Detection{boxes}, scale)[0]
+				}
+				buf.Write(vaas.DetectionData{boxes})
+				return nil
+			},
+		)
 	}()
 
 	return buf
@@ -189,9 +196,7 @@ func (m *Yolov3) Close() {
 }
 
 func (m *Yolov3) Stats() vaas.StatsSample {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.stats
+	return m.stats.Get()
 }
 
 func init() {

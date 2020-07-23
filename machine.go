@@ -13,7 +13,6 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
-	"time"
 )
 
 func main() {
@@ -66,7 +65,7 @@ func main() {
 		for _, idx := range gpus {
 			parts = append(parts, fmt.Sprintf("%d", idx))
 		}
-		return strings.Join(parts, ",")
+		return "CUDA_VISIBLE_DEVICES=" + strings.Join(parts, ",")
 	}
 
 	http.HandleFunc("/allocate", func(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +91,7 @@ func main() {
 				return
 			}
 			for _, env := range os.Environ() {
-				if strings.Contains(env, "CUDA_VISIBLE_DEVICES") {
+				if !strings.Contains(env, "CUDA_VISIBLE_DEVICES") {
 					cmd.Env = append(cmd.Env, env)
 				}
 			}
@@ -128,7 +127,6 @@ func main() {
 		}
 		port := vaas.ParseInt(strings.TrimSpace(line))
 
-		time.Sleep(time.Second)
 		vaas.JsonResponse(w, vaas.Container{
 			UUID: uuid,
 			BaseURL: fmt.Sprintf("http://%s:%d", myIP, port),

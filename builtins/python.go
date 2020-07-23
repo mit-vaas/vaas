@@ -42,6 +42,8 @@ type PythonExecutor struct {
 
 	// lock on internal structures (pending, err, counter, etc.)
 	mu sync.Mutex
+
+	stats *vaas.StatsHolder
 }
 
 func (e *PythonExecutor) writeJSONPacket(x interface{}) {
@@ -151,7 +153,9 @@ func (e *PythonExecutor) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 		}
 		// TODO: look at the return error
 		// currently we don't because w is controlled by ReadLoop
-		err := vaas.ReadMultiple(slice.Length(), freq, parents, f)
+		// TODO: stats isn't quite right here since we write directly to python stdin
+		// instead the python skyhook_pylib should keep track of stats probably
+		err := vaas.ReadMultiple(slice.Length(), freq, parents, vaas.ReadMultipleOptions{Stats: e.stats}, f)
 		if err != nil {
 			panic(fmt.Errorf("ReadMultiple error at node %s: %v", e.node.Name, err))
 		}
@@ -282,10 +286,15 @@ func NewPythonExecutor(node vaas.Node) vaas.Executor {
 		stdin: cmd.Stdin(),
 		stdout: cmd.Stdout(),
 		pending: make(map[int]*pendingSlice),
+		stats: new(vaas.StatsHolder),
 	}
 	e.Init()
 	go e.ReadLoop()
 	return e
+}
+
+func (m *PythonExecutor) Stats() vaas.StatsSample {
+	return m.stats.Get()
 }
 
 func init() {

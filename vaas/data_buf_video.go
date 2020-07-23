@@ -347,6 +347,13 @@ func (rd *VideoBufferReader) getDims() [2]int {
 	}
 }
 
+func (rd *VideoBufferReader) GetDims() [2]int {
+	// make sure we waited for meta
+	rd.Freq()
+
+	return rd.getDims()
+}
+
 func (rd *VideoBufferReader) getSample() int {
 	if rd.resample == 0 {
 		return 1

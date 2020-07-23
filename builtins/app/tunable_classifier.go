@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strconv"
 )
 
 func init() {
@@ -50,6 +51,25 @@ func init() {
 		}
 		modelPath := fmt.Sprintf("models/tunable-classifier-%d.h5", node.ID)
 
+		// auto-compute width, height, and number of classes
+		item := &app.DBSeries{Series: series.SrcVector[0]}.ListItems()[0]
+		width, height := item.Width, item.Height
+		numClasses := 2
+		for _, item := range series.ListItems() {
+			data, err := item.Load(item.Slice).Reader().Read(item.Slice.Length())
+			if err != nil {
+				log.Printf("[tunable-classifier] error reading item at %s", item.Fname(0))
+				w.WriteHeader(400)
+				return
+			}
+			for _, cls := range data.(vaas.ClassData) {
+				if numClasses <= cls {
+					numClasses = cls+1
+				}
+			}
+		}
+		log.Printf("[tunable-classifier] automatically computed num_cls=%d, width=%d, height=%d", numClasses, width, height)
+
 		exporter := app.NewExporter(refs, app.ExportOptions{
 			Path: exportPath,
 			Name: fmt.Sprintf("Export %s (for tunable-classifier training)", series.Name),
@@ -63,7 +83,8 @@ func init() {
 			trainJob := app.NewCmdJob(
 				fmt.Sprintf("Train Tunable Classifier on %s", series.Name),
 				"python3", "models/tunable-classifier/train.py",
-				exportPath, modelPath, "2", "1280", "720",
+				exportPath, modelPath,
+				strconv.Itoa(numClasses), strconv.Itoa(width), strconv.Itoa(height),
 			)
 			err = app.RunJob(trainJob)
 			if err != nil {
@@ -72,9 +93,9 @@ func init() {
 			}
 			cfg := builtins.TunableClassifierConfig{
 				ModelPath: modelPath,
-				MaxWidth: 1280,
-				MaxHeight: 720,
-				NumClasses: 2,
+				MaxWidth: width,
+				MaxHeight: height,
+				NumClasses: numClasses,
 				Depth: 1,
 			}
 			cfgStr := string(vaas.JsonMarshal(cfg))

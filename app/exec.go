@@ -22,7 +22,9 @@ func (query *DBQuery) GetEnvSet() vaas.EnvSet {
 	for _, node := range query.Nodes {
 		meta := vaas.Executors[node.Type]
 		if meta.Environment != nil {
-			environments = append(environments, *meta.Environment)
+			env := *meta.Environment
+			env.RefID = node.ID
+			environments = append(environments, env)
 		}
 	}
 	return vaas.EnvSet{envSetID, environments}
@@ -33,10 +35,24 @@ func (query *DBQuery) Allocate(vector []*DBSeries, slice vaas.Slice) vaas.ExecCo
 	uuid := gouuid.New().String()
 
 	containers := allocator.Allocate(query.GetEnvSet())
+	// figure out which nodes should be on which containers
+	// container.env.refid specifies the node ID for non-default containers
+	// so we assign nodes with their own container, then assign rest to default
 	nodeContainers := make(map[int]vaas.Container)
-	for _, node := range query.Nodes {
-		nodeContainers[node.ID] = containers[0]
+	var defaultContainer vaas.Container
+	for _, container := range containers {
+		if container.Environment.Template == "default" {
+			defaultContainer = container
+		} else {
+			nodeContainers[container.Environment.RefID] = container
+		}
 	}
+	for _, node := range query.Nodes {
+		if _, ok := nodeContainers[node.ID]; !ok {
+			nodeContainers[node.ID] = defaultContainer
+		}
+	}
+
 	context := vaas.ExecContext{
 		Nodes: query.Nodes,
 		Containers: nodeContainers,

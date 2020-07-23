@@ -1,3 +1,5 @@
+import sys
+sys.path.append('./')
 import skyhook_pylib as lib
 
 import io
@@ -8,7 +10,6 @@ import os
 import os.path
 import skimage.io
 import struct
-import sys
 
 # def f(context, parent1, parent2, ...): ...
 [CODE]

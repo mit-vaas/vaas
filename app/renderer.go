@@ -209,7 +209,7 @@ func (r *VideoRenderer) render() {
 		return nil
 	}
 
-	err := vaas.ReadMultiple(r.slice.Length(), 1, flatInputs, f)
+	err := vaas.ReadMultiple(r.slice.Length(), 1, flatInputs, vaas.ReadMultipleOptions{}, f)
 	close(ch)
 	if donech != nil {
 		<- donech

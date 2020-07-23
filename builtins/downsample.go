@@ -14,6 +14,7 @@ type DownsampleConfig struct {
 type Downsample struct {
 	node vaas.Node
 	cfg DownsampleConfig
+	stats *vaas.StatsHolder
 }
 
 func NewDownsample(node vaas.Node) vaas.Executor {
@@ -22,6 +23,7 @@ func NewDownsample(node vaas.Node) vaas.Executor {
 	return Downsample{
 		node: node,
 		cfg: cfg,
+		stats: new(vaas.StatsHolder),
 	}
 }
 
@@ -48,12 +50,16 @@ func (m Downsample) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 
 	go func() {
 		var count int = 0
-		err := vaas.ReadMultiple(ctx.Slice.Length(), m.cfg.Freq, parents, func(index int, datas []vaas.Data) error {
-			data := datas[0]
-			count += data.Length()
-			buf.Write(data)
-			return nil
-		})
+		err := vaas.ReadMultiple(
+			ctx.Slice.Length(), m.cfg.Freq, parents,
+			vaas.ReadMultipleOptions{Stats: m.stats},
+			func(index int, datas []vaas.Data) error {
+				data := datas[0]
+				count += data.Length()
+				buf.Write(data)
+				return nil
+			},
+		)
 		if err != nil {
 			buf.Error(err)
 			return
@@ -68,6 +74,10 @@ func (m Downsample) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 }
 
 func (m Downsample) Close() {}
+
+func (m Downsample) Stats() vaas.StatsSample {
+	return m.stats.Get()
+}
 
 func init() {
 	vaas.Executors["downsample"] = vaas.ExecutorMeta{New: NewDownsample}

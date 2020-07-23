@@ -236,6 +236,7 @@ func (series DBSeries) Clear() {
 func (series DBSeries) Delete() {
 	series.Clear()
 	db.Exec("DELETE FROM series WHERE id = ?", series.ID)
+	db.Exec("UPDATE vnodes SET series_id = NULL WHERE series_id = ?", series.ID)
 }
 
 func (series DBSeries) Next() vaas.Slice {

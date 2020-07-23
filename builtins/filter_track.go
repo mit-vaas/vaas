@@ -4,6 +4,7 @@ import (
 	"../vaas"
 	"github.com/mitroadmaps/gomapinfer/common"
 	"fmt"
+	"time"
 )
 
 type Shape [][2]int
@@ -52,6 +53,7 @@ type TrackFilterConfig struct {
 type TrackFilter struct {
 	node vaas.Node
 	cfg TrackFilterConfig
+	stats *vaas.StatsHolder
 }
 
 func NewTrackFilter(node vaas.Node) vaas.Executor {
@@ -70,6 +72,7 @@ func NewTrackFilter(node vaas.Node) vaas.Executor {
 	return TrackFilter{
 		node: node,
 		cfg: cfg,
+		stats: new(vaas.StatsHolder),
 	}
 }
 
@@ -81,6 +84,7 @@ func (m TrackFilter) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 	buf := vaas.NewSimpleBuffer(vaas.TrackType)
 
 	go func() {
+		t0 := time.Now()
 		buf.SetMeta(parents[0].Freq())
 		data, err := parents[0].Read(ctx.Slice.Length())
 		if err != nil {
@@ -88,6 +92,8 @@ func (m TrackFilter) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 			return
 		}
 		parents[0].Close()
+
+		t1 := time.Now()
 		detections := data.(vaas.TrackData)
 		tracks := vaas.DetectionsToTracks(detections)
 		var out [][]vaas.DetectionWithFrame
@@ -135,12 +141,22 @@ func (m TrackFilter) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 		detections = vaas.TracksToDetections(out)
 		buf.Write(vaas.TrackData(detections).EnsureLength(data.Length()))
 		buf.Close()
+
+		t2 := time.Now()
+		sample := vaas.StatsSample{}
+		sample.Idle.Fraction = float64(t1.Sub(t0)) / float64(t2.Sub(t0))
+		sample.Idle.Count = ctx.Slice.Length()
+		m.stats.Add(sample)
 	}()
 
 	return buf
 }
 
 func (m TrackFilter) Close() {}
+
+func (m TrackFilter) Stats() vaas.StatsSample {
+	return m.stats.Get()
+}
 
 func init() {
 	vaas.Executors["filter-track"] = vaas.ExecutorMeta{New: NewTrackFilter}

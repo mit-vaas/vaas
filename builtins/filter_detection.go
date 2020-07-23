@@ -14,6 +14,7 @@ type DetectionFilter struct {
 	node vaas.Node
 	score float64
 	classes map[string]bool
+	stats *vaas.StatsHolder
 }
 
 func NewDetectionFilter(node vaas.Node) vaas.Executor {
@@ -23,6 +24,7 @@ func NewDetectionFilter(node vaas.Node) vaas.Executor {
 		node: node,
 		score: cfg.Score,
 		classes: make(map[string]bool),
+		stats: new(vaas.StatsHolder),
 	}
 	for _, class := range cfg.Classes {
 		m.classes[class] = true
@@ -39,27 +41,35 @@ func (m DetectionFilter) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 
 	go func() {
 		buf.SetMeta(parents[0].Freq())
-		PerFrame(parents, ctx.Slice, buf, vaas.DetectionType, func(idx int, data vaas.Data, buf vaas.DataWriter) error {
-			detections := data.(vaas.DetectionData)[0]
-			var ndetections []vaas.Detection
-			for _, d := range detections {
-				if d.Score < m.score {
-					continue
+		PerFrame(
+			parents, ctx.Slice, buf, vaas.DetectionType,
+			vaas.ReadMultipleOptions{Stats: m.stats},
+			func(idx int, data vaas.Data, buf vaas.DataWriter) error {
+				detections := data.(vaas.DetectionData)[0]
+				var ndetections []vaas.Detection
+				for _, d := range detections {
+					if d.Score < m.score {
+						continue
+					}
+					if len(m.classes) > 0 && !m.classes[d.Class] {
+						continue
+					}
+					ndetections = append(ndetections, d)
 				}
-				if len(m.classes) > 0 && !m.classes[d.Class] {
-					continue
-				}
-				ndetections = append(ndetections, d)
-			}
-			buf.Write(vaas.DetectionData{ndetections}.EnsureLength(data.Length()))
-			return nil
-		})
+				buf.Write(vaas.DetectionData{ndetections}.EnsureLength(data.Length()))
+				return nil
+			},
+		)
 	}()
 
 	return buf
 }
 
 func (m DetectionFilter) Close() {}
+
+func (m DetectionFilter) Stats() vaas.StatsSample {
+	return m.stats.Get()
+}
 
 func init() {
 	vaas.Executors["filter-detection"] = vaas.ExecutorMeta{New: NewDetectionFilter}

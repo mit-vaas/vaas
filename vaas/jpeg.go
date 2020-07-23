@@ -14,7 +14,7 @@ type jpegReader struct {
 }
 
 func ReadJpeg(item Item, start int, end int, opts ReadVideoOptions) *jpegReader {
-	if opts.Scale[0] != 0 || opts.Sample != 1 {
+	if (opts.Scale[0] != 0 && opts.Scale != [2]int{item.Width, item.Height}) || opts.Sample != 1 {
 		panic(fmt.Errorf("jpegReader does not yet support rescale/resample"))
 	}
 	return &jpegReader{
@@ -48,7 +48,7 @@ type parallelJpegReader struct {
 }
 
 func ReadJpegParallel(item Item, start int, end int, nthreads int, opts ReadVideoOptions) *parallelJpegReader {
-	if opts.Scale[0] != 0 || opts.Sample != 1 {
+	if (opts.Scale[0] != 0 && opts.Scale != [2]int{item.Width, item.Height}) || opts.Sample != 1 {
 		panic(fmt.Errorf("jpegReader does not yet support rescale/resample"))
 	}
 	rd := &parallelJpegReader{
