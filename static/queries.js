@@ -58,23 +58,17 @@ Vue.component('queries-tab', {
 			});
 		},
 		update: function() {
-			this.selectedQuery = null;
 			if(this.selectedQueryID == '') {
 				return;
 			}
-			// do this in Vue.nextTick because otherwise some elements in child components
-			// aren't refreshed properly
-			// may be a bug in Vue.js?
-			Vue.nextTick(() => {
-				$.get('/queries/query?query_id='+this.selectedQueryID, (query) => {
-					this.selectedQuery = query;
-					if(this.selectedNode && query.Nodes[this.selectedNode.ID]) {
-						this.selectNode(query.Nodes[this.selectedNode.ID]);
-					} else {
-						this.selectedNode = null;
-					}
-					this.render();
-				});
+			$.get('/queries/query?query_id='+this.selectedQueryID, (query) => {
+				this.selectedQuery = query;
+				if(this.selectedNode && query.Nodes[this.selectedNode.ID]) {
+					this.selectNode(query.Nodes[this.selectedNode.ID]);
+				} else {
+					this.selectedNode = null;
+				}
+				this.render();
 			});
 		},
 		render: function() {
@@ -247,14 +241,16 @@ Vue.component('queries-tab', {
 				})
 				group.on('click', (e) => {
 					e.cancelBubble = true;
-					this.selectNode(node, resetColors);
+					this.selectNode(node);
+					resetColors();
 				});
 			}
 
 			resetColors();
 
 			stage.on('click', (e) => {
-				this.selectNode(null, resetColors);
+				this.selectNode(null);
+				resetColors();
 			});
 
 			// (3) render the arrows
@@ -351,21 +347,12 @@ Vue.component('queries-tab', {
 			this.showNewNodeModal = false;
 			this.update();
 		},
-		selectNode: function(node, callback) {
-			this.selectedNode = null;
-
+		selectNode: function(node) {
+			this.selectedNode = node;
 			if(node) {
-				// do this in nextTick since we want to make sure any references to
-				// e.g. selectedNode.Parents get appropriately refreshed
-				Vue.nextTick(() => {
-					this.selectedNode = node;
-					node.parentSet = {};
-					node.Parents.forEach((parent) => {
-						node.parentSet[parent.Spec] = parent;
-					});
-					if(callback) {
-						callback();
-					}
+				node.parentSet = {};
+				node.Parents.forEach((parent) => {
+					node.parentSet[parent.Spec] = parent;
 				});
 			}
 		},
@@ -456,7 +443,7 @@ Vue.component('queries-tab', {
 	<form v-on:submit.prevent="createQuery" class="form-inline my-2">
 		<label class="ml-1">Query:</label>
 		<select v-model="selectedQueryID" @change="update" class="form-control ml-1">
-			<option v-for="query in queries" :value="query.ID">{{ query.Name }}</option>
+			<option v-for="query in queries" :key="query.ID" :value="query.ID">{{ query.Name }}</option>
 		</select>
 		<button type="button" class="btn btn-danger ml-1">Remove</button>
 		<input v-model="newQueryName" type="form-control" placeholder="Name" class="ml-4" />
@@ -537,7 +524,7 @@ Vue.component('queries-tab', {
 						<select v-model="selectedQuery.SelectorID" class="form-control ml-1">
 							<option value="">None</option>
 							<template v-for="node in selectedQuery.Nodes">
-								<option :value="node.ID">{{ node.Name }}</option>
+								<option :key="node.ID" :value="node.ID">{{ node.Name }}</option>
 							</template>
 						</select>
 						<button type="submit" class="btn btn-primary ml-1">Set Selector</button>

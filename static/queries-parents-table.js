@@ -43,7 +43,7 @@ Vue.component('queries-parents-table', {
 		<tr><th colspan="2">{{ label }}</th></tr>
 	</thead>
 	<tbody>
-		<tr v-for="parent in parents">
+		<tr v-for="parent in parents" :key="parent.Spec">
 			<template v-if="parent.Type == 's'">
 				<td>Input {{ parent.SeriesIdx }}</td>
 			</template>
@@ -57,7 +57,7 @@ Vue.component('queries-parents-table', {
 				<select v-model="selected" class="form-control">
 					<option v-if="!specSet['s0']" value="s0">Input 0</option>
 					<template v-for="node in query.Nodes">
-						<option v-if="!specSet['n' + node.ID]" :value="'n' + node.ID">{{ node.Name }}</option>
+						<option :key="node.ID" v-if="!specSet['n' + node.ID]" :value="'n' + node.ID">{{ node.Name }}</option>
 					</template>
 				</select>
 			</td>

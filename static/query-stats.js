@@ -32,7 +32,7 @@ Vue.component('query-stats', {
 			</tr>
 		</thead>
 		<tbody>
-			<tr v-for="(el, nodeID) in stats">
+			<tr v-for="(el, nodeID) in stats" :key="nodeID">
 				<td>{{ query.Nodes[nodeID].Name }}</td>
 				<td>{{ parseInt(el.Time.T/1000000) }}ms</td>
 				<td>{{ el.Idle.Fraction }}</td>

@@ -74,7 +74,7 @@ Vue.component('query-tune', {
 			<label class="col-sm-5 col-form-label">Nodes to Tune</label>
 			<div class="col-sm-7">
 				<select v-model="tuneNode" class="form-control">
-					<option v-for="node in tunableNodes" :value="node.ID">{{ node.Name }}</option>
+					<option v-for="node in tunableNodes" :key="node.ID" :value="node.ID">{{ node.Name }}</option>
 				</select>
 			</div>
 		</div>
@@ -82,7 +82,7 @@ Vue.component('query-tune', {
 				<label class="col-sm-5 col-form-label">Inputs</label>
 				<div class="col-sm-7">
 					<select v-model="inputSeries" class="form-control">
-						<option v-for="ds in dataSeries" :value="ds.ID">{{ ds.Name }}</option>
+						<option v-for="ds in dataSeries" :key="ds.ID" :value="ds.ID">{{ ds.Name }}</option>
 					</select>
 				</div>
 			</div>
@@ -90,7 +90,7 @@ Vue.component('query-tune', {
 			<label class="col-sm-5 col-form-label">Ground Truth</label>
 			<div class="col-sm-7">
 				<select v-model="metricSeries" class="form-control">
-					<option v-for="ds in labelSeries" :value="ds.ID">{{ ds.Name }}</option>
+					<option v-for="ds in labelSeries" :key="ds.ID" :value="ds.ID">{{ ds.Name }}</option>
 				</select>
 			</div>
 		</div>
@@ -98,7 +98,7 @@ Vue.component('query-tune', {
 			<label class="col-sm-5 col-form-label">Output Node</label>
 			<div class="col-sm-7">
 				<select v-model="metricNode" class="form-control">
-					<option v-for="node in nodes" :value="node.ID">{{ node.Name }}</option>
+					<option v-for="node in nodes" :key="node.ID" :value="node.ID">{{ node.Name }}</option>
 				</select>
 			</div>
 		</div>
@@ -115,7 +115,7 @@ Vue.component('query-tune', {
 			</tr>
 		</thead>
 		<tbody>
-			<tr v-for="r in tuneResults">
+			<tr v-for="r in tuneResults" :key="r.Idx">
 				<td>{{ r.Description[0] }}</td>
 				<template v-if="r.done">
 					<td>{{ r.Score }}</td>
