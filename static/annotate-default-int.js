@@ -135,7 +135,7 @@ Vue.component('annotate-default-int', {
 		</div>
 		<template v-if="settings.Range > 0">
 			<div v-for="i in settings.Range">
-				<button v-on:click="label(i)" type="button" class="btn btn-primary">{{ i }}</button>
+				<button v-on:click="label(i-1)" type="button" class="btn btn-primary">{{ i-1 }}</button>
 			</div>
 		</template>
 		<template v-else>

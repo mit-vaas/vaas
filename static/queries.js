@@ -62,6 +62,20 @@ Vue.component('queries-tab', {
 				return;
 			}
 			$.get('/queries/query?query_id='+this.selectedQueryID, (query) => {
+				// determine how many inputs are used in the query
+				query.numInputs = 1;
+				for(let nodeID in query.Nodes) {
+					let node = query.Nodes[nodeID];
+					node.Parents.forEach((parent) => {
+						if(parent.Type != 's') {
+							return;
+						}
+						if(query.numInputs <= parent.SeriesIdx) {
+							query.numInputs = parent.SeriesIdx+1;
+						}
+					});
+				}
+
 				this.selectedQuery = query;
 				if(this.selectedNode && query.Nodes[this.selectedNode.ID]) {
 					this.selectNode(query.Nodes[this.selectedNode.ID]);
@@ -202,18 +216,7 @@ Vue.component('queries-tab', {
 			};
 
 			// (1) render the vector inputs
-			var numSources = 1;
-			for(var nodeID in query.Nodes) {
-				query.Nodes[nodeID].Parents.forEach((parent) => {
-					if(parent.Type != 's') {
-						return;
-					}
-					if(parent.SeriesIdx+1 > numSources) {
-						numSources = parent.SeriesIdx+1;
-					}
-				});
-			}
-			for(let i = 0; i < numSources; i++) {
+			for(let i = 0; i < query.numInputs; i++) {
 				let meta = query.RenderMeta['s' + i];
 				if(!meta) {
 					meta = [50+i*200, 50];
@@ -428,6 +431,10 @@ Vue.component('queries-tab', {
 				this.update();
 			});
 		},
+		addInput: function() {
+			this.selectedQuery.numInputs++;
+			this.render();
+		},
 	},
 	watch: {
 		tab: function() {
@@ -469,8 +476,9 @@ Vue.component('queries-tab', {
 				<div id="q-view" ref="view">
 					<div ref="layer"></div>
 				</div>
-				<div>
+				<div v-if="selectedQuery != null">
 					<div class="my-2">
+						<button type="button" class="btn btn-primary" v-on:click="addInput">Add Input</button>
 						<button type="button" class="btn btn-primary" v-on:click="showNewNodeModal = true">New Node</button>
 						<button type="button" class="btn btn-primary" :disabled="selectedNode == null" v-on:click="editNode">Edit Node</button>
 					</div>
