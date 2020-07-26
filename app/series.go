@@ -51,13 +51,13 @@ func GetTimeline(id int) *DBTimeline {
 	}
 }
 
-const SeriesQuery = "SELECT id, timeline_id, name, type, data_type, src_vector, node_id, percent FROM series"
+const SeriesQuery = "SELECT id, timeline_id, name, type, data_type, src_vector, annotate_metadata, node_id, percent FROM series"
 
 func seriesListHelper(rows *Rows) []*DBSeries {
 	series := []*DBSeries{}
 	for rows.Next() {
 		var s DBSeries
-		rows.Scan(&s.ID, &s.Timeline.ID, &s.Name, &s.Type, &s.DataType, &s.SrcVectorStr, &s.NodeID, &s.Percent)
+		rows.Scan(&s.ID, &s.Timeline.ID, &s.Name, &s.Type, &s.DataType, &s.SrcVectorStr, &s.AnnotateMetadata, &s.NodeID, &s.Percent)
 		series = append(series, &s)
 	}
 	for _, s := range series {
@@ -239,8 +239,8 @@ func (series DBSeries) Delete() {
 	db.Exec("UPDATE vnodes SET series_id = NULL WHERE series_id = ?", series.ID)
 }
 
-func (series DBSeries) Next() vaas.Slice {
-	return DBTimeline{series.Timeline}.Uniform(1)
+func (series DBSeries) Next(nframes int) vaas.Slice {
+	return DBTimeline{series.Timeline}.Uniform(nframes)
 }
 
 const ItemQuery = "SELECT id, segment_id, series_id, start, end, format, width, height, freq FROM items"
@@ -372,6 +372,23 @@ func init() {
 			return
 		}
 		series.Delete()
+	})
+
+	http.HandleFunc("/series/update", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+		r.ParseForm()
+		seriesID := vaas.ParseInt(r.PostForm.Get("series_id"))
+		series := GetSeries(seriesID)
+		if series == nil {
+			w.WriteHeader(404)
+			return
+		}
+		if r.PostForm["annotate_metadata"] != nil {
+			db.Exec("UPDATE series SET annotate_metadata = ? WHERE id = ?", r.PostForm.Get("annotate_metadata"), series.ID)
+		}
 	})
 
 	http.HandleFunc("/series/random-slice", func(w http.ResponseWriter, r *http.Request) {

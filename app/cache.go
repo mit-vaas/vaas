@@ -162,7 +162,7 @@ func init() {
 				}
 				vaas.JsonResponse(w, data)
 			} else if contentType == "mp4" {
-				buf, ok := v.Buf.(vaas.MP4Reader)
+				buf, ok := v.Buf.Reader().(vaas.MP4Reader)
 				if !ok {
 					http.Error(w, "reading mp4 from CachedDataBuffer only supported for MP4Reader buffers", 400)
 					return

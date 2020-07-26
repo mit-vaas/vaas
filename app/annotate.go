@@ -8,7 +8,7 @@ import (
 	"net/http"
 )
 
-func NewLabelSeries(name string, src []*DBSeries, dataType vaas.DataType) (*DBSeries, error) {
+func NewLabelSeries(name string, src []*DBSeries, dataType vaas.DataType, metadata string) (*DBSeries, error) {
 	if dataType != vaas.DetectionType && dataType != vaas.TrackType && dataType != vaas.ClassType && dataType != vaas.VideoType {
 		return nil, fmt.Errorf("invalid data type %s", dataType)
 	}
@@ -22,8 +22,8 @@ func NewLabelSeries(name string, src []*DBSeries, dataType vaas.DataType) (*DBSe
 	}
 
 	res := db.Exec(
-			"INSERT INTO series (timeline_id, name, type, data_type, src_vector) VALUES (?, ?, 'labels', ?, ?)",
-			timeline.ID, name, dataType, Vector(src).String(),
+			"INSERT INTO series (timeline_id, name, type, data_type, src_vector, annotate_metadata) VALUES (?, ?, 'labels', ?, ?, ?)",
+			timeline.ID, name, dataType, Vector(src).String(), metadata,
 	)
 	series := GetSeries(res.LastInsertId())
 	log.Printf("[annotate] created new labels series %d", series.ID)
@@ -87,7 +87,8 @@ func init() {
 		name := r.PostForm.Get("name")
 		labelType := r.PostForm.Get("type")
 		srcVector := ParseVector(r.PostForm.Get("src"))
-		series, err := NewLabelSeries(name, srcVector, vaas.DataType(labelType))
+		metadata := r.PostForm.Get("metadata")
+		series, err := NewLabelSeries(name, srcVector, vaas.DataType(labelType), metadata)
 		if err != nil {
 			w.WriteHeader(400)
 			return
@@ -99,6 +100,10 @@ func init() {
 		r.ParseForm()
 		id := vaas.ParseInt(r.Form.Get("id"))
 		index := vaas.ParseInt(r.Form.Get("index"))
+		numFrames := 1
+		if r.Form["nframes"] != nil {
+			numFrames = vaas.ParseInt(r.Form.Get("nframes"))
+		}
 		series := GetSeries(id)
 		if series == nil {
 			log.Printf("[annotate] no series with id %d", id)
@@ -120,7 +125,7 @@ func init() {
 			resp.Labels = data
 		} else {
 			resp.Index = -1
-			resp.Slice = series.Next()
+			resp.Slice = series.Next(numFrames)
 		}
 
 		// fetch buffers for the source series

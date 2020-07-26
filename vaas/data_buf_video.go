@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 	"sync"
 )
 
@@ -623,6 +624,9 @@ func (rd *VideoBufferReader) ReadMP4(w io.Writer) error {
 		if rd.resample != 0 && rd.resample > 1 {
 			needTranscode = true
 		}
+		if !rd.slice.Equals(rd.item.Slice) {
+			needTranscode = true
+		}
 		if !needTranscode {
 			file, err := os.Open(rd.item.Fname(0))
 			if err != nil {
@@ -641,17 +645,11 @@ func (rd *VideoBufferReader) ReadMP4(w io.Writer) error {
 			"ffmpeg",
 			"-ss", ffmpegTime(rd.slice.Start - rd.item.Slice.Start),
 			"-i", rd.item.Fname(0),
-			"-to", ffmpegTime(rd.slice.Length()),
+			"-vframes", strconv.Itoa(rd.slice.Length()),
 			"-vf", fmt.Sprintf("scale=%dx%d,fps=%d/%d", dims[0], dims[1], FPS, sample),
 			"-f", "mp4", "-pix_fmt", "yuv420p", "-movflags", "faststart+frag_keyframe+empty_moov",
 			"-",
 		)
-
-		go func() {
-			stdin := cmd.Stdin()
-			rd.buf.writeBuffer(stdin)
-			stdin.Close()
-		}()
 		io.Copy(w, cmd.Stdout())
 		return cmd.Wait()
 	}

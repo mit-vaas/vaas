@@ -50,6 +50,7 @@ func init() {
 		data_type TEXT,
 		-- set if type is 'labels' or 'outputs'
 		src_vector TEXT,
+		annotate_metadata TEXT,
 		-- set if type is 'outputs'
 		node_id INTEGER REFERENCES nodes(id),
 		-- set if type is 'data' during ingestion

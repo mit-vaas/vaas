@@ -3,13 +3,27 @@ Vue.component('annotate-default-class', {
 		return {
 			response: null,
 			imMeta: null,
+
+			// from AnnotateMetadata
+			settings: null,
 		};
 	},
 	props: ['series'],
 	created: function() {
-		$.get('/series/labels?id='+this.series.ID+'&index=-1', this.updateImage, 'json');
+		var settings = JSON.parse(this.series.AnnotateMetadata);
+		if(!settings.NumFrames) {
+			settings.NumFrames = 1;
+		}
+		if(!settings.Range) {
+			settings.Range = 2;
+		}
+		this.settings = settings;
+		$.get(this.getLabelsURL(-1), this.updateImage, 'json');
 	},
 	methods: {
+		getLabelsURL: function(index) {
+			return '/series/labels?id='+this.series.ID+'&nframes='+this.settings.NumFrames+'&index='+index;
+		},
 		updateImage: function(response) {
 			this.response = response;
 			this.imMeta = null;
@@ -19,18 +33,18 @@ Vue.component('annotate-default-class', {
 		},
 		prev: function() {
 			if(this.response.Index < 0) {
-				$.get('/series/labels?id='+this.series.ID+'&index=0', this.updateImage, 'json');
+				$.get(this.getLabelsURL(0), this.updateImage, 'json');
 			} else {
 				var i = this.response.Index - 1;
-				$.get('/series/labels?id='+this.series.ID+'&index='+i, this.updateImage, 'json');
+				$.get(this.getLabelsURL(i), this.updateImage, 'json');
 			}
 		},
 		next: function() {
 			if(this.response.Index < 0) {
-				$.get('/series/labels?id='+this.series.ID+'&index=-1', this.updateImage, 'json');
+				$.get(this.getLabelsURL(-1), this.updateImage, 'json');
 			} else {
 				var i = this.response.Index+1;
-				$.get('/series/labels?id='+this.series.ID+'&index='+i, this.updateImage, 'json');
+				$.get(this.getLabelsURL(i), this.updateImage, 'json');
 			}
 		},
 		label: function(cls) {
@@ -47,17 +61,35 @@ Vue.component('annotate-default-class', {
 				processData: false,
 				success: function() {
 					if(this.response.Index < 0) {
-						$.get('/series/labels?id='+this.series.ID+'&index=-1', this.updateImage, 'json');
+						$.get(this.getLabelsURL(-1), this.updateImage, 'json');
 					} else {
 						var i = this.response.Index+1;
-						$.get('/series/labels?id='+this.series.ID+'&index='+i, this.updateImage, 'json');
+						$.get(this.getLabelsURL(i), this.updateImage, 'json');
 					}
 				}.bind(this),
 			});
 		},
+		saveSettings: function() {
+			var params = {
+				series_id: this.series.ID,
+				annotate_metadata: JSON.stringify(this.settings),
+			};
+			$.post('/series/update', params);
+		},
 	},
 	template: `
 <div>
+	<div>
+		<form class="form-inline" v-on:submit.prevent="saveSettings">
+			<label class="my-1 mx-1"># Frames</label>
+			<input type="text" class="form-control my-1 mx-1" v-model="settings.NumFrames" />
+
+			<label class="my-1 mx-1">Range</label>
+			<input type="text" class="form-control my-1 mx-1" v-model="settings.Range" />
+
+			<button type="submit" class="btn btn-primary my-1 mx-1">Save Settings</button>
+		</form>
+	</div>
 	<div>
 		<template v-if="imMeta != null">
 			<div :style="{
@@ -65,7 +97,14 @@ Vue.component('annotate-default-class', {
 					height: imMeta.Height + 'px',
 				}"
 				>
-				<img :src="response.URLs[0] + '&type=jpeg'" />
+				<template v-if="settings.NumFrames == 1">
+					<img :src="response.URLs[0] + '&type=jpeg'" />
+				</template>
+				<template v-else>
+					<video controls>
+						<source :src="response.URLs[0] + '&type=mp4'" type="video/mp4"></source>
+					</video>
+				</template>
 			</div>
 		</template>
 	</div>

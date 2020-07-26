@@ -27,6 +27,7 @@ type Series struct {
 
 	// for labels/outputs
 	SrcVector []Series
+	AnnotateMetadata string
 	// for outputs
 	Node *Node
 	// for data, during ingestion

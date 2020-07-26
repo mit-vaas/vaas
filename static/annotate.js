@@ -7,6 +7,11 @@ Vue.component('annotate-tab', {
 			allSeries: [],
 			newSetFields: {},
 
+			availableTools: [
+				'default-class',
+				'default-detection',
+			],
+
 			annotateTool: '',
 			visualizeTool: '',
 			selectedSeries: null,
@@ -33,6 +38,7 @@ Vue.component('annotate-tab', {
 					name: '',
 					type: 'detection',
 					series: '',
+					tool: '',
 				};
 				$('#a-new-series-modal').modal('show');
 			}.bind(this));
@@ -42,11 +48,13 @@ Vue.component('annotate-tab', {
 				name: this.newSetFields.name,
 				type: this.newSetFields.type,
 				src: this.newSetFields.series,
+				metadata: JSON.stringify({'Tool': this.newSetFields.tool}),
 			};
 			$.post('/labelseries', params, function(series) {
 				$('#a-new-series-modal').modal('hide');
 				this.selectedSeries = series;
-				this.annotateTool = 'annotate-default-' + series.DataType;
+				var metadata = JSON.parse(series.AnnotateMetadata);
+				this.annotateTool = 'annotate-' + metadata.Tool;
 				this.mode = 'annotate';
 			}.bind(this));
 		},
@@ -140,6 +148,14 @@ Vue.component('annotate-tab', {
 								<div class="col-sm-10">
 									<select v-model="newSetFields.series" class="form-control">
 										<option v-for="series in allSeries" :value="series.ID">{{ series.Name }}</option>
+									</select>
+								</div>
+							</div>
+							<div class="form-group row">
+								<label class="col-sm-2 col-form-label">Annotation Tool</label>
+								<div class="col-sm-10">
+									<select v-model="newSetFields.tool" class="form-control">
+										<option v-for="tool in availableTools" :key="tool" :value="tool">{{ tool }}</option>
 									</select>
 								</div>
 							</div>
