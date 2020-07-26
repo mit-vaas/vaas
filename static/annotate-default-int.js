@@ -1,4 +1,4 @@
-Vue.component('annotate-default-class', {
+Vue.component('annotate-default-int', {
 	data: function() {
 		return {
 			response: null,
@@ -6,6 +6,8 @@ Vue.component('annotate-default-class', {
 
 			// from AnnotateMetadata
 			settings: null,
+
+			inputVal: '',
 		};
 	},
 	props: ['series'],
@@ -27,6 +29,10 @@ Vue.component('annotate-default-class', {
 		updateImage: function(response) {
 			this.response = response;
 			this.imMeta = null;
+			this.inputVal = '';
+			if(this.response.Labels) {
+				this.inputVal = this.response.Labels[0].toString();
+			}
 			$.get(this.response.URLs[0]+'&type=meta', (meta) => {
 				this.imMeta = meta;
 			});
@@ -47,16 +53,16 @@ Vue.component('annotate-default-class', {
 				$.get(this.getLabelsURL(i), this.updateImage, 'json');
 			}
 		},
-		label: function(cls) {
+		label: function(val) {
 			var params = {
 				id: this.series.ID,
 				index: this.response.Index,
 				slice: this.response.Slice,
-				labels: [cls],
+				labels: [val],
 			};
 			$.ajax({
 				type: "POST",
-				url: '/series/class-label',
+				url: '/series/int-label',
 				data: JSON.stringify(params),
 				processData: false,
 				success: function() {
@@ -68,6 +74,9 @@ Vue.component('annotate-default-class', {
 					}
 				}.bind(this),
 			});
+		},
+		labelInput: function() {
+			this.label(parseInt(this.inputVal));
 		},
 		saveSettings: function() {
 			var params = {
@@ -117,20 +126,26 @@ Vue.component('annotate-default-class', {
 				<span v-if="response.Index < 0">[New]</span>
 				<span v-else>{{ response.Index }}</span>
 				<template v-if="response.Labels">
-					<span v-if="response.Labels[0] == 1">(Positive)</span>
-					<span v-else-if="response.Labels[0] == 0">(Negative)</span>
+					<span>(Value: {{ response.Labels[0] }})</span>
 				</template>
 			</template>
 		</div>
 		<div class="col-auto">
 			<button v-on:click="next" type="button" class="btn btn-primary">Next</button>
 		</div>
-		<div class="col-auto">
-			<button v-on:click="label(1)" type="button" class="btn btn-primary">Positive</button>
-		</div>
-		<div class="col-auto">
-			<button v-on:click="label(0)" type="button" class="btn btn-primary">Negative</button>
-		</div>
+		<template v-if="settings.Range > 0">
+			<div v-for="i in settings.Range">
+				<button v-on:click="label(i)" type="button" class="btn btn-primary">{{ i }}</button>
+			</div>
+		</template>
+		<template v-else>
+			<div class="col-auto">
+				<form class="form-inline" v-on:submit.prevent="labelInput">
+					<input type="text" class="form-control" v-model="inputVal" />
+					<button type="submit" class="btn btn-primary">Label</button>
+				</form>
+			</div>
+		</template>
 	</div>
 </div>
 	`,

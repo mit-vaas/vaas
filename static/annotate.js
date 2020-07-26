@@ -8,7 +8,7 @@ Vue.component('annotate-tab', {
 			newSetFields: {},
 
 			availableTools: [
-				'default-class',
+				'default-int',
 				'default-detection',
 			],
 

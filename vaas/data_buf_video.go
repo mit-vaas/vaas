@@ -646,6 +646,7 @@ func (rd *VideoBufferReader) ReadMP4(w io.Writer) error {
 			"-ss", ffmpegTime(rd.slice.Start - rd.item.Slice.Start),
 			"-i", rd.item.Fname(0),
 			"-vframes", strconv.Itoa(rd.slice.Length()),
+			"-vcodec", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-g", fmt.Sprintf("%v", FPS),
 			"-vf", fmt.Sprintf("scale=%dx%d,fps=%d/%d", dims[0], dims[1], FPS, sample),
 			"-f", "mp4", "-pix_fmt", "yuv420p", "-movflags", "faststart+frag_keyframe+empty_moov",
 			"-",

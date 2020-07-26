@@ -72,7 +72,7 @@ func (m *TunableClassifier) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 	if err != nil {
 		return vaas.GetErrorBuffer(m.node.DataType, fmt.Errorf("tunable-classifier error reading parents: %v", err))
 	}
-	buf := vaas.NewSimpleBuffer(vaas.ClassType)
+	buf := vaas.NewSimpleBuffer(vaas.IntType)
 
 	go func() {
 		buf.SetMeta(parents[0].Freq())
@@ -113,7 +113,7 @@ func (m *TunableClassifier) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 						bestClass = i
 					}
 				}
-				buf.Write(vaas.ClassData{bestClass})
+				buf.Write(vaas.IntData{bestClass})
 				return nil
 			},
 		)

@@ -9,7 +9,7 @@ import (
 )
 
 func NewLabelSeries(name string, src []*DBSeries, dataType vaas.DataType, metadata string) (*DBSeries, error) {
-	if dataType != vaas.DetectionType && dataType != vaas.TrackType && dataType != vaas.ClassType && dataType != vaas.VideoType {
+	if dataType != vaas.DetectionType && dataType != vaas.TrackType && dataType != vaas.IntType && dataType != vaas.VideoType {
 		return nil, fmt.Errorf("invalid data type %s", dataType)
 	}
 
@@ -48,7 +48,7 @@ type DetectionLabelRequest struct {
 	Labels [][]vaas.Detection `json:"labels"`
 }
 
-type ClassLabelRequest struct {
+type IntLabelRequest struct {
 	ID int `json:"id"`
 	Index int `json:"index"`
 	Slice vaas.Slice `json:"slice"`
@@ -177,8 +177,8 @@ func init() {
 		item.UpdateData(vaas.DetectionData(request.Labels))
 	})
 
-	http.HandleFunc("/series/class-label", func(w http.ResponseWriter, r *http.Request) {
-		var request ClassLabelRequest
+	http.HandleFunc("/series/int-label", func(w http.ResponseWriter, r *http.Request) {
+		var request IntLabelRequest
 		if err := vaas.ParseJsonRequest(w, r, &request); err != nil {
 			return
 		}
@@ -190,10 +190,13 @@ func init() {
 			return
 		}
 
+		data := vaas.Data(vaas.IntData(request.Labels))
+
 		if request.Index == -1 {
 			segment := GetSegment(request.Slice.Segment.ID)
 			slice := vaas.Slice{segment.Segment, request.Slice.Start, request.Slice.End}
-			series.WriteItem(slice, vaas.ClassData(request.Labels), 1)
+			data = data.EnsureLength(slice.Length())
+			series.WriteItem(slice, data, 1)
 			log.Printf("[annotate] add new label item to series %d", series.ID)
 			w.WriteHeader(200)
 			return
@@ -201,12 +204,13 @@ func init() {
 
 		item := series.Get(request.Index)
 		if item == nil {
-			log.Printf("[annotate] class-label: no item at index %d", request.Index)
+			log.Printf("[annotate] int-label: no item at index %d", request.Index)
 			http.Error(w, "no such item", 400)
 			return
 		}
 		log.Printf("[annotate] update item for %v in series %d", item.Slice, series.ID)
-		item.UpdateData(vaas.ClassData(request.Labels))
+		data = data.EnsureLength(item.Slice.Length())
+		item.UpdateData(data)
 	})
 
 	http.HandleFunc("/labelsets/visualize", func(w http.ResponseWriter, r *http.Request) {

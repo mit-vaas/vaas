@@ -74,8 +74,8 @@ func DetectionF1(iouThreshold float64) MetricFunc {
 
 func ClassAccuracy() MetricFunc {
 	return AvgMetricPerFrame(func(a vaas.Data, b vaas.Data) float64 {
-		acls := a.(vaas.ClassData)[0]
-		bcls := b.(vaas.ClassData)[0]
+		acls := a.(vaas.IntData)[0]
+		bcls := b.(vaas.IntData)[0]
 		if acls == bcls {
 			return 1.0
 		} else {

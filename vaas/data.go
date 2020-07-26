@@ -10,7 +10,7 @@ type DataType string
 const (
 	DetectionType DataType = "detection"
 	TrackType = "track"
-	ClassType = "class"
+	IntType = "int"
 	VideoType = "video"
 	ImListType = "imlist"
 	TextType = "text"

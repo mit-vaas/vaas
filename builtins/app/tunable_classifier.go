@@ -62,7 +62,7 @@ func init() {
 				w.WriteHeader(400)
 				return
 			}
-			for _, cls := range data.(vaas.ClassData) {
+			for _, cls := range data.(vaas.IntData) {
 				if numClasses <= cls {
 					numClasses = cls+1
 				}
