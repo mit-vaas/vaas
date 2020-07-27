@@ -131,6 +131,12 @@ func main() {
 			return buf
 		}()
 
+
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.WriteHeader(200)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
 		err := buf.(vaas.DataBufferIOWriter).ToWriter(w)
 		if err != nil {
 			log.Printf("[node %s %v] error writing buffer: %v", node.Name, context.Slice, err)
