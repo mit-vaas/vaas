@@ -20,6 +20,24 @@ import (
 type Yolov3Config struct {
 	CanvasSize [2]int
 	InputSize [2]int
+	ConfigPath string
+	ModelPath string
+}
+
+func (cfg Yolov3Config) GetConfigPath() string {
+	if cfg.ConfigPath == "" {
+		return "darknet/cfg/yolov3.cfg"
+	} else {
+		return cfg.ConfigPath
+	}
+}
+
+func (cfg Yolov3Config) GetModelPath() string {
+	if cfg.ModelPath == "" {
+		return "yolov3.weights"
+	} else {
+		return cfg.ModelPath
+	}
 }
 
 type Yolov3 struct {
@@ -49,7 +67,7 @@ func NewYolov3(node vaas.Node) vaas.Executor {
 
 func (m *Yolov3) start() {
 	// prepare configuration with this width/height
-	bytes, err := ioutil.ReadFile("darknet/cfg/yolov3.cfg")
+	bytes, err := ioutil.ReadFile(m.cfg.GetConfigPath())
 	if err != nil {
 		panic(err)
 	}
@@ -73,7 +91,7 @@ func (m *Yolov3) start() {
 		vaas.CommandOptions{F: func(cmd *exec.Cmd) {
 			cmd.Dir = "darknet/"
 		}},
-		"./darknet", "detect", m.cfgFname, "yolov3.weights", "-thresh", "0.1",
+		"./darknet", "detect", m.cfgFname, m.cfg.GetModelPath(), "-thresh", "0.1",
 	)
 	m.stdin = m.cmd.Stdin()
 	m.rd = bufio.NewReader(m.cmd.Stdout())

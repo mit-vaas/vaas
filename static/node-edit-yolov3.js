@@ -3,6 +3,8 @@ Vue.component('node-edit-yolov3', {
 		return {
 			canvasSize: ['0', '0'],
 			inputSize: ['0', '0'],
+			configPath: '',
+			modelPath: '',
 		};
 	},
 	props: ['initNode'],
@@ -11,6 +13,8 @@ Vue.component('node-edit-yolov3', {
 			var s = JSON.parse(this.initNode.Code);
 			this.canvasSize = s.CanvasSize;
 			this.inputSize = s.InputSize;
+			this.configPath = s.ConfigPath;
+			this.modelPath = s.ModelPath;
 		} catch(e) {}
 	},
 	methods: {
@@ -18,6 +22,8 @@ Vue.component('node-edit-yolov3', {
 			var code = JSON.stringify({
 				CanvasSize: [parseInt(this.canvasSize[0]), parseInt(this.canvasSize[1])],
 				InputSize: [parseInt(this.inputSize[0]), parseInt(this.inputSize[1])],
+				ConfigPath: this.configPath,
+				ModelPath: this.modelPath,
 			});
 			$.post('/queries/node?id='+this.initNode.ID, {
 				code: code,
@@ -56,6 +62,18 @@ Vue.component('node-edit-yolov3', {
 				Rescale the input to this size before applying YOLOv3.
 				Does not affect the output coordinate system.
 			</small>
+		</div>
+	</div>
+	<div class="form-group row">
+		<label class="col-sm-5 col-form-label">Config Path</label>
+		<div class="col-sm-7">
+			<input v-model="configPath" type="text" class="form-control">
+		</div>
+	</div>
+	<div class="form-group row">
+		<label class="col-sm-5 col-form-label">Model Path</label>
+		<div class="col-sm-7">
+			<input v-model="modelPath" type="text" class="form-control">
 		</div>
 	</div>
 	<button v-on:click="save" type="button" class="btn btn-primary">Save</button>
