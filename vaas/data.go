@@ -11,6 +11,7 @@ const (
 	DetectionType DataType = "detection"
 	TrackType = "track"
 	IntType = "int"
+	FloatType = "float"
 	VideoType = "video"
 	ImListType = "imlist"
 	TextType = "text"
@@ -60,6 +61,8 @@ type DataReader interface {
 	// should be (N+Freq-1)/Freq (not N/freq because e.g. N=15 Freq=16 should still
 	// produce one partial output).
 	Freq() int
+
+	Wait() error
 
 	Close()
 }

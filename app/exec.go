@@ -152,6 +152,7 @@ type ExecStream struct {
 	callback func(vaas.Slice, [][]vaas.DataReader, error)
 	seenSegments map[string]bool
 	mu sync.Mutex
+	cond *sync.Cond
 
 	running bool
 	closed bool
@@ -164,7 +165,7 @@ type ExecStream struct {
 }
 
 func NewExecStream(query *DBQuery, vector []*DBSeries, sampler func() *vaas.Slice, perIter int, opts vaas.ExecOptions, callback func(vaas.Slice, [][]vaas.DataReader, error)) *ExecStream {
-	return &ExecStream{
+	stream := &ExecStream{
 		query: query,
 		vector: vector,
 		sampler: sampler,
@@ -173,6 +174,8 @@ func NewExecStream(query *DBQuery, vector []*DBSeries, sampler func() *vaas.Slic
 		opts: opts,
 		callback: callback,
 	}
+	stream.cond = sync.NewCond(&stream.mu)
+	return stream
 }
 
 func (ctx *ExecStream) Get(n int) {
@@ -226,6 +229,7 @@ func (ctx *ExecStream) Get(n int) {
 			ctx.mu.Lock()
 		}
 		ctx.running = false
+		ctx.cond.Broadcast()
 		ctx.mu.Unlock()
 	}()
 }
@@ -233,6 +237,14 @@ func (ctx *ExecStream) Get(n int) {
 func (ctx *ExecStream) Close() {
 	ctx.mu.Lock()
 	ctx.closed = true
+	ctx.mu.Unlock()
+}
+
+func (ctx *ExecStream) Wait() {
+	ctx.mu.Lock()
+	for ctx.running {
+		ctx.cond.Wait()
+	}
 	ctx.mu.Unlock()
 }
 
@@ -252,4 +264,10 @@ func (ctx *ExecStream) tryOne(slice vaas.Slice, wg *sync.WaitGroup) {
 	}
 	ctx.remaining--
 	ctx.callback(slice, outputs, err)
+
+	for _, l := range outputs {
+		for _, rd := range l {
+			rd.Wait()
+		}
+	}
 }

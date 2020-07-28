@@ -7,10 +7,33 @@ import (
 
 	"fmt"
 	"log"
+	"net/http"
 	"sync"
 )
 
 func init() {
+	http.HandleFunc("/exec/job", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+		r.ParseForm()
+		queryID := vaas.ParseInt(r.PostForm.Get("query_id"))
+		vector := ParseVector(r.PostForm.Get("vector"))
+		query := GetQuery(queryID)
+		if query == nil {
+			w.WriteHeader(404)
+			return
+		}
+		job := NewExecJob(query, vector, 30*vaas.FPS)
+		go func() {
+			err := RunJob(job)
+			if err != nil {
+				log.Printf("[exec-job %v] error: %v", query.Name, err)
+			}
+		}()
+	})
+
 	SetupFuncs = append(SetupFuncs, func(server *socketio.Server) {
 		var mu sync.Mutex
 		streams := make(map[string]*ExecStream)

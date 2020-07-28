@@ -257,4 +257,8 @@ func (rd *SimpleReader) Freq() int {
 	return rd.freq
 }
 
+func (rd *SimpleReader) Wait() error {
+	return rd.buf.Wait()
+}
+
 func (rd *SimpleReader) Close() {}

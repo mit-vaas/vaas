@@ -83,6 +83,13 @@ Vue.component('explore-tab', {
 			this.resultTotal = 0;
 			this.addMore();
 		},
+		execJob: function() {
+			var params = {
+				query_id: this.query,
+				vector: this.selectedVideoID+'',
+			};
+			$.post('/exec/job', params);
+		},
 		onClick: function(i, j) {
 			this.resultRows[i][j].clicked = true;
 		},
@@ -151,7 +158,7 @@ Vue.component('explore-tab', {
 				</div>
 				<div>
 					<button v-on:click="test" type="button" class="btn btn-primary">Run</button>
-					<button v-on:click="test" type="button" class="btn btn-primary">Make Job</button>
+					<button v-on:click="execJob" type="button" class="btn btn-primary">Make Job</button>
 				</div>
 			</div>
 			<div>

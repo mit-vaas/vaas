@@ -39,6 +39,10 @@ func init() {
 			Vector string
 			MetricSeries int
 			MetricNode int
+
+			// specifies a metric in metric.go, like "detection-f1"
+			// or, "direct" indicating that MetricNode outputs the float score directly
+			Metric string
 		}
 
 		// represents (possibly pending) results for one combination of configurations
@@ -92,6 +96,13 @@ func init() {
 			if metricNode == nil {
 				reportErr("no such metric node")
 				return nil
+			}
+
+			// direct means the metricNode outputs the float score
+			// otherwise we use a metric to compare the metricNode output to ground truth data
+			// if direct, the input series needs to include the ground truth data
+			if request.Metric == "direct" {
+				vector = append(vector, metricSeries)
 			}
 
 			query := GetQuery(nodes[0].QueryID)
@@ -213,7 +224,22 @@ func init() {
 					wg.Wait()
 
 					// compute score
-					score := Metrics["class-accuracy"](gtlist, outputs)
+					var score float64
+					if request.Metric == "direct" {
+						// average the FloatData outputs
+						var sum float64 = 0
+						var count int = 0
+						for _, output := range outputs {
+							fdata := output.(vaas.FloatData)
+							for _, v := range fdata {
+								sum += v
+								count++
+							}
+						}
+						score = sum / float64(count)
+					} else {
+						score = Metrics[request.Metric](gtlist, outputs)
+					}
 
 					// add up the stats samples after averaging per node
 					samples := vaas.GetStatsByNode(GetAllocator().GetContainers(vaas.EnvSetID{"query", query.ID}))
