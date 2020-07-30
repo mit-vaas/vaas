@@ -56,7 +56,7 @@ func ReadFfmpeg(fname string, start int, end int, opts ReadVideoOptions) FfmpegR
 		//"-to", ffmpegTime(end-start),
 		"-vframes", fmt.Sprintf("%d", end-start),
 		"-c:v", "rawvideo", "-pix_fmt", "rgb24", "-f", "rawvideo",
-		"-vf", fmt.Sprintf("scale=%dx%d,fps=%d/%d", opts.Scale[0], opts.Scale[1], FPS, opts.Sample),
+		"-vf", fmt.Sprintf("scale=%dx%d,fps=fps=%d/%d:round=up", opts.Scale[0], opts.Scale[1], FPS, opts.Sample),
 		"-",
 	)
 
@@ -143,7 +143,7 @@ func MakeVideo(rd VideoReader, width int, height int) (io.ReadCloser, *Cmd) {
 		//"-r", fmt.Sprintf("%v", FPS),
 		"-pix_fmt", "rgb24", "-i", "-",
 		"-vcodec", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-g", fmt.Sprintf("%v", FPS),
-		"-vf", fmt.Sprintf("fps=%v", FPS),
+		"-vf", fmt.Sprintf("fps=fps=%v", FPS),
 		"-f", "mp4", "-pix_fmt", "yuv420p", "-movflags", "faststart+frag_keyframe+empty_moov",
 		"-",
 	)

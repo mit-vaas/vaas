@@ -75,7 +75,7 @@ func (w *VideoWriter) Write(data Data) {
 			"-s", fmt.Sprintf("%dx%d", width, height),
 			"-pix_fmt", "rgb24", "-i", "-",
 			"-vcodec", "libx264",
-			"-vf", fmt.Sprintf("fps=%v", FPS),
+			"-vf", fmt.Sprintf("fps=fps=%v", FPS),
 			"-f", "mp4", "-movflags", "faststart+frag_keyframe+empty_moov",
 			"-",
 		)
@@ -377,7 +377,7 @@ func (rd *VideoBufferReader) start() {
 			"ffmpeg",
 			"-f", "mp4", "-i", "-",
 			"-c:v", "rawvideo", "-pix_fmt", "rgb24", "-f", "rawvideo",
-			"-vf", fmt.Sprintf("scale=%dx%d,fps=%d/%d", dims[0], dims[1], FPS, sample),
+			"-vf", fmt.Sprintf("scale=%dx%d,fps=fps=%d/%d:round=up", dims[0], dims[1], FPS, sample),
 			"-",
 		)
 
@@ -604,7 +604,7 @@ func (rd *VideoBufferReader) ReadMP4(w io.Writer) error {
 			"ffmpeg",
 			"-f", "mp4", "-i", "-",
 			"-vcodec", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-g", fmt.Sprintf("%v", FPS),
-			"-vf", fmt.Sprintf("scale=%dx%d,fps=%d/%d", dims[0], dims[1], FPS, sample),
+			"-vf", fmt.Sprintf("scale=%dx%d,fps=fps=%d/%d:round=up", dims[0], dims[1], FPS, sample),
 			"-f", "mp4", "-pix_fmt", "yuv420p", "-movflags", "faststart+frag_keyframe+empty_moov",
 			"-",
 		)
@@ -647,7 +647,7 @@ func (rd *VideoBufferReader) ReadMP4(w io.Writer) error {
 			"-i", rd.item.Fname(0),
 			"-vframes", strconv.Itoa(rd.slice.Length()),
 			"-vcodec", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-g", fmt.Sprintf("%v", FPS),
-			"-vf", fmt.Sprintf("scale=%dx%d,fps=%d/%d", dims[0], dims[1], FPS, sample),
+			"-vf", fmt.Sprintf("scale=%dx%d,fps=fps=%d/%d:round=up", dims[0], dims[1], FPS, sample),
 			"-f", "mp4", "-pix_fmt", "yuv420p", "-movflags", "faststart+frag_keyframe+empty_moov",
 			"-",
 		)
