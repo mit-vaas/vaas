@@ -3,9 +3,9 @@ package main
 import (
 	"github.com/mitroadmaps/gomapinfer/common"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -168,6 +168,18 @@ func process(jsonFname string, matchFname string) {
 
 func main() {
 	exportPath := os.Args[1]
+
+	if len(os.Args) >= 3 {
+		skip, err := strconv.Atoi(os.Args[2])
+		if err != nil {
+			panic(err)
+		}
+		for i := range MatchLengths {
+			MatchLengths[i] *= skip
+		}
+		MaxMatchLength *= skip
+	}
+
 	files, err := ioutil.ReadDir(exportPath)
 	if err != nil {
 		panic(err)

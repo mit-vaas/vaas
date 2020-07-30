@@ -24,6 +24,7 @@ func NewSelfSupervisedTracker(node vaas.Node) vaas.Executor {
 		stdin: cmd.Stdin(),
 		stdout: cmd.Stdout(),
 		pending: make(map[int]*pendingSlice),
+		stats: new(vaas.StatsHolder),
 	}
 	e.Init()
 	go e.ReadLoop()

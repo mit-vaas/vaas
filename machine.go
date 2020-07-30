@@ -111,7 +111,7 @@ func main() {
 			panic(err)
 		}
 		uuid := gouuid.New().String()
-		log.Printf("[machine] container %s started", uuid)
+		log.Printf("[machine] container %s started (gpus=%v)", uuid, gpus)
 		mu.Lock()
 		containers[uuid] = Cmd{
 			cmd: cmd,
@@ -146,7 +146,8 @@ func main() {
 			cmd.stdin.Close()
 			cmd.cmd.Wait()
 			delete(containers, uuid)
-			for gpuIdx := range cmd.gpus {
+			for _, gpuIdx := range cmd.gpus {
+				log.Printf("[machine] ... release GPU %d", gpuIdx)
 				gpusInUse[gpuIdx] = false
 			}
 		}
