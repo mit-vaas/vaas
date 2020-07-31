@@ -90,7 +90,7 @@ def all_decorate(f):
 				else:
 					all_inputs[i] = numpy.concatenate(l, axis=0)
 			outputs = f(*all_inputs)
-			output_packet(job_desc['slice_idx'], (0, job_desc['range'][1]), outputs)
+			output_packet(job_desc['slice_idx'], (0, len(all_inputs[0])), outputs)
 	return wrap
 
 stdin = None

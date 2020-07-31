@@ -210,10 +210,11 @@ Vue.component('new-node-modal', {
 									<option value=""></option>
 									<option value="detection">Detection</option>
 									<option value="track">Track</option>
-									<option value="class">Class</option>
+									<option value="int">Integer</option>
 									<option value="video">Video</option>
 									<option value="imlist">Image List</option>
 									<option value="text">Text</option>
+									<option value="float">Float</option>
 								</select>
 							</template>
 						</div>

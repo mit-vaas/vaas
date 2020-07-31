@@ -17,8 +17,13 @@ func GetParents(ctx vaas.ExecContext, node vaas.Node) ([]vaas.DataReader, error)
 			}
 			parents[i] = rd
 		} else if parent.Type == vaas.SeriesParent {
-			buf := &vaas.VideoFileBuffer{ctx.Inputs[parent.SeriesIdx], ctx.Slice}
-			parents[i] = buf.Reader()
+			item := ctx.Inputs[parent.SeriesIdx]
+			if item.Format == "json" {
+				parents[i] = item.Load(ctx.Slice).Reader()
+			} else {
+				buf := &vaas.VideoFileBuffer{item, ctx.Slice}
+				parents[i] = buf.Reader()
+			}
 		}
 	}
 	return parents, nil

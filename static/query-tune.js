@@ -10,6 +10,7 @@ Vue.component('query-tune', {
 			inputSeries: '',
 			metricSeries: '',
 			metricNode: '',
+			metric: '',
 
 			tuneResults: null,
 		};
@@ -53,6 +54,7 @@ Vue.component('query-tune', {
 				Vector: this.inputSeries+'',
 				MetricSeries: parseInt(this.metricSeries),
 				MetricNode: parseInt(this.metricNode),
+				Metric: this.metric,
 			};
 			this.socket.emit('tune', request, (results) => {
 				this.tuneResults = results;
@@ -100,6 +102,12 @@ Vue.component('query-tune', {
 				<select v-model="metricNode" class="form-control">
 					<option v-for="node in nodes" :key="node.ID" :value="node.ID">{{ node.Name }}</option>
 				</select>
+			</div>
+		</div>
+		<div class="form-group row">
+			<label class="col-sm-5 col-form-label">Metric</label>
+			<div class="col-sm-7">
+				<input class="form-control" type="text" v-model="metric" />
 			</div>
 		</div>
 		<div class="form-group row">

@@ -138,7 +138,7 @@ Vue.component('annotate-tab', {
 									<select v-model="newSetFields.type" class="form-control">
 										<option value="detection">Detection</option>
 										<option value="track">Track</option>
-										<option value="class">Class</option>
+										<option value="int">Integer</option>
 										<option value="video">Video</option>
 									</select>
 								</div>
