@@ -1,24 +1,31 @@
 Vue.component('timeline-manage', {
 	data: function() {
 		return {
+			vectors: [],
+			allSeries: [],
 			dataSeries: [],
 			labelSeries: [],
 			outputSeries: [],
 			addDataSeriesForm: {},
+			addVectorForm: {},
 
 			selectedSeries: null,
 		};
 	},
 	props: ['timeline'],
 	created: function() {
-		this.fetchSeries();
+		this.fetch();
 	},
 	methods: {
-		fetchSeries: function() {
+		fetch: function() {
 			$.get('/timeline/series?timeline_id='+this.timeline.ID, function(data) {
 				this.dataSeries = data.DataSeries;
 				this.labelSeries = data.LabelSeries;
 				this.outputSeries = data.OutputSeries;
+				this.allSeries = this.dataSeries.concat(this.labelSeries).concat(this.outputSeries);
+			}.bind(this));
+			$.get('/timeline/vectors?timeline_id='+this.timeline.ID, function(data) {
+				this.vectors = data;
 			}.bind(this));
 		},
 		showAddTimelineModal: function() {
@@ -36,16 +43,67 @@ Vue.component('timeline-manage', {
 			};
 			$.post('/series', params, () => {
 				$(this.$refs.addDataSeriesModal).modal('hide');
-				this.fetchSeries();
+				this.fetch();
 			});
 		},
 		deleteSeries: function(series_id) {
 			$.post('/series/delete', {'series_id': series_id}, () => {
-				this.fetchSeries();
+				this.fetch();
 			});
 		},
 		selectSeries: function(series) {
 			this.selectedSeries = series;
+		},
+		deleteVector: function(vector_id) {
+			$.post('/vectors/delete', {'vector_id': vector_id}, () => {
+				this.fetch();
+			});
+		},
+
+		// add vector form
+		showAddVectorModal: function() {
+			this.addVectorForm = {
+				series: [],
+				selectSeries: '',
+			};
+			$(this.$refs.addVectorModal).modal('show');
+		},
+		vectorFormAddSeries: function() {
+			var series = null;
+			this.allSeries.forEach((el) => {
+				if(el.ID != parseInt(this.addVectorForm.selectSeries)) {
+					return;
+				}
+				series = el;
+			});
+			if(!series) {
+				return;
+			}
+			this.addVectorForm.series.push(series);
+			this.addVectorForm.selectSeries = '';
+		},
+		addVector: function() {
+			var ids = [];
+			this.addVectorForm.series.forEach((el) => {
+				ids.push(el.ID);
+			});
+			var params = {
+				timeline_id: this.timeline.ID,
+				series_ids: ids.join(','),
+			};
+			$.post('/timeline/vectors', params, () => {
+				$(this.$refs.addVectorModal).modal('hide');
+				this.fetch();
+			});
+		},
+	},
+	filters: {
+		prettyVector: function(vector) {
+			var parts = [];
+			vector.Vector.forEach((series) => {
+				parts.push(series.Name);
+			});
+			return '[' + parts.join(',') + ']';
 		},
 	},
 	template: `
@@ -56,6 +114,61 @@ Vue.component('timeline-manage', {
 			/
 			{{ timeline.Name }}
 		</h2>
+		<h4>Vectors</h4>
+		<p>
+			<button type="button" class="btn btn-primary" v-on:click="showAddVectorModal">Add Vector</button>
+			<div class="modal" tabindex="-1" role="dialog" ref="addVectorModal">
+				<div class="modal-dialog" role="document">
+					<div class="modal-content">
+						<div class="modal-body">
+							<form v-on:submit.prevent="addVector">
+								<table class="table">
+									<tbody>
+										<tr v-for="(series, i) in addVectorForm.series">
+											<td>{{ series.Name }}</td>
+											<td>
+												<button v-on:click="vectorFormRemoveSeries(i)" class="btn btn-danger">Remove</button>
+											</td>
+										</tr>
+										<tr>
+											<td>
+												<select v-model="addVectorForm.selectSeries" class="form-control">
+													<option v-for="series in allSeries" :key="series.ID" :value="series.ID">{{ series.Name }}</option>
+												</select>
+											</td>
+											<td>
+												<button type="button" class="btn btn-primary" v-on:click="vectorFormAddSeries">Add</button>
+											</td>
+										</tr>
+									</tbody>
+								</table>
+								<div class="form-group row">
+									<div class="col-sm-10">
+										<button type="submit" class="btn btn-primary">Add Vector</button>
+									</div>
+								</div>
+							</form>
+						</div>
+					</div>
+				</div>
+			</div>
+		</p>
+		<table class="table">
+			<thead>
+				<tr>
+					<th>Name</th>
+					<th></th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr v-for="vector in vectors">
+					<td>{{ vector | prettyVector }}</td>
+					<td>
+						<button v-on:click="deleteVector(vector.ID)" class="btn btn-danger">Delete</button>
+					</td>
+				</tr>
+			</tbody>
+		</table>
 		<h4>Data Series</h4>
 		<p>
 			<button type="button" class="btn btn-primary" v-on:click="showAddTimelineModal">Add Data Series</button>

@@ -21,7 +21,14 @@ type DBSeries struct {
 	SrcVectorStr *string
 	NodeID *int
 }
-type DBItem struct{
+type DBVector struct {
+	ID int
+	VectorStr string
+
+	Timeline vaas.Timeline
+	Vector Vector
+}
+type DBItem struct {
 	vaas.Item
 	Percent int
 }
@@ -142,6 +149,32 @@ func VectorFromList(l []vaas.Series) Vector {
 		vector = append(vector, GetSeries(series.ID))
 	}
 	return vector
+}
+
+const VectorQuery = "SELECT id, timeline_id, vector FROM vectors"
+
+func vectorListHelper(rows *Rows) []DBVector {
+	var vectors []DBVector
+	for rows.Next() {
+		var v DBVector
+		rows.Scan(&v.ID, &v.Timeline.ID, &v.VectorStr)
+		vectors = append(vectors, v)
+	}
+	for i := range vectors {
+		vectors[i].Timeline = GetTimeline(vectors[i].Timeline.ID).Timeline
+		vectors[i].Vector = ParseVector(vectors[i].VectorStr)
+	}
+	return vectors
+}
+
+func ListVectors() []DBVector {
+	rows := db.Query(VectorQuery)
+	return vectorListHelper(rows)
+}
+
+func (timeline DBTimeline) ListVectors() []DBVector {
+	rows := db.Query(VectorQuery + " WHERE timeline_id = ?", timeline.ID)
+	return vectorListHelper(rows)
 }
 
 const SegmentQuery = "SELECT id, timeline_id, name, frames, fps FROM segments"
@@ -319,12 +352,17 @@ func (series *DBSeries) RequireData(slice vaas.Slice) (vaas.DataBuffer, error) {
 		return nil, fmt.Errorf("series %s has no item for slice %v", series.Name, slice)
 	}
 	query := GetQuery(series.Node.QueryID)
+	query.Outputs = [][]vaas.Parent{{vaas.Parent{
+		Type: vaas.NodeParent,
+		NodeID: series.Node.ID,
+	}}}
 	vector := VectorFromList(series.SrcVector)
-	context := query.Allocate(vector, slice)
-	context.Opts = vaas.ExecOptions{PersistVideo: true}
-	buf, err := context.GetBuffer(*series.Node)
-	context.Release()
-	return buf, err
+	opts := vaas.ExecOptions{PersistVideo: true}
+	bufs, err := query.RunBuffer(vector, slice, opts)
+	if err != nil {
+		return nil, err
+	}
+	return bufs[0][0], nil
 }
 
 func (series DBSeries) Get(index int) *DBItem {
@@ -448,6 +486,27 @@ func init() {
 		response.LabelSeries = getSeriesByType("labels")
 		response.OutputSeries = getSeriesByType("outputs")
 		vaas.JsonResponse(w, response)
+	})
+
+	http.HandleFunc("/timeline/vectors", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		timelineID := vaas.ParseInt(r.Form.Get("timeline_id"))
+		timeline := GetTimeline(timelineID)
+		if timeline == nil {
+			http.Error(w, "no such timeline", 404)
+			return
+		}
+
+		if r.Method == "GET" {
+			vaas.JsonResponse(w, timeline.ListVectors())
+			return
+		} else if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+
+		vectorStr := r.PostForm.Get("series_ids")
+		db.Exec("INSERT INTO vectors (timeline_id, vector) VALUES (?, ?)", timeline.ID, vectorStr)
 	})
 
 	http.HandleFunc("/series/items", func(w http.ResponseWriter, r *http.Request) {
@@ -588,5 +647,15 @@ func init() {
 		vn.EnsureSeries()
 		item := DBSeries{Series: *vn.Series}.AddItem(request.Slice, request.Format, request.Dims, request.Freq)
 		vaas.JsonResponse(w, item)
+	})
+
+	http.HandleFunc("/vectors", func(w http.ResponseWriter, r *http.Request) {
+		vaas.JsonResponse(w, ListVectors())
+	})
+
+	http.HandleFunc("/vectors/delete", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		vectorID := vaas.ParseInt(r.Form.Get("vector_id"))
+		db.Exec("DELETE FROM vectors WHERE id = ?", vectorID)
 	})
 }

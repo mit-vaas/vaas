@@ -54,6 +54,11 @@ func init() {
 		-- set if type is 'outputs'
 		node_id INTEGER REFERENCES nodes(id)
 	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS vectors (
+		id INTEGER PRIMARY KEY ASC,
+		timeline_id INTEGER REFERENCES timelines(id),
+		vector TEXT
+	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS items (
 		id INTEGER PRIMARY KEY ASC,
 		segment_id INTEGER REFERENCES segments(id),
