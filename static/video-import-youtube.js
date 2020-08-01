@@ -1,10 +1,10 @@
 Vue.component('video-import-youtube', {
 	data: function() {
 		return {
-			name: '',
 			url: '',
 		};
 	},
+	props: ['series'],
 	mounted: function() {
 		$('#v-youtube-modal').on('shown.bs.modal', function() {
 			$('#v-youtube-name').focus();
@@ -12,13 +12,12 @@ Vue.component('video-import-youtube', {
 	},
 	methods: {
 		click: function() {
-			this.name = '';
 			this.url = '';
 			$('#v-youtube-modal').modal('show');
 		},
 		submit: function() {
 			var params = {
-				name: this.name,
+				series_id: this.series.ID,
 				url: this.url,
 			};
 			$.post('/import/youtube', params, function() {
@@ -35,12 +34,6 @@ Vue.component('video-import-youtube', {
 			<div class="modal-content">
 				<div class="modal-body">
 					<form v-on:submit.prevent="submit">
-						<div class="form-group row">
-							<label class="col-sm-2 col-form-label">Name</label>
-							<div class="col-sm-10">
-								<input class="form-control" type="text" v-model="name" id="v-youtube-name" />
-							</div>
-						</div>
 						<div class="form-group row">
 							<label class="col-sm-2 col-form-label">URL</label>
 							<div class="col-sm-10">

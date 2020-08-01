@@ -15,6 +15,7 @@ const (
 	VideoType = "video"
 	ImListType = "imlist"
 	TextType = "text"
+	StringType = "string"
 )
 
 type DataImpl struct {

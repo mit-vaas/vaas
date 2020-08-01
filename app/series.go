@@ -21,7 +21,10 @@ type DBSeries struct {
 	SrcVectorStr *string
 	NodeID *int
 }
-type DBItem struct{vaas.Item}
+type DBItem struct{
+	vaas.Item
+	Percent int
+}
 
 const TimelineQuery = "SELECT id, name FROM timelines"
 
@@ -51,13 +54,13 @@ func GetTimeline(id int) *DBTimeline {
 	}
 }
 
-const SeriesQuery = "SELECT id, timeline_id, name, type, data_type, src_vector, annotate_metadata, node_id, percent FROM series"
+const SeriesQuery = "SELECT id, timeline_id, name, type, data_type, src_vector, annotate_metadata, node_id FROM series"
 
 func seriesListHelper(rows *Rows) []*DBSeries {
 	series := []*DBSeries{}
 	for rows.Next() {
 		var s DBSeries
-		rows.Scan(&s.ID, &s.Timeline.ID, &s.Name, &s.Type, &s.DataType, &s.SrcVectorStr, &s.AnnotateMetadata, &s.NodeID, &s.Percent)
+		rows.Scan(&s.ID, &s.Timeline.ID, &s.Name, &s.Type, &s.DataType, &s.SrcVectorStr, &s.AnnotateMetadata, &s.NodeID)
 		series = append(series, &s)
 	}
 	for _, s := range series {
@@ -181,8 +184,9 @@ func (timeline DBTimeline) AddSegment(name string, frames int, fps int) *DBSegme
 	return GetSegment(res.LastInsertId())
 }
 
-func (timeline DBTimeline) Uniform(unit int) vaas.Slice {
-	segments := timeline.ListSegments()
+type TimelineSampler []DBSegment
+func (s TimelineSampler) Uniform(unit int) vaas.Slice {
+	segments := s
 
 	// select a segment
 	segment := func() DBSegment {
@@ -225,6 +229,11 @@ func (timeline DBTimeline) Uniform(unit int) vaas.Slice {
 	return vaas.Slice{segment.Segment, start, end}
 }
 
+func (timeline DBTimeline) Uniform(unit int) vaas.Slice {
+	segments := timeline.ListSegments()
+	return TimelineSampler(segments).Uniform(unit)
+}
+
 func (series DBSeries) Clear() {
 	err := os.RemoveAll(fmt.Sprintf("items/%d", series.ID))
 	if err != nil {
@@ -243,13 +252,13 @@ func (series DBSeries) Next(nframes int) vaas.Slice {
 	return DBTimeline{series.Timeline}.Uniform(nframes)
 }
 
-const ItemQuery = "SELECT id, segment_id, series_id, start, end, format, width, height, freq FROM items"
+const ItemQuery = "SELECT id, segment_id, series_id, start, end, format, width, height, freq, percent FROM items"
 
 func itemListHelper(rows *Rows) []DBItem {
 	var items []DBItem
 	for rows.Next() {
 		var item DBItem
-		rows.Scan(&item.ID, &item.Slice.Segment.ID, &item.Series.ID, &item.Slice.Start, &item.Slice.End, &item.Format, &item.Width, &item.Height, &item.Freq)
+		rows.Scan(&item.ID, &item.Slice.Segment.ID, &item.Series.ID, &item.Slice.Start, &item.Slice.End, &item.Format, &item.Width, &item.Height, &item.Freq, &item.Percent)
 		items = append(items, item)
 	}
 	for i := range items {
@@ -356,7 +365,100 @@ func init() {
 	})
 
 	http.HandleFunc("/series", func(w http.ResponseWriter, r *http.Request) {
-		vaas.JsonResponse(w, ListSeries())
+		if r.Method == "GET" {
+			vaas.JsonResponse(w, ListSeries())
+			return
+		} else if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+
+		r.ParseForm()
+		timelineID := vaas.ParseInt(r.PostForm.Get("timeline_id"))
+		name := r.PostForm.Get("name")
+		dataType := r.PostForm.Get("data_type")
+		res := db.Exec("INSERT INTO series (timeline_id, name, type, data_type) VALUES (?, ?, 'data', ?)", timelineID, name, dataType)
+		series := GetSeries(res.LastInsertId())
+		vaas.JsonResponse(w, series)
+	})
+
+	http.HandleFunc("/timelines", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			type JsonTimeline struct {
+				DBTimeline
+				NumDataSeries int
+				NumLabelSeries int
+				NumOutputSeries int
+				CanDelete bool
+			}
+			timelines := []JsonTimeline{}
+			for _, timeline := range ListTimelines() {
+				jt := JsonTimeline{}
+				jt.DBTimeline = timeline
+				db.QueryRow(
+					`SELECT IFNULL(SUM(type == 'data'), 0), IFNULL(SUM(type == 'labels'), 0), IFNULL(SUM(type == 'outputs'), 0)
+					FROM series WHERE timeline_id = ?`,
+					timeline.ID,
+				).Scan(&jt.NumDataSeries, &jt.NumLabelSeries, &jt.NumOutputSeries)
+				jt.CanDelete = jt.NumDataSeries == 0 && jt.NumLabelSeries == 0 && jt.NumOutputSeries == 0
+				timelines = append(timelines, jt)
+			}
+			vaas.JsonResponse(w, timelines)
+			return
+		} else if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+
+		// add new timeline
+		r.ParseForm()
+		name := r.PostForm.Get("name")
+		db.Exec("INSERT INTO timelines (name) VALUES (?)", name)
+	})
+
+	http.HandleFunc("/timelines/delete", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+		r.ParseForm()
+		timelineID := vaas.ParseInt(r.PostForm.Get("timeline_id"))
+		var seriesCount int
+		db.QueryRow("SELECT COUNT(*) FROM series WHERE timeline_id = ?", timelineID).Scan(&seriesCount)
+		if seriesCount > 0 {
+			http.Error(w, "delete all series in the timeline first", 400)
+			return
+		}
+		db.Exec("DELETE FROM timelines WHERE id = ?", timelineID)
+	})
+
+	http.HandleFunc("/timeline/series", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		timelineID := vaas.ParseInt(r.Form.Get("timeline_id"))
+		getSeriesByType := func(t string) []*DBSeries {
+			rows := db.Query(SeriesQuery + " WHERE timeline_id = ? AND type = ?", timelineID, t)
+			return seriesListHelper(rows)
+		}
+		var response struct {
+			DataSeries []*DBSeries
+			LabelSeries []*DBSeries
+			OutputSeries []*DBSeries
+		}
+		response.DataSeries = getSeriesByType("data")
+		response.LabelSeries = getSeriesByType("labels")
+		response.OutputSeries = getSeriesByType("outputs")
+		vaas.JsonResponse(w, response)
+	})
+
+	http.HandleFunc("/series/items", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		seriesID := vaas.ParseInt(r.Form.Get("series_id"))
+		series := GetSeries(seriesID)
+		if series == nil {
+			http.Error(w, "no such series", 404)
+			return
+		}
+		vaas.JsonResponse(w, series.ListItems())
 	})
 
 	http.HandleFunc("/series/delete", func(w http.ResponseWriter, r *http.Request) {
@@ -372,6 +474,21 @@ func init() {
 			return
 		}
 		series.Delete()
+	})
+
+	http.HandleFunc("/series/delete-item", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+		r.ParseForm()
+		itemID := vaas.ParseInt(r.PostForm.Get("item_id"))
+		item := GetItem(itemID)
+		if item == nil {
+			w.WriteHeader(404)
+			return
+		}
+		item.Delete()
 	})
 
 	http.HandleFunc("/series/update", func(w http.ResponseWriter, r *http.Request) {

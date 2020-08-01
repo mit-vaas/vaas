@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
@@ -15,7 +16,7 @@ import (
 	"time"
 )
 
-func progressUpdater(series DBSeries, initialPercent int, targetPercent int) func(frac float64, msg string) {
+func progressUpdater(item *DBItem, initialPercent int, targetPercent int) func(frac float64, msg string) {
 	var lastUpdate time.Time
 	return func(frac float64, msg string) {
 		if time.Now().Sub(lastUpdate) < 2*time.Second {
@@ -28,13 +29,14 @@ func progressUpdater(series DBSeries, initialPercent int, targetPercent int) fun
 		} else if percent > targetPercent {
 			percent = targetPercent-1
 		}
-		log.Printf("[video_import (%s)] update progress %d (%s)", series.Name, percent, msg)
-		db.Exec("UPDATE series SET percent = ? WHERE id = ?", percent, series.ID)
+		log.Printf("[video_import (%s)] update progress %d (%s)", item.Slice.Segment.Name, percent, msg)
+		db.Exec("UPDATE items SET percent = ? WHERE id = ?", percent, item.ID)
 	}
 }
 
-func Transcode(src string, dst string, series DBSeries, initialPercent int) error {
-	log.Printf("[video_import (%s)] transcode [%s] -> [%s]", series.Name, src, dst)
+func Transcode(src string, item *DBItem, initialPercent int) error {
+	dst := item.Fname(0)
+	log.Printf("[video_import (%s)] transcode [%s] -> [%s]", item.Slice.Segment.Name, src, dst)
 
 	opts := vaas.CommandOptions{
 		NoStdin: true,
@@ -53,7 +55,7 @@ func Transcode(src string, dst string, series DBSeries, initialPercent int) erro
 	)
 	stderr := cmd.Stderr()
 
-	updateProgress := progressUpdater(series, initialPercent, 100)
+	updateProgress := progressUpdater(item, initialPercent, 100)
 
 	rd := bufio.NewReader(stderr)
 	var duration int
@@ -103,20 +105,22 @@ func ProbeVideo(item *DBItem) {
 	db.Exec("UPDATE segments SET frames = ? WHERE id = ?", frames, item.Slice.Segment.ID)
 }
 
-func ImportLocal(fname string, symlink bool, transcode bool) func(series DBSeries) error {
-	return func(series DBSeries) error {
+func ImportLocal(fname string, symlink bool, transcode bool) func(series DBSeries, segment *DBSegment) (*DBItem, error) {
+	return func(series DBSeries, segment *DBSegment) (*DBItem, error) {
 		// we will fix the frames/width/height later
-		segment := DBTimeline{Timeline: series.Timeline}.AddSegment(filepath.Base(fname), 1, vaas.FPS)
+		if segment == nil {
+			segment = DBTimeline{Timeline: series.Timeline}.AddSegment(filepath.Base(fname), 1, vaas.FPS)
+		}
 		item := series.AddItem(segment.ToSlice(), "mp4", [2]int{1920, 1080}, 1)
 		if transcode {
-			err := Transcode(fname, item.Fname(0), series, 0)
+			err := Transcode(fname, item, 0)
 			if err != nil {
-				return err
+				return nil, err
 			}
 		} else if symlink {
 			err := os.Symlink(fname, item.Fname(0))
 			if err != nil {
-				return err
+				return nil, err
 			}
 		} else {
 			// copy the file
@@ -137,21 +141,23 @@ func ImportLocal(fname string, symlink bool, transcode bool) func(series DBSerie
 				return nil
 			}()
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 		ProbeVideo(item)
-		return nil
+		return item, nil
 	}
 }
 
-func ImportYoutube(url string) func(series DBSeries) error {
-	return func(series DBSeries) error {
-		segment := DBTimeline{Timeline: series.Timeline}.AddSegment(url, 1, vaas.FPS)
+func ImportYoutube(url string) func(series DBSeries, segment *DBSegment) (*DBItem, error) {
+	return func(series DBSeries, segment *DBSegment) (*DBItem, error) {
+		if segment == nil {
+			segment = DBTimeline{Timeline: series.Timeline}.AddSegment(url, 1, vaas.FPS)
+		}
 		item := series.AddItem(segment.ToSlice(), "mp4", [2]int{1920, 1080}, 1)
 
 		// download the video
-		log.Printf("[video_import (%s)] youtube: download video from %s", series.Name, url)
+		log.Printf("[video_import (%s)] youtube: download video from %s", segment.Name, url)
 		tmpFname := fmt.Sprintf("%s/%d.mp4", os.TempDir(), rand.Int63())
 		defer os.Remove(tmpFname)
 		cmd := vaas.Command(
@@ -161,14 +167,14 @@ func ImportYoutube(url string) func(series DBSeries) error {
 			url,
 		)
 		stdout := cmd.Stdout()
-		updateProgress := progressUpdater(series, 0, 50)
+		updateProgress := progressUpdater(item, 0, 50)
 		rd := bufio.NewReader(stdout)
 		for {
 			line, err := rd.ReadString('\n')
 			if err == io.EOF {
 				break
 			} else if err != nil {
-				return fmt.Errorf("youtube-dl error: %v", err)
+				return nil, fmt.Errorf("youtube-dl error: %v", err)
 			}
 			if !strings.HasPrefix(line, "[download] ") || !strings.Contains(line, "% of") {
 				continue
@@ -181,49 +187,77 @@ func ImportYoutube(url string) func(series DBSeries) error {
 		}
 
 		if err := cmd.Wait(); err != nil {
-			log.Printf("[video_import (%s)] youtube: download failed", series.Name)
-			return err
+			log.Printf("[video_import (%s)] youtube: download failed", segment.Name)
+			return nil, err
 		}
-		log.Printf("[video_import (%s)] youtube: download complete, begin transcode", series.Name)
-		err := Transcode(tmpFname, item.Fname(0), series, 50)
+		log.Printf("[video_import (%s)] youtube: download complete, begin transcode", segment.Name)
+		err := Transcode(tmpFname, item, 50)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		ProbeVideo(item)
-		return nil
+		return item, nil
 	}
 }
 
-func ImportVideo(name string, f func(DBSeries) error) {
-	res := db.Exec("INSERT INTO timelines (name) VALUES (?)", name)
-	timeline := GetTimeline(res.LastInsertId())
-	res = db.Exec("INSERT INTO series (timeline_id, name, type, data_type, percent) VALUES (?, ?, 'data', 'video', 0)", timeline.ID, name)
-	series := GetSeries(res.LastInsertId())
-	os.Mkdir(fmt.Sprintf("items/%d", series.ID), 0755)
-	log.Printf("[video_import (%s)] import id=%d", name, series.ID)
-	err := f(*series)
-	if err != nil {
-		log.Printf("[video_import (%s)] import error: %v", series.Name, err)
-		series.Delete()
-		return
+func ImportVideo(r *http.Request, f func(DBSeries, *DBSegment) (*DBItem, error)) (*DBItem, error) {
+	seriesID := vaas.ParseInt(r.PostForm.Get("series_id"))
+	series := GetSeries(seriesID)
+	if series == nil {
+		return nil, fmt.Errorf("no such series")
 	}
-	db.Exec("UPDATE series SET percent = 100 WHERE id = ?", series.ID)
+	var segment *DBSegment
+	if r.PostForm["segment_id"] != nil && r.PostForm.Get("segment_id") != "" {
+		segmentID := vaas.ParseInt(r.PostForm.Get("segment_id"))
+		segment = GetSegment(segmentID)
+		if segment == nil {
+			return nil, fmt.Errorf("no such segment")
+		}
+	}
+	os.Mkdir(fmt.Sprintf("items/%d", series.ID), 0755)
+	item, err := f(*series, segment)
+	if err != nil {
+		log.Printf("[video_import] import error: %v", err)
+		series.Delete()
+		return nil, err
+	}
+	db.Exec("UPDATE items SET percent = 100 WHERE id = ?", item.ID)
+	return item, nil
 }
 
 func init() {
 	http.HandleFunc("/import/local", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
-		name := r.PostForm.Get("name")
 		path := r.PostForm.Get("path")
 		symlink := r.PostForm.Get("symlink") == "yes"
 		transcode := r.PostForm.Get("transcode") == "yes"
-		go ImportVideo(name, ImportLocal(path, symlink, transcode))
+
+		// if it's a directory, we need to list all the files
+		info, err := os.Stat(path)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("%s does not exist", path), 400)
+			return
+		}
+		if !info.IsDir() {
+			go ImportVideo(r, ImportLocal(path, symlink, transcode))
+			return
+		}
+		files, err := ioutil.ReadDir(path)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error listing files: %v", err), 400)
+			return
+		}
+		go func() {
+			for _, fi := range files {
+				fname := filepath.Join(path, fi.Name())
+				ImportVideo(r, ImportLocal(fname, symlink, transcode))
+			}
+		}()
 	})
 
 	http.HandleFunc("/import/youtube", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
-		name := r.PostForm.Get("name")
 		url := r.PostForm.Get("url")
-		go ImportVideo(name, ImportYoutube(url))
+		go ImportVideo(r, ImportYoutube(url))
 	})
 }

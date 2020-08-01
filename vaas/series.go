@@ -30,8 +30,6 @@ type Series struct {
 	AnnotateMetadata string
 	// for outputs
 	Node *Node
-	// for data, during ingestion
-	Percent int
 }
 
 type Segment struct {

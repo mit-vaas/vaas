@@ -1,12 +1,12 @@
 Vue.component('video-import-local', {
 	data: function() {
 		return {
-			name: '',
 			path: '',
 			optSymlink: false,
 			optTranscode: true,
 		};
 	},
+	props: ['series'],
 	mounted: function() {
 		$('#v-local-modal').on('shown.bs.modal', function() {
 			$('#v-local-name').focus();
@@ -14,13 +14,14 @@ Vue.component('video-import-local', {
 	},
 	methods: {
 		click: function() {
-			this.name = '';
 			this.path = '';
+			this.optSymlink = false;
+			this.optTranscode = true;
 			$('#v-local-modal').modal('show');
 		},
 		submit: function() {
 			var params = {
-				name: this.name,
+				series_id: this.series.ID,
 				path: this.path,
 				symlink: this.optSymlink ? 'yes' : 'no',
 				transcode: this.optTranscode ? 'yes' : 'no',
@@ -39,12 +40,6 @@ Vue.component('video-import-local', {
 			<div class="modal-content">
 				<div class="modal-body">
 					<form v-on:submit.prevent="submit">
-						<div class="form-group row">
-							<label class="col-sm-2 col-form-label">Name</label>
-							<div class="col-sm-10">
-								<input class="form-control" type="text" v-model="name" id="v-local-name" />
-							</div>
-						</div>
 						<div class="form-group row">
 							<label class="col-sm-2 col-form-label">Path</label>
 							<div class="col-sm-10">

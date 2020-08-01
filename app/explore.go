@@ -64,8 +64,10 @@ func init() {
 			vector := ParseVector(request.Vector)
 			var sampler func() *vaas.Slice
 			if request.Mode == "random" {
+				timeline := DBTimeline{Timeline: vector[0].Timeline}
+				timelineSampler := TimelineSampler(timeline.ListSegments())
 				sampler = func() *vaas.Slice {
-					slice := DBTimeline{Timeline: vector[0].Timeline}.Uniform(VisualizeMaxFrames)
+					slice := timelineSampler.Uniform(VisualizeMaxFrames)
 					return &slice
 				}
 			} else if request.Mode == "sequential" {

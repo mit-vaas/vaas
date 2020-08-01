@@ -52,9 +52,7 @@ func init() {
 		src_vector TEXT,
 		annotate_metadata TEXT,
 		-- set if type is 'outputs'
-		node_id INTEGER REFERENCES nodes(id),
-		-- set if type is 'data' during ingestion
-		percent INTEGER NOT NULL DEFAULT 100
+		node_id INTEGER REFERENCES nodes(id)
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS items (
 		id INTEGER PRIMARY KEY ASC,
@@ -68,7 +66,9 @@ func init() {
 		-- set if video
 		width INTEGER NOT NULL DEFAULT 0,
 		height INTEGER NOT NULL DEFAULT 0,
-		freq INTEGER NOT NULL DEFAULT 1
+		freq INTEGER NOT NULL DEFAULT 1,
+		-- used during data import if item is in data series
+		percent INTEGER NOT NULL DEFAULT 100
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS nodes (
 		id INTEGER PRIMARY KEY ASC,

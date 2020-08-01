@@ -11,7 +11,7 @@
 		<div id="app" class="my-tab-container">
 			<ul class="nav nav-tabs" id="myTab" role="tablist">
 				<li class="nav-item">
-					<a class="nav-link active" id="video-tab" data-toggle="tab" href="#video-panel" role="tab" aria-controls="video-panel" aria-selected="true">Video</a>
+					<a class="nav-link active" id="timelines-tab" data-toggle="tab" href="#timelines-panel" role="tab" aria-controls="timelines-panel" aria-selected="true">Timelines</a>
 				</li>
 				<li class="nav-item">
 					<a class="nav-link" id="queries-tab" data-toggle="tab" href="#queries-panel" role="tab" aria-controls="queries-panel" aria-selected="true">Queries</a>
@@ -27,8 +27,8 @@
 				</li>
 			</ul>
 			<div class="tab-content mx-1 my-tab-content" id="content">
-				<div class="tab-pane fade show active" id="video-panel" role="tabpanel" aria-labelledby="video-tab">
-					<video-tab :tab="tab"></video-tab>
+				<div class="tab-pane fade show active" id="timelines-panel" role="tabpanel" aria-labelledby="timelines-tab">
+					<timelines-tab :tab="tab"></timelines-tab>
 				</div>
 				<div class="tab-pane fade" id="queries-panel" role="tabpanel" aria-labelledby="queries-tab">
 					<queries-tab :tab="tab"></queries-tab>
@@ -52,7 +52,9 @@
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/1.4.8/socket.io.min.js" integrity="sha256-iItBu0k/grx4e1B97uNd+Kncoy2fWeXkQ0M0uwSqHhc=" crossorigin="anonymous"></script>
 
 		<script src="colors.js"></script>
-		<script src="video.js"></script>
+		<script src="timelines.js"></script>
+		<script src="timeline-manage.js"></script>
+		<script src="timeline-data-series.js"></script>
 		<script src="video-import-local.js"></script>
 		<script src="video-import-youtube.js"></script>
 		<script src="queries.js"></script>
