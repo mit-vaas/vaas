@@ -17,6 +17,14 @@ function myLoad(target, href, f) {
 	$(target).load(href + '?x=' + Math.floor(Date.now() / 1000), f);
 }
 
+Vue.filter('prettyVector', function (vector) {
+	var parts = [];
+	vector.forEach((series) => {
+		parts.push(series.Name);
+	});
+	return '[' + parts.join(', ') + ']';
+});
+
 var app = new Vue({
 	el: '#app',
 	data: {

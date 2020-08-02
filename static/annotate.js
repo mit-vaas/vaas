@@ -4,7 +4,7 @@ Vue.component('annotate-tab', {
 			mode: 'list',
 			labelSeries: [],
 
-			allSeries: [],
+			vectors: [],
 			newSetFields: {},
 
 			availableTools: [
@@ -32,22 +32,22 @@ Vue.component('annotate-tab', {
 			}.bind(this));
 		},
 		showNewLabelSeriesModal: function() {
-			$.get('/series', function(data) {
-				this.allSeries = data;
+			$.get('/vectors', (data) => {
+				this.vectors = data;
 				this.newSetFields = {
 					name: '',
 					type: 'detection',
-					series: '',
+					vector: '',
 					tool: '',
 				};
 				$('#a-new-series-modal').modal('show');
-			}.bind(this));
+			});
 		},
 		createSeries: function() {
 			var params = {
 				name: this.newSetFields.name,
 				type: this.newSetFields.type,
-				src: this.newSetFields.series,
+				src: this.newSetFields.vector,
 				metadata: JSON.stringify({'Tool': this.newSetFields.tool}),
 			};
 			$.post('/labelseries', params, function(series) {
@@ -67,13 +67,6 @@ Vue.component('annotate-tab', {
 			this.selectedSeries = series;
 			this.visualizeTool = 'annotate-visualize';
 			this.mode = 'visualize';
-		},
-		prettyVector: function(vector) {
-			var parts = [];
-			vector.forEach(function(series) {
-				parts.push(series.Name);
-			});
-			return '[' + parts.join(', ') + ']';
 		},
 		deleteSeries: function(series_id) {
 			$.post('/series/delete', {'series_id': series_id}, function() {
@@ -111,7 +104,7 @@ Vue.component('annotate-tab', {
 			<tbody>
 				<tr v-for="series in labelSeries">
 					<td>{{ series.Name }}</td>
-					<td>{{ prettyVector(series.SrcVector) }}</td>
+					<td>{{ series.SrcVector | prettyVector }}</td>
 					<td>{{ series.DataType }}</td>
 					<td>
 						<button v-on:click="annotateLabels(series)" class="btn btn-primary btn-sm">Annotate</button>
@@ -146,8 +139,8 @@ Vue.component('annotate-tab', {
 							<div class="form-group row">
 								<label class="col-sm-2 col-form-label">Source</label>
 								<div class="col-sm-10">
-									<select v-model="newSetFields.series" class="form-control">
-										<option v-for="series in allSeries" :value="series.ID">{{ series.Name }}</option>
+									<select v-model="newSetFields.vector" class="form-control">
+										<option v-for="vector in vectors" :key="vector.ID" :value="vector.VectorStr">{{ vector.Vector | prettyVector }}</option>
 									</select>
 								</div>
 							</div>

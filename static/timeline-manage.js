@@ -97,15 +97,6 @@ Vue.component('timeline-manage', {
 			});
 		},
 	},
-	filters: {
-		prettyVector: function(vector) {
-			var parts = [];
-			vector.Vector.forEach((series) => {
-				parts.push(series.Name);
-			});
-			return '[' + parts.join(',') + ']';
-		},
-	},
 	template: `
 <div>
 	<template v-if="selectedSeries == null">
@@ -162,7 +153,7 @@ Vue.component('timeline-manage', {
 			</thead>
 			<tbody>
 				<tr v-for="vector in vectors">
-					<td>{{ vector | prettyVector }}</td>
+					<td>{{ vector.Vector | prettyVector }}</td>
 					<td>
 						<button v-on:click="deleteVector(vector.ID)" class="btn btn-danger">Delete</button>
 					</td>

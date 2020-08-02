@@ -2,9 +2,9 @@ Vue.component('explore-tab', {
 	data: function() {
 		return {
 			query: '',
-			selectedVideoID: '',
+			selectedVector: '',
 			queries: [],
-			videos: [],
+			vectors: [],
 
 			mode: 'random',
 			sequentialSegment: '',
@@ -45,22 +45,19 @@ Vue.component('explore-tab', {
 	},
 	methods: {
 		fetch: function() {
-			$.get('/datasets', function(data) {
-				this.videos = data;
-				if(!this.selectedVideoID && this.videos.length > 0) {
-					this.selectedVideoID = this.videos[0].ID;
-				}
-			}.bind(this));
-			$.get('/queries', function(data) {
+			$.get('/queries', (data) => {
 				this.queries = data;
 				if(!this.query && this.queries.length > 0) {
 					this.query = this.queries[0].ID;
 				}
-			}.bind(this));
+			});
+			$.get('/vectors', (data) => {
+				this.vectors = data;
+			});
 		},
 		addMore: function() {
 			var params = {
-				Vector: this.selectedVideoID+'',
+				Vector: this.selectedVector+'',
 				QueryID: this.query,
 				Mode: this.mode,
 				Count: 4,
@@ -86,7 +83,7 @@ Vue.component('explore-tab', {
 		execJob: function() {
 			var params = {
 				query_id: this.query,
-				vector: this.selectedVideoID+'',
+				vector: this.selectedVector+'',
 			};
 			$.post('/exec/job', params);
 		},
@@ -144,15 +141,15 @@ Vue.component('explore-tab', {
 					<label class="col-sm-4">Query</label>
 					<div class="col-sm-8">
 						<select v-model="query" class="form-control">
-							<option v-for="query in queries" :value="query.ID">{{ query.Name }}</option>
+							<option v-for="query in queries" :key="query.ID" :value="query.ID">{{ query.Name }}</option>
 						</select>
 					</div>
 				</div>
 				<div class="form-group row">
-					<label class="col-sm-4">Video</label>
+					<label class="col-sm-4">Vector</label>
 					<div class="col-sm-8">
-						<select v-model="selectedVideoID" class="form-control">
-							<option v-for="video in videos" :value="video.ID">{{ video.Name }}</option>
+						<select v-model="selectedVector" class="form-control">
+							<option v-for="vector in vectors" :key="vector.ID" :value="vector.VectorStr">{{ vector.Vector | prettyVector }}</option>
 						</select>
 					</div>
 				</div>
