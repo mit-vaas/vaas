@@ -89,7 +89,7 @@ func (query *DBQuery) Allocate(vector []*DBSeries, slice vaas.Slice) vaas.ExecCo
 	return context
 }
 
-func (query *DBQuery) Run(vector []*DBSeries, slice vaas.Slice, opts vaas.ExecOptions) ([][]vaas.DataReader, error) {
+func (query *DBQuery) RunBuffer(vector []*DBSeries, slice vaas.Slice, opts vaas.ExecOptions) ([][]vaas.DataBuffer, error) {
 	context := query.Allocate(vector, slice)
 	context.Opts = opts
 	defer context.Release()
@@ -119,23 +119,38 @@ func (query *DBQuery) Run(vector []*DBSeries, slice vaas.Slice, opts vaas.ExecOp
 	// get the outputs for rendering
 	// TODO: think about whether rendering should be its own node
 	// currently caller does the rendering
-	outputs := make([][]vaas.DataReader, len(query.Outputs))
+	outputs := make([][]vaas.DataBuffer, len(query.Outputs))
 	for i := range query.Outputs {
 		for _, output := range query.Outputs[i] {
 			if output.Type == vaas.NodeParent {
-				rd, err := context.GetReader(*query.Nodes[output.NodeID])
+				buf, err := context.GetBuffer(*query.Nodes[output.NodeID])
 				if err != nil {
 					log.Printf("[query-run %s %v] error computing outputs: %v", query.Name, slice, err)
 					return nil, err
 				}
-				outputs[i] = append(outputs[i], rd)
+				outputs[i] = append(outputs[i], buf)
 			} else if output.Type == vaas.SeriesParent {
 				buf := &vaas.VideoFileBuffer{context.Inputs[output.SeriesIdx], slice}
-				outputs[i] = append(outputs[i], buf.Reader())
+				outputs[i] = append(outputs[i], buf)
 			}
 		}
 	}
 	return outputs, nil
+}
+
+func (query *DBQuery) Run(vector []*DBSeries, slice vaas.Slice, opts vaas.ExecOptions) ([][]vaas.DataReader, error) {
+	buffers, err := query.RunBuffer(vector, slice, opts)
+	if err != nil {
+		return nil, err
+	}
+	readers := make([][]vaas.DataReader, len(buffers))
+	for i := range buffers {
+		readers[i] = make([]vaas.DataReader, len(buffers[i]))
+		for j, buf := range buffers[i] {
+			readers[i][j] = buf.Reader()
+		}
+	}
+	return readers, nil
 }
 
 type extraOutput struct {

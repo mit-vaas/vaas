@@ -54,7 +54,6 @@ func (w *WatchManager) reload(query *DBQuery) {
 
 // Background go-routine iteration.
 func (w *WatchManager) iter() {
-
 	w.mu.Lock()
 	defer w.mu.Unlock()
 

@@ -113,8 +113,27 @@ func init() {
 		series.Load()
 
 		// get labels for existing item, or sample a new slice
+		// we may need to sample multiple new slices until RequireData gives no error
 		var resp LabelsResponse
 		item := series.Get(index)
+
+		setURLs := func() error {
+			// fetch buffers for the source series
+			resp.URLs = make([]string, len(series.SrcVector))
+			for i, src := range VectorFromList(series.SrcVector) {
+				buf, err := src.RequireData(resp.Slice)
+				if err != nil {
+					return err
+				}
+				cacheID := cache.Add(&CachedDataBuffer{
+					Buf: buf,
+					Slice: resp.Slice,
+				})
+				resp.URLs[i] = fmt.Sprintf("/cache/view?id=%s", cacheID)
+			}
+			return nil
+		}
+
 		if item != nil {
 			data, err := item.Load(item.Slice).Reader().Read(item.Slice.Length())
 			if err != nil {
@@ -123,23 +142,22 @@ func init() {
 			resp.Index = index
 			resp.Slice = item.Slice
 			resp.Labels = data
-		} else {
-			resp.Index = -1
-			resp.Slice = series.Next(numFrames)
-		}
-
-		// fetch buffers for the source series
-		resp.URLs = make([]string, len(series.SrcVector))
-		for i, src := range VectorFromList(series.SrcVector) {
-			buf, err := src.RequireData(resp.Slice)
-			if err != nil {
+			if err := setURLs; err != nil {
 				panic(err)
 			}
-			cacheID := cache.Add(&CachedDataBuffer{
-				Buf: buf,
-				Slice: resp.Slice,
-			})
-			resp.URLs[i] = fmt.Sprintf("/cache/view?id=%s", cacheID)
+		} else {
+			resp.Index = -1
+			timeline := DBTimeline{Timeline: series.Timeline}
+			timelineSampler := TimelineSampler(timeline.ListSegments())
+			for {
+				resp.Slice = timelineSampler.Uniform(numFrames)
+				err := setURLs()
+				if err != nil {
+					log.Printf("[annotate] warning: error sampling at %v: %v", resp.Slice, err)
+					continue
+				}
+				break
+			}
 		}
 
 		vaas.JsonResponse(w, resp)
