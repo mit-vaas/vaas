@@ -289,6 +289,16 @@ func (query *DBQuery) Load() {
 	}
 }
 
+func (query *DBQuery) Reload() {
+	if query.ID < 0 {
+		// indicates this is a fake virtual query
+		return
+	}
+	q2 := GetQuery(query.ID)
+	*query = *q2
+	query.Load()
+}
+
 func (query *DBQuery) GetOutputVectors(inputs []*DBSeries) [][]*DBSeries {
 	query.Load()
 	outputs := make([][]*DBSeries, len(query.Outputs))

@@ -18,6 +18,10 @@ var Machines = []vaas.Machine{
 // when callers need to use those environments.
 type Allocator interface {
 	// assign a container for each environment needed by the caller
+	// returns nil if the env isn't allocated
+	Pick(vaas.EnvSetID) []vaas.Container
+
+	// allocate new containers (if needed) for the environment
 	Allocate(vaas.EnvSet) []vaas.Container
 
 	// de-allocate an entire environment set

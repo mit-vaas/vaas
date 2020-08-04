@@ -34,7 +34,14 @@ func (query *DBQuery) Allocate(vector []*DBSeries, slice vaas.Slice) vaas.ExecCo
 	query.Load()
 	uuid := gouuid.New().String()
 
-	containers := allocator.Allocate(query.GetEnvSet())
+	env := query.GetEnvSet()
+	containers := allocator.Pick(env.ID)
+	if containers == nil {
+		// make sure query is fresh since we need to allocate
+		query.Reload()
+		containers = allocator.Allocate(env)
+	}
+
 	// figure out which nodes should be on which containers
 	// container.env.refid specifies the node ID for non-default containers
 	// so we assign nodes with their own container, then assign rest to default
@@ -98,8 +105,20 @@ func (query *DBQuery) RunBuffer(vector []*DBSeries, slice vaas.Slice, opts vaas.
 		context.Items = nil
 	}
 
+	var selector *vaas.Node
+	var outputs [][]vaas.Parent
+	if opts.Selector != nil {
+		selector = opts.Selector
+	} else if !opts.NoSelector {
+		selector = query.Selector
+	}
+	if opts.Outputs != nil {
+		outputs = opts.Outputs
+	} else {
+		outputs = query.Outputs
+	}
+
 	// get the selector
-	selector := query.Selector
 	if selector != nil {
 		rd, err := context.GetReader(*selector)
 		if err != nil {
@@ -119,23 +138,23 @@ func (query *DBQuery) RunBuffer(vector []*DBSeries, slice vaas.Slice, opts vaas.
 	// get the outputs for rendering
 	// TODO: think about whether rendering should be its own node
 	// currently caller does the rendering
-	outputs := make([][]vaas.DataBuffer, len(query.Outputs))
-	for i := range query.Outputs {
-		for _, output := range query.Outputs[i] {
+	buffers := make([][]vaas.DataBuffer, len(outputs))
+	for i := range outputs {
+		for _, output := range outputs[i] {
 			if output.Type == vaas.NodeParent {
 				buf, err := context.GetBuffer(*query.Nodes[output.NodeID])
 				if err != nil {
 					log.Printf("[query-run %s %v] error computing outputs: %v", query.Name, slice, err)
 					return nil, err
 				}
-				outputs[i] = append(outputs[i], buf)
+				buffers[i] = append(buffers[i], buf)
 			} else if output.Type == vaas.SeriesParent {
 				buf := &vaas.VideoFileBuffer{context.Inputs[output.SeriesIdx], slice}
-				outputs[i] = append(outputs[i], buf)
+				buffers[i] = append(buffers[i], buf)
 			}
 		}
 	}
-	return outputs, nil
+	return buffers, nil
 }
 
 func (query *DBQuery) Run(vector []*DBSeries, slice vaas.Slice, opts vaas.ExecOptions) ([][]vaas.DataReader, error) {

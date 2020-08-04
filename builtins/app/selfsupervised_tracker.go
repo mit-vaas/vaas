@@ -39,15 +39,17 @@ func init() {
 		}
 		query := app.GetQuery(detectionNode.QueryID)
 		query.Load()
-		query.Outputs = [][]vaas.Parent{{vaas.Parent{
-			Type: vaas.NodeParent,
-			NodeID: detectionNode.ID,
-		}}}
-		query.Selector = nil
+		opts := vaas.ExecOptions{
+			Outputs: [][]vaas.Parent{{vaas.Parent{
+				Type: vaas.NodeParent,
+				NodeID: detectionNode.ID,
+			}}},
+			NoSelector: true,
+		}
 		var mu sync.Mutex
 		var execErr error
 		log.Printf("[selfsupervised-tracker] collecting detection outputs for %d slices", needed)
-		stream := app.NewExecStream(query, vector, sampler, 4, vaas.ExecOptions{}, func(slice vaas.Slice, outputs [][]vaas.DataReader, err error) {
+		stream := app.NewExecStream(query, vector, sampler, 4, opts, func(slice vaas.Slice, outputs [][]vaas.DataReader, err error) {
 			if err == nil || strings.Contains(err.Error(), "sample error") {
 				return
 			}

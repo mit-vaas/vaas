@@ -75,6 +75,15 @@ func (a *SmartAllocator) pick(set vaas.EnvSet) []vaas.Container {
 	return containers
 }
 
+func (a *SmartAllocator) Pick(setID vaas.EnvSetID) []vaas.Container {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.containers[setID] == nil {
+		return nil
+	}
+	return a.pick(a.envSets[setID])
+}
+
 func (a *SmartAllocator) Allocate(set vaas.EnvSet) []vaas.Container {
 	a.mu.Lock()
 	defer a.mu.Unlock()

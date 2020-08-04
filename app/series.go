@@ -352,12 +352,14 @@ func (series *DBSeries) RequireData(slice vaas.Slice) (vaas.DataBuffer, error) {
 		return nil, fmt.Errorf("series %s has no item for slice %v", series.Name, slice)
 	}
 	query := GetQuery(series.Node.QueryID)
-	query.Outputs = [][]vaas.Parent{{vaas.Parent{
-		Type: vaas.NodeParent,
-		NodeID: series.Node.ID,
-	}}}
+	opts := vaas.ExecOptions{
+		PersistVideo: true,
+		Outputs: [][]vaas.Parent{{vaas.Parent{
+			Type: vaas.NodeParent,
+			NodeID: series.Node.ID,
+		}}},
+	}
 	vector := VectorFromList(series.SrcVector)
-	opts := vaas.ExecOptions{PersistVideo: true}
 	bufs, err := query.RunBuffer(vector, slice, opts)
 	if err != nil {
 		return nil, err

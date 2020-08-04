@@ -20,6 +20,13 @@ type ExecOptions struct {
 	// if true, don't use any persisted outputs
 	// handled by the coordinator
 	IgnoreItems bool
+
+	// override selector
+	Selector *Node
+	NoSelector bool
+
+	// override outputs
+	Outputs [][]Parent
 }
 
 type ExecContext struct {

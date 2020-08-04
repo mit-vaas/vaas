@@ -7,6 +7,7 @@ import (
 
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
@@ -153,13 +154,15 @@ func init() {
 			log.Printf("[tune] testing %d configurations", len(tuneUpdates))
 
 			go func() {
+				virtualQueryID := -int(rand.Int63())
 				for _, update := range tuneUpdates {
 					// TODO: we can parallelize this if we have extra resources
 					// to do so, we can do each one in goroutine and set different query IDs
 					// so the allocater itself will handle the de-allocation
-					GetAllocator().Deallocate(vaas.EnvSetID{"query", query.ID})
+					GetAllocator().Deallocate(vaas.EnvSetID{"query", virtualQueryID})
 
 					qcopy := *query
+					qcopy.ID = virtualQueryID
 					qcopy.Outputs = [][]vaas.Parent{{vaas.Parent{
 						Type: vaas.NodeParent,
 						NodeID: metricNode.ID,
