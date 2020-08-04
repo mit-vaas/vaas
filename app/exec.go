@@ -169,7 +169,8 @@ type ExecStream struct {
 	mu sync.Mutex
 	cond *sync.Cond
 
-	running bool
+	// number of background query exec goroutines that are running
+	running int
 	closed bool
 
 	remaining int
@@ -193,60 +194,89 @@ func NewExecStream(query *DBQuery, vector []*DBSeries, sampler func() *vaas.Slic
 	return stream
 }
 
-func (ctx *ExecStream) Get(n int) {
-	// called while we have lock
-	setErr := func(err error) {
-		for i := 0; i < ctx.remaining; i++ {
-			ctx.callback(vaas.Slice{}, nil, err)
-		}
-		ctx.remaining = 0
+// caller must have lock
+func (ctx *ExecStream) setErr(err error) {
+	for i := 0; i < ctx.remaining; i++ {
+		ctx.callback(vaas.Slice{}, nil, err)
 	}
+	ctx.remaining = 0
+}
 
+func (ctx *ExecStream) tryOne(slice vaas.Slice) {
+	outputs, err := ctx.query.Run(ctx.vector, slice, ctx.opts)
+	if err != nil && strings.Contains(err.Error(), "selector reject") {
+		log.Printf("[task context] selector reject on slice %v, we will retry", slice)
+		ctx.callback(slice, outputs, err)
+		return
+	}
 	ctx.mu.Lock()
-	defer ctx.mu.Unlock()
-	if ctx.closed {
-		setErr(fmt.Errorf("task context is closed"))
-		return
-	} else if ctx.running {
-		ctx.remaining += n
+	if ctx.remaining <= 0 {
+		ctx.extras = append(ctx.extras, extraOutput{slice, outputs})
+		ctx.mu.Unlock()
 		return
 	}
-	ctx.remaining = n
-	ctx.running = true
+	ctx.remaining--
+	ctx.callback(slice, outputs, err)
+	ctx.mu.Unlock()
 
-	go func() {
-		ctx.mu.Lock()
-		for !ctx.closed && ctx.remaining > 0 {
+	for _, l := range outputs {
+		for _, rd := range l {
+			rd.Wait()
+		}
+	}
+}
+
+func (ctx *ExecStream) backgroundThread() {
+	ctx.mu.Lock()
+	for !ctx.closed && ctx.remaining > 0 {
+		if len(ctx.extras) > 0 {
 			for len(ctx.extras) > 0 && ctx.remaining > 0 {
 				extra := ctx.extras[len(ctx.extras)-1]
 				ctx.extras = ctx.extras[0:len(ctx.extras)-1]
 				ctx.callback(extra.slice, extra.outputs, nil)
 				ctx.remaining--
 			}
-
-			any := false
-			var wg sync.WaitGroup
-			for i := 0; i < ctx.perIter; i++ {
-				slice := ctx.sampler()
-				if slice != nil {
-					any = true
-					wg.Add(1)
-					go ctx.tryOne(*slice, &wg)
-				}
-			}
-			if !any {
-				setErr(fmt.Errorf("sample error"))
-				break
-			}
-
-			ctx.mu.Unlock()
-			wg.Wait()
-			ctx.mu.Lock()
+			continue
 		}
-		ctx.running = false
-		ctx.cond.Broadcast()
+
+		// reuse perIter to decide how many slices to try before giving up
+		var slice *vaas.Slice
+		for i := 0; i < ctx.perIter; i++ {
+			slice = ctx.sampler()
+			if slice == nil {
+				continue
+			}
+			break
+		}
+		if slice == nil {
+			ctx.setErr(fmt.Errorf("sample error"))
+			break
+		}
+
 		ctx.mu.Unlock()
-	}()
+		ctx.tryOne(*slice)
+		ctx.mu.Lock()
+	}
+
+	ctx.running--
+	ctx.cond.Broadcast()
+	ctx.mu.Unlock()
+}
+
+func (ctx *ExecStream) Get(n int) {
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
+	if ctx.closed {
+		ctx.setErr(fmt.Errorf("task context is closed"))
+		return
+	}
+	ctx.remaining += n
+
+	// spawn perIter goroutines to get outputs simultaneously
+	for ctx.running < ctx.perIter {
+		ctx.running++
+		go ctx.backgroundThread()
+	}
 }
 
 func (ctx *ExecStream) Close() {
@@ -257,32 +287,8 @@ func (ctx *ExecStream) Close() {
 
 func (ctx *ExecStream) Wait() {
 	ctx.mu.Lock()
-	for ctx.running {
+	for ctx.running > 0 {
 		ctx.cond.Wait()
 	}
 	ctx.mu.Unlock()
-}
-
-func (ctx *ExecStream) tryOne(slice vaas.Slice, wg *sync.WaitGroup) {
-	defer wg.Done()
-	outputs, err := ctx.query.Run(ctx.vector, slice, ctx.opts)
-	if err != nil && strings.Contains(err.Error(), "selector reject") {
-		log.Printf("[task context] selector reject on slice %v, we will retry", slice)
-		ctx.callback(slice, outputs, err)
-		return
-	}
-	ctx.mu.Lock()
-	defer ctx.mu.Unlock()
-	if ctx.remaining <= 0 {
-		ctx.extras = append(ctx.extras, extraOutput{slice, outputs})
-		return
-	}
-	ctx.remaining--
-	ctx.callback(slice, outputs, err)
-
-	for _, l := range outputs {
-		for _, rd := range l {
-			rd.Wait()
-		}
-	}
 }
