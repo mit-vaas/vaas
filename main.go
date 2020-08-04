@@ -8,11 +8,14 @@ import (
 	"github.com/googollee/go-socket.io"
 
 	"log"
+	"math/rand"
 	"net/http"
+	"time"
 )
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	rand.Seed(time.Now().UnixNano())
 	server, err := socketio.NewServer(nil)
 	if err != nil {
 		log.Fatal(err)

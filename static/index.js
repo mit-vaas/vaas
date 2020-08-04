@@ -1,5 +1,3 @@
-var keyHandler = null;
-
 $(document).ready(function() {
 	$('#myTab a[data-toggle="tab"]').on('shown.bs.tab', function(e) {
 		var target = $(e.target).attr('href');
@@ -10,12 +8,6 @@ $(document).ready(function() {
 		app.$emit('keypress', e);
 	});
 });
-
-function myLoad(target, href, f) {
-	keyHandler = null;
-	$(target).html('');
-	$(target).load(href + '?x=' + Math.floor(Date.now() / 1000), f);
-}
 
 Vue.filter('prettyVector', function (vector) {
 	var parts = [];

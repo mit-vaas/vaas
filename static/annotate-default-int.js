@@ -8,6 +8,9 @@ Vue.component('annotate-default-int', {
 			settings: null,
 
 			inputVal: '',
+
+			// cache of unlabeled responses to use as examples
+			nextCache: [],
 		};
 	},
 	props: ['series'],
@@ -21,6 +24,21 @@ Vue.component('annotate-default-int', {
 		}
 		this.settings = settings;
 		$.get(this.getLabelsURL(-1), this.updateImage, 'json');
+	},
+	mounted: function() {
+		this.keypressHandler = (e) => {
+			// keycode 48 through 57 are 0 through 9
+			if(e.keyCode < 48 || e.keyCode > 57) {
+				return;
+			}
+			var label = parseInt(e.keyCode) - 48;
+			this.label(label);
+		};
+		app.$on('keypress', this.keypressHandler);
+	},
+	unmounted: function() {
+		app.$off('keypress', this.keypressHandler);
+		this.keypressHandler = null;
 	},
 	methods: {
 		getLabelsURL: function(index) {
@@ -37,20 +55,43 @@ Vue.component('annotate-default-int', {
 				this.imMeta = meta;
 			});
 		},
+		get: function(i) {
+			if(i >= 0) {
+				$.get(this.getLabelsURL(i), this.updateImage, 'json');
+				return;
+			}
+			var cacheResponse = () => {
+				$.get(this.getLabelsURL(-1), (response) => {
+					this.nextCache.push(response);
+				}, 'json');
+			};
+			if(this.nextCache.length > 0) {
+				cacheResponse();
+				var response = this.nextCache.splice(0, 1)[0];
+				this.updateImage(response);
+				return
+			}
+			$.get(this.getLabelsURL(-1), (response) => {
+				this.updateImage(response);
+				for(var j = 0; j < 8; j++) {
+					cacheResponse();
+				}
+			}, 'json');
+		},
 		prev: function() {
 			if(this.response.Index < 0) {
-				$.get(this.getLabelsURL(0), this.updateImage, 'json');
+				this.get(0);
 			} else {
 				var i = this.response.Index - 1;
-				$.get(this.getLabelsURL(i), this.updateImage, 'json');
+				this.get(i);
 			}
 		},
 		next: function() {
 			if(this.response.Index < 0) {
-				$.get(this.getLabelsURL(-1), this.updateImage, 'json');
+				this.get(-1);
 			} else {
 				var i = this.response.Index+1;
-				$.get(this.getLabelsURL(i), this.updateImage, 'json');
+				this.get(i);
 			}
 		},
 		label: function(val) {
@@ -67,10 +108,10 @@ Vue.component('annotate-default-int', {
 				processData: false,
 				success: function() {
 					if(this.response.Index < 0) {
-						$.get(this.getLabelsURL(-1), this.updateImage, 'json');
+						this.get(-1);
 					} else {
 						var i = this.response.Index+1;
-						$.get(this.getLabelsURL(i), this.updateImage, 'json');
+						this.get(i);
 					}
 				}.bind(this),
 			});
@@ -106,7 +147,7 @@ Vue.component('annotate-default-int', {
 					height: imMeta.Height + 'px',
 				}"
 				>
-				<template v-if="settings.NumFrames == 1">
+				<template v-if="parseInt(settings.NumFrames) == 1">
 					<img :src="response.URLs[0] + '&type=jpeg'" />
 				</template>
 				<template v-else>
@@ -133,8 +174,8 @@ Vue.component('annotate-default-int', {
 		<div class="col-auto">
 			<button v-on:click="next" type="button" class="btn btn-primary">Next</button>
 		</div>
-		<template v-if="settings.Range > 0">
-			<div v-for="i in settings.Range">
+		<template v-if="parseInt(settings.Range) > 0">
+			<div v-for="i in parseInt(settings.Range)">
 				<button v-on:click="label(i-1)" type="button" class="btn btn-primary">{{ i-1 }}</button>
 			</div>
 		</template>
