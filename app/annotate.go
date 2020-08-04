@@ -142,7 +142,7 @@ func init() {
 			resp.Index = index
 			resp.Slice = item.Slice
 			resp.Labels = data
-			if err := setURLs; err != nil {
+			if err := setURLs(); err != nil {
 				panic(err)
 			}
 		} else {
