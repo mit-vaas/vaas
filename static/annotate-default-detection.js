@@ -9,6 +9,9 @@ Vue.component('annotate-default-detection', {
 			working: [],
 			mode: 'box',
 			state: 'idle',
+
+			// cache of unlabeled responses to use as examples
+			nextCache: [],
 		};
 	},
 	props: ['series'],
@@ -80,6 +83,32 @@ Vue.component('annotate-default-detection', {
 				}.bind(this));
 			});
 		},
+		getLabelsURL: function(index) {
+			return '/series/labels?id='+this.series.ID+'&nframes=1&index='+index;
+		},
+		get: function(i) {
+			if(i >= 0) {
+				$.get(this.getLabelsURL(i), this.updateImage, 'json');
+				return;
+			}
+			var cacheResponse = () => {
+				$.get(this.getLabelsURL(-1), (response) => {
+					this.nextCache.push(response);
+				}, 'json');
+			};
+			if(this.nextCache.length > 0) {
+				cacheResponse();
+				var response = this.nextCache.splice(0, 1)[0];
+				this.updateImage(response);
+				return
+			}
+			$.get(this.getLabelsURL(-1), (response) => {
+				this.updateImage(response);
+				for(var j = 0; j < 8; j++) {
+					cacheResponse();
+				}
+			}, 'json');
+		},
 		click: function(e) {
 			var rect = e.target.getBoundingClientRect();
 			var x = e.clientX - rect.left;
@@ -143,18 +172,18 @@ Vue.component('annotate-default-detection', {
 		},
 		prev: function() {
 			if(this.response.Index < 0) {
-				$.get('/series/labels?id='+this.series.ID+'&index=0', this.updateImage, 'json');
+				this.get(0);
 			} else {
 				var i = this.response.Index - 1;
-				$.get('/series/labels?id='+this.series.ID+'&index='+i, this.updateImage, 'json');
+				this.get(i);
 			}
 		},
 		next: function() {
 			if(this.response.Index < 0) {
-				$.get('/series/labels?id='+this.series.ID+'&index=-1', this.updateImage, 'json');
+				this.get(-1);
 			} else {
 				var i = this.response.Index+1;
-				$.get('/series/labels?id='+this.series.ID+'&index='+i, this.updateImage, 'json');
+				this.get(i);
 			}
 		},
 		done: function() {
@@ -171,10 +200,10 @@ Vue.component('annotate-default-detection', {
 				processData: false,
 				success: function() {
 					if(this.response.Index < 0) {
-						$.get('/series/labels?id='+this.series.ID+'&index=-1', this.updateImage, 'json');
+						this.get(-1);
 					} else {
 						var i = this.response.Index+1;
-						$.get('/series/labels?id='+this.series.ID+'&index='+i, this.updateImage, 'json');
+						this.get(i);
 					}
 				}.bind(this),
 			});
