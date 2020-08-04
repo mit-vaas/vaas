@@ -7,23 +7,32 @@ import (
 	"log"
 )
 
+func GetParent(ctx vaas.ExecContext, parent vaas.Parent) (vaas.DataReader, error) {
+	if parent.Type == vaas.NodeParent {
+		rd, err := ctx.GetReader(*ctx.Nodes[parent.NodeID])
+		if err != nil {
+			return nil, err
+		}
+		return rd, nil
+	} else if parent.Type == vaas.SeriesParent {
+		item := ctx.Inputs[parent.SeriesIdx]
+		if item.Format == "json" {
+			return item.Load(ctx.Slice).Reader(), nil
+		} else {
+			buf := &vaas.VideoFileBuffer{item, ctx.Slice}
+			return buf.Reader(), nil
+		}
+	}
+	return nil, fmt.Errorf("invalid parent type %v", parent.Type)
+}
+
 func GetParents(ctx vaas.ExecContext, node vaas.Node) ([]vaas.DataReader, error) {
 	parents := make([]vaas.DataReader, len(node.Parents))
 	for i, parent := range node.Parents {
-		if parent.Type == vaas.NodeParent {
-			rd, err := ctx.GetReader(*ctx.Nodes[parent.NodeID])
-			if err != nil {
-				return nil, err
-			}
-			parents[i] = rd
-		} else if parent.Type == vaas.SeriesParent {
-			item := ctx.Inputs[parent.SeriesIdx]
-			if item.Format == "json" {
-				parents[i] = item.Load(ctx.Slice).Reader()
-			} else {
-				buf := &vaas.VideoFileBuffer{item, ctx.Slice}
-				parents[i] = buf.Reader()
-			}
+		var err error
+		parents[i], err = GetParent(ctx, parent)
+		if err != nil {
+			return nil, err
 		}
 	}
 	return parents, nil
