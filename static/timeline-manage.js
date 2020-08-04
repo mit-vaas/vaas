@@ -59,6 +59,9 @@ Vue.component('timeline-manage', {
 				this.fetch();
 			});
 		},
+		exportSeries: function(series_id) {
+			$.post('/series/export', {'series_id': series_id});
+		},
 
 		// add vector form
 		showAddVectorModal: function() {
@@ -225,12 +228,16 @@ Vue.component('timeline-manage', {
 				<tr>
 					<th>Name</th>
 					<th>Type</th>
+					<th></th>
 				</tr>
 			</thead>
 			<tbody>
 				<tr v-for="series in labelSeries">
 					<td>{{ series.Name }}</td>
 					<td>{{ series.DataType }}</td>
+					<td>
+						<button v-on:click="exportSeries(series.ID)" class="btn btn-primary">Export</button>
+					</td>
 				</tr>
 			</tbody>
 		</table>

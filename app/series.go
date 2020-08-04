@@ -633,6 +633,48 @@ func init() {
 		}
 	})
 
+	http.HandleFunc("/series/export", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+		r.ParseForm()
+		seriesID := vaas.ParseInt(r.PostForm.Get("series_id"))
+		series := GetSeries(seriesID)
+		if series == nil {
+			http.Error(w, "no such series", 404)
+			return
+		}
+		series.Load()
+		var refs [][]DataRef
+		for _, s := range series.SrcVector {
+			refs = append(refs, []DataRef{DataRef{
+				Series: &s,
+			}})
+		}
+		refs = append(refs, []DataRef{DataRef{
+			Series: &series.Series,
+		}})
+		exportPath := fmt.Sprintf("%s/export-%d-%d/", os.TempDir(), series.ID, rand.Int63())
+		if err := os.Mkdir(exportPath, 0755); err != nil {
+			log.Printf("[/series/export] failed to export: could not mkdir %s", exportPath)
+			w.WriteHeader(400)
+			return
+		}
+		log.Printf("[/series/export] exporting series %s to %s", series.Name, exportPath)
+		exporter := NewExporter(refs, ExportOptions{
+			Path: exportPath,
+			Name: fmt.Sprintf("Export %s", series.Name),
+		})
+		go func() {
+			err := RunJob(exporter)
+			if err != nil {
+				log.Printf("[/series/export] export job failed: %v", err)
+				return
+			}
+		}()
+	})
+
 	// called from container
 	http.HandleFunc("/series/add-output-item", func(w http.ResponseWriter, r *http.Request) {
 		var request vaas.AddOutputItemRequest
