@@ -76,7 +76,7 @@ func init() {
 		//contentType := r.Form.Get("type")
 		item := cache.Get(id)
 		if item == nil {
-			w.WriteHeader(404)
+			http.Error(w, "no such item", 404)
 			return
 		}
 		switch v := item.(type) {
@@ -87,7 +87,7 @@ func init() {
 			im, err := v.GetPreview()
 			if err != nil {
 				log.Printf("[cache] preview: GetPreview: %v", err)
-				w.WriteHeader(400)
+				http.Error(w, err.Error(), 400)
 				return
 			}
 			w.Header().Set("Content-Type", "image/jpeg")
@@ -101,7 +101,7 @@ func init() {
 		contentType := r.Form.Get("type")
 		item := cache.Get(id)
 		if item == nil {
-			w.WriteHeader(404)
+			http.Error(w, "no such item", 404)
 			return
 		}
 		type MetaResponse struct {
@@ -142,7 +142,7 @@ func init() {
 				rd, err := v.GetVideo()
 				if err != nil {
 					log.Printf("[cache] view: GetVideo: %v", err)
-					w.WriteHeader(400)
+					http.Error(w, err.Error(), 400)
 					return
 				}
 				w.Header().Set("Content-Type", "video/mp4")

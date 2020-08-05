@@ -25,7 +25,7 @@ Vue.component('node-edit-yolov3', {
 				ConfigPath: this.configPath,
 				ModelPath: this.modelPath,
 			});
-			$.post('/queries/node?id='+this.initNode.ID, {
+			myCall('POST', '/queries/node?id='+this.initNode.ID, {
 				code: code,
 			});
 		},

@@ -20,12 +20,12 @@ Vue.component('explore-detail-detection', {
 	created: function() {
 		this.mode = this.result.Type;
 		Promise.all([
-			$.get(this.result.URL + '&type=labels', function(labels) {
+			myCall('GET', this.result.URL + '&type=labels', null, (labels) => {
 				this.labels = labels;
-			}.bind(this), 'json'),
-			$.get(this.result.URL + '&type=meta', function(meta) {
+			}),
+			myCall('GET', this.result.URL + '&type=meta', null, (meta) => {
 				this.meta = meta;
-			}.bind(this), 'json'),
+			}),
 		]).then(this.render);
 	},
 	methods: {
@@ -38,7 +38,7 @@ Vue.component('explore-detail-detection', {
 			var layer = new Konva.Layer();
 			stage.add(layer);
 			if(this.labels[this.index]) {
-				this.labels[this.index].forEach(function(el, i) {
+				this.labels[this.index].forEach((el, i) => {
 					var cfg = {
 						x: el.left,
 						y: el.top,
@@ -60,26 +60,26 @@ Vue.component('explore-detail-detection', {
 					var rect = new Konva.Rect(cfg);
 					rect.myid = myid;
 					layer.add(rect);
-				}.bind(this));
+				});
 			}
 			layer.draw();
-			layer.on('mouseover', function(e) {
+			layer.on('mouseover', (e) => {
 				document.body.style.cursor = 'pointer';
 				var shape = e.target;
 				if(shape.myid != this.selectedID) {
 					shape.stroke('yellow');
 					layer.draw();
 				}
-			}.bind(this));
-			layer.on('mouseout', function(e) {
+			});
+			layer.on('mouseout', (e) => {
 				document.body.style.cursor = 'default';
 				var shape = e.target;
 				if(shape.myid != this.selectedID) {
 					shape.stroke('red');
 					layer.draw();
 				}
-			}.bind(this));
-			layer.on('click', function(e) {
+			});
+			layer.on('click', (e) => {
 				var shape = e.target;
 				if(this.selectedID == shape.myid) {
 					this.selectedID = null;
@@ -97,7 +97,7 @@ Vue.component('explore-detail-detection', {
 					this.updateSelection();
 				}
 				layer.draw();
-			}.bind(this));
+			});
 		},
 		updateSelection: function() {
 			if(this.mode == 'detection') {
@@ -150,13 +150,8 @@ Vue.component('explore-detail-detection', {
 					},
 				}];
 
-				$.ajax({
-					type: "POST",
-					url: '/aggregates/scatter',
-					data: JSON.stringify(this.selection),
-					success: function(data) {
-						this.scatterURL = data.URL;
-					}.bind(this),
+				myCall('POST', '/aggregates/scatter', JSON.stringify(this.selection), (data) => {
+					this.scatterURL = data.URL;
 				});
 			}
 		},

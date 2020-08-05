@@ -27,12 +27,12 @@ Vue.component('annotate-tab', {
 			if(!force && this.tab != '#annotate-panel') {
 				return;
 			}
-			$.get('/labelseries', function(data) {
+			myCall('GET', '/labelseries', null, (data) => {
 				this.labelSeries = data;
-			}.bind(this));
+			});
 		},
 		showNewLabelSeriesModal: function() {
-			$.get('/vectors', (data) => {
+			myCall('GET', '/vectors', null, (data) => {
 				this.vectors = data;
 				this.newSetFields = {
 					name: '',
@@ -44,19 +44,19 @@ Vue.component('annotate-tab', {
 			});
 		},
 		createSeries: function() {
+			$('#a-new-series-modal').modal('hide');
 			var params = {
 				name: this.newSetFields.name,
 				type: this.newSetFields.type,
 				src: this.newSetFields.vector,
 				metadata: JSON.stringify({'Tool': this.newSetFields.tool}),
 			};
-			$.post('/labelseries', params, function(series) {
-				$('#a-new-series-modal').modal('hide');
+			myCall('POST', '/labelseries', params, (series) => {
 				this.selectedSeries = series;
 				var metadata = JSON.parse(series.AnnotateMetadata);
 				this.annotateTool = 'annotate-' + metadata.Tool;
 				this.mode = 'annotate';
-			}.bind(this));
+			});
 		},
 		annotateLabels: function(series) {
 			this.selectedSeries = series;
@@ -69,9 +69,9 @@ Vue.component('annotate-tab', {
 			this.mode = 'visualize';
 		},
 		deleteSeries: function(series_id) {
-			$.post('/series/delete', {'series_id': series_id}, function() {
+			myCall('POST', '/series/delete', {'series_id': series_id}, () => {
 				this.fetchLabelSeries(true);
-			}.bind(this));
+			});
 		},
 	},
 	watch: {

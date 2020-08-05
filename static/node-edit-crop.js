@@ -19,9 +19,9 @@ Vue.component('node-edit-crop', {
 			this.right = s.right;
 			this.bottom = s.bottom;
 		} catch(e) {}
-		$.get('/datasets', function(data) {
+		myCall('GET', '/datasets', null, (data) => {
 			this.dataSeries = data;
-		}.bind(this));
+		});
 	},
 	methods: {
 		showSeries: function() {
@@ -43,7 +43,7 @@ Vue.component('node-edit-crop', {
 				right: parseInt(this.right),
 				bottom: parseInt(this.bottom),
 			});
-			$.post('/queries/node?id='+this.initNode.ID, {
+			myCall('POST', '/queries/node?id='+this.initNode.ID, {
 				code: code,
 			});
 		},

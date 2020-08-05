@@ -142,7 +142,7 @@ Vue.component('new-node-modal', {
 				type: this.newNodeFields.type.ID,
 				data_type: this.newNodeFields.dataType,
 			};
-			$.post('/queries/nodes', params, () => {
+			myCall('POST', '/queries/nodes', params, () => {
 				$(this.$refs.modal).modal('hide');
 				this.$emit('closed');
 			});

@@ -40,7 +40,7 @@ Vue.component('queries-tab', {
 			if(!force && this.tab != '#queries-panel') {
 				return;
 			}
-			$.get('/queries', (queries) => {
+			myCall('GET', '/queries', null, (queries) => {
 				this.queries = queries;
 				if(this.selectedQueryID == '' && this.queries.length > 0) {
 					this.selectedQueryID = this.queries[0].ID;
@@ -49,7 +49,7 @@ Vue.component('queries-tab', {
 			});
 		},
 		createQuery: function() {
-			$.post('/queries', {name: this.newQueryName}, (query) => {
+			myCall('POST', '/queries', {name: this.newQueryName}, (query) => {
 				this.newQueryName = '';
 				this.fetchQueries();
 				this.queries.push(query);
@@ -61,7 +61,7 @@ Vue.component('queries-tab', {
 			if(this.selectedQueryID == '') {
 				return;
 			}
-			$.get('/queries/query?query_id='+this.selectedQueryID, (query) => {
+			myCall('GET', '/queries/query?query_id='+this.selectedQueryID, null, (query) => {
 				// determine how many inputs are used in the query
 				query.numInputs = 1;
 				for(let nodeID in query.Nodes) {
@@ -148,12 +148,7 @@ Vue.component('queries-tab', {
 					ID: this.selectedQueryID,
 					Meta: meta,
 				};
-				$.ajax({
-					type: "POST",
-					url: '/queries/render-meta',
-					data: JSON.stringify(params),
-					processData: false,
-				});
+				myCall('POST', '/queries/render-meta', JSON.stringify(params));
 			};
 
 			var addGroup = (id, text, meta) => {
@@ -367,7 +362,7 @@ Vue.component('queries-tab', {
 			}
 		},
 		removeNode: function() {
-			$.post('/queries/node/remove', {id: this.selectedNode.ID}, () => {
+			myCall('POST', '/queries/node/remove', {id: this.selectedNode.ID}, () => {
 				this.update();
 			});
 		},
@@ -379,7 +374,7 @@ Vue.component('queries-tab', {
 			let parents = this.selectedNode.Parents.filter(parent => parent.Spec != spec);
 			let parts = parents.map((parent) => parent.Spec);
 			let parentsStr = parts.join(',');
-			$.post('/queries/node?id='+this.selectedNode.ID, {parents: parentsStr}, () => {
+			myCall('POST', '/queries/node?id='+this.selectedNode.ID, {parents: parentsStr}, () => {
 				this.update();
 			});
 		},
@@ -387,7 +382,7 @@ Vue.component('queries-tab', {
 			let parts = this.selectedNode.Parents.map((parent) => parent.Spec);
 			parts.push(spec);
 			let parentsStr = parts.join(',');
-			$.post('/queries/node?id='+this.selectedNode.ID, {parents: parentsStr}, () => {
+			myCall('POST', '/queries/node?id='+this.selectedNode.ID, {parents: parentsStr}, () => {
 				this.update();
 			});
 		},
@@ -401,7 +396,7 @@ Vue.component('queries-tab', {
 				parts.push(l.join(','));
 			});
 			let outputsStr = parts.join(';');
-			$.post('/queries/query?query_id='+this.selectedQuery.ID, {outputs: outputsStr}, () => {
+			myCall('POST', '/queries/query?query_id='+this.selectedQuery.ID, {outputs: outputsStr}, () => {
 				this.update();
 			});
 		},
@@ -427,7 +422,7 @@ Vue.component('queries-tab', {
 		},
 		setSelector: function() {
 			var selector = this.selectedQuery.SelectorID;
-			$.post('/queries/query?query_id='+this.selectedQuery.ID, {selector: this.selectedQuery.SelectorID}, () => {
+			myCall('POST', '/queries/query?query_id='+this.selectedQuery.ID, {selector: this.selectedQuery.SelectorID}, () => {
 				this.update();
 			});
 		},

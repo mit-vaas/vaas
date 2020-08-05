@@ -12,7 +12,7 @@ Vue.component('annotate-visualize', {
 	},
 	props: ['ls'],
 	created: function() {
-		$.get('/labelsets/visualize?id='+this.ls.ID, this.update, 'json');
+		myCall('GET', '/labelsets/visualize?id='+this.ls.ID, null, this.update);
 	},
 	methods: {
 		update: function(data) {

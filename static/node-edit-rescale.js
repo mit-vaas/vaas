@@ -19,7 +19,7 @@ Vue.component('node-edit-rescale', {
 				Width: parseInt(this.width),
 				Height: parseInt(this.height),
 			});
-			$.post('/queries/node?id='+this.initNode.ID, {
+			myCall('POST', '/queries/node?id='+this.initNode.ID, {
 				code: code,
 			});
 		},

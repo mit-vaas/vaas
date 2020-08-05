@@ -28,7 +28,7 @@ Vue.component('node-edit-rescale-resample', {
 				Height: parseInt(this.height),
 				Freq: parseInt(this.freq),
 			});
-			$.post('/queries/node?id='+this.initNode.ID, {
+			myCall('POST', '/queries/node?id='+this.initNode.ID, {
 				code: code,
 			});
 		},

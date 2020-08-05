@@ -29,13 +29,13 @@ Vue.component('util-video-draw-shape', {
 						series_id: this.series_id,
 						unit: 1,
 					};
-					await $.post('/series/random-slice', params, (data) => {
+					await myCall('POST', '/series/random-slice', params, (data) => {
 						slice = data;
 					})
 				})
 				.then(async () => {
 					var url = '/series/get-item?series_id='+this.series_id+'&segment_id='+slice.Segment.ID+'&start='+slice.Start+'&end='+slice.End;
-					await $.get(url+'&type=meta', (data) => {
+					await myCall('GET', url+'&type=meta', null, (data) => {
 						item = data;
 						item.imageURL = url+'&type=jpeg';
 					});

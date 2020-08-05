@@ -20,10 +20,10 @@ Vue.component('video-import-youtube', {
 				series_id: this.series.ID,
 				url: this.url,
 			};
-			$.post('/import/youtube', params, function() {
+			myCall('POST', '/import/youtube', params, () => {
 				$('#v-youtube-modal').modal('hide');
 				this.$emit('imported');
-			}.bind(this));
+			});
 		},
 	},
 	template: `

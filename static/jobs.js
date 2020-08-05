@@ -15,7 +15,7 @@ Vue.component('jobs-tab', {
 			if(!force && this.tab != '#jobs-panel') {
 				return;
 			}
-			$.get('/jobs', (jobs) => {
+			myCall('GET', '/jobs', null, (jobs) => {
 				this.jobs = jobs;
 			});
 		},

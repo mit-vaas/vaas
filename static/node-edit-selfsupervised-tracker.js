@@ -13,16 +13,16 @@ Vue.component('node-edit-selfsupervised-tracker', {
 			var s = JSON.parse(this.initNode.Code);
 			this.modelPath = s.ModelPath;
 		} catch(e) {}
-		$.get('/datasets', function(data) {
+		myCall('GET', '/datasets', null, (data) => {
 			this.dataSeries = data;
-		}.bind(this));
+		});
 	},
 	methods: {
 		save: function() {
 			var code = JSON.stringify({
 				ModelPath: this.modelPath,
 			});
-			$.post('/queries/node?id='+this.initNode.ID, {
+			myCall('POST', '/queries/node?id='+this.initNode.ID, {
 				code: code,
 			});
 		},
@@ -31,7 +31,7 @@ Vue.component('node-edit-selfsupervised-tracker', {
 				node_id: this.initNode.ID,
 				series_id: this.selectedSeries,
 			}
-			$.post('/selfsupervised-tracker/train', params);
+			myCall('POST', '/selfsupervised-tracker/train', params);
 		},
 	},
 	template: `

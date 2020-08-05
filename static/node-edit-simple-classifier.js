@@ -13,7 +13,7 @@ Vue.component('node-edit-simple-classifier', {
 			var s = JSON.parse(this.initNode.Code);
 			this.modelPath = s.ModelPath;
 		} catch(e) {}
-		$.get('/series', function(data) {
+		myCall('GET', '/series', null, (data) => {
 			this.series = [];
 			data.forEach((el) => {
 				if(!el.SrcVectorStr) {
@@ -21,14 +21,14 @@ Vue.component('node-edit-simple-classifier', {
 				}
 				this.series.push(el);
 			});
-		}.bind(this));
+		});
 	},
 	methods: {
 		save: function() {
 			var code = JSON.stringify({
 				ModelPath: this.modelPath,
 			});
-			$.post('/queries/node?id='+this.initNode.ID, {
+			myCall('POST', '/queries/node?id='+this.initNode.ID, {
 				code: code,
 			});
 		},
@@ -37,7 +37,7 @@ Vue.component('node-edit-simple-classifier', {
 				node_id: this.initNode.ID,
 				series_id: this.selectedSeries,
 			}
-			$.post('/simple-classifier/train', params);
+			myCall('POST', '/simple-classifier/train', params);
 		},
 	},
 	template: `

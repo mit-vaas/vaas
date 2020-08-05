@@ -15,19 +15,13 @@ Vue.component('query-suggestions', {
 	},
 	methods: {
 		fetchSuggestions: function() {
-			$.get('/suggestions?query_id='+this.query_id, (suggestions) => {
+			myCall('GET', '/suggestions?query_id='+this.query_id, null, (suggestions) => {
 				this.suggestions = suggestions;
 			});
 		},
 		applySuggestion: function(suggestion) {
-			$.ajax({
-				type: 'POST',
-				url: '/suggestions/apply',
-				data: JSON.stringify(suggestion),
-				processData: false,
-				success: () => {
-					app.$emit('showQuery', suggestion.QueryID);
-				},
+			myCall('POST', '/suggestions/apply', JSON.stringify(suggestion), () => {
+				app.$emit('showQuery', suggestion.QueryID);
 			});
 		},
 	},

@@ -19,7 +19,7 @@ Vue.component('node-edit-filter-track', {
 			this.orderMatters = (s.Order) ? 'yes' : 'no';
 			this.shapes = s.Shapes;
 		} catch(e) {}
-		$.get('/datasets', (dataSeries) => {
+		myCall('GET', '/datasets', null, (dataSeries) => {
 			this.dataSeries = dataSeries;
 		});
 	},
@@ -56,7 +56,7 @@ Vue.component('node-edit-filter-track', {
 				Shapes: this.shapes,
 				Order: this.orderMatters == 'yes',
 			});
-			$.post('/queries/node?id='+this.initNode.ID, {
+			myCall('POST', '/queries/node?id='+this.initNode.ID, {
 				code: code,
 			});
 		},

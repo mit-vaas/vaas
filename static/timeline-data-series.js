@@ -10,7 +10,7 @@ Vue.component('timeline-data-series', {
 	},
 	methods: {
 		fetchItems: function() {
-			$.get('/series/items?series_id='+this.series.ID, (data) => {
+			myCall('GET', '/series/items?series_id='+this.series.ID, null, (data) => {
 				this.items = data;
 			});
 		},
@@ -18,7 +18,7 @@ Vue.component('timeline-data-series', {
 			var params = {
 				item_id: item_id,
 			};
-			$.post('/series/delete-item', params, () => {
+			myCall('POST', '/series/delete-item', params, () => {
 				this.fetchItems();
 			});
 		},

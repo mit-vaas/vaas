@@ -49,7 +49,7 @@ Vue.component('node-edit-text', {
 			}
 		},
 		save: function() {
-			$.post('/queries/node?id='+this.node.ID, {
+			myCall('POST', '/queries/node?id='+this.node.ID, {
 				code: this.node.Code,
 			});
 		},

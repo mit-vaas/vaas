@@ -26,10 +26,10 @@ Vue.component('video-import-local', {
 				symlink: this.optSymlink ? 'yes' : 'no',
 				transcode: this.optTranscode ? 'yes' : 'no',
 			};
-			$.post('/import/local', params, function() {
+			myCall('POST', '/import/local', params, () => {
 				$('#v-local-modal').modal('hide');
 				this.$emit('imported');
-			}.bind(this));
+			});
 		},
 	},
 	template: `

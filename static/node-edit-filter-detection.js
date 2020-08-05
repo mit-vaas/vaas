@@ -27,7 +27,7 @@ Vue.component('node-edit-filter-detection', {
 				Score: parseFloat(this.score),
 				Classes: this.classes,
 			});
-			$.post('/queries/node?id='+this.initNode.ID, {
+			myCall('POST', '/queries/node?id='+this.initNode.ID, {
 				code: code,
 			});
 		},

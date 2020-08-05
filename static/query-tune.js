@@ -32,16 +32,16 @@ Vue.component('query-tune', {
 	props: ['query', 'qtab'],
 	methods: {
 		fetch: function() {
-			$.get('/tune/tunable-nodes?query_id='+this.query.ID, (nodes) => {
+			myCall('GET', '/tune/tunable-nodes?query_id='+this.query.ID, null, (nodes) => {
 				this.tunableNodes = nodes;
 			});
-			$.get('/datasets', function(data) {
+			myCall('GET', '/datasets', null, (data) => {
 				this.dataSeries = data;
-			}.bind(this));
-			$.get('/labelseries', function(data) {
+			});
+			myCall('GET', '/labelseries', null, (data) => {
 				this.labelSeries = data;
-			}.bind(this));
-			$.get('/queries/query?query_id='+this.query.ID, (query) => {
+			});
+			myCall('GET', '/queries/query?query_id='+this.query.ID, null, (query) => {
 				this.nodes = [];
 				for(var nodeID in query.Nodes) {
 					this.nodes.push(query.Nodes[nodeID]);

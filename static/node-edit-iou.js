@@ -16,7 +16,7 @@ Vue.component('node-edit-iou', {
 			var code = JSON.stringify({
 				maxAge: parseInt(this.maxAge),
 			});
-			$.post('/queries/node?id='+this.initNode.ID, {
+			myCall('POST', '/queries/node?id='+this.initNode.ID, {
 				code: code,
 			});
 		},

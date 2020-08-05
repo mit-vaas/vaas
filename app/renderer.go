@@ -291,3 +291,12 @@ func (r *VideoRenderer) GetLabels() ([][]vaas.Data, error) {
 	}
 	return r.labels, nil
 }
+
+func (r *VideoRenderer) Wait() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for !r.done && r.err == nil {
+		r.cond.Wait()
+	}
+	return r.err
+}

@@ -23,7 +23,7 @@ Vue.component('annotate-default-int', {
 			settings.Range = 2;
 		}
 		this.settings = settings;
-		$.get(this.getLabelsURL(-1), this.updateImage, 'json');
+		myCall('GET', this.getLabelsURL(-1), null, this.updateImage);
 	},
 	mounted: function() {
 		this.keypressHandler = (e) => {
@@ -51,19 +51,19 @@ Vue.component('annotate-default-int', {
 			if(this.response.Labels) {
 				this.inputVal = this.response.Labels[0].toString();
 			}
-			$.get(this.response.URLs[0]+'&type=meta', (meta) => {
+			myCall('GET', this.response.URLs[0]+'&type=meta', null, (meta) => {
 				this.imMeta = meta;
 			});
 		},
 		get: function(i) {
 			if(i >= 0) {
-				$.get(this.getLabelsURL(i), this.updateImage, 'json');
+				myCall('GET', this.getLabelsURL(i), null, this.updateImage);
 				return;
 			}
 			var cacheResponse = () => {
-				$.get(this.getLabelsURL(-1), (response) => {
+				myCall('GET', this.getLabelsURL(-1), null, (response) => {
 					this.nextCache.push(response);
-				}, 'json');
+				});
 			};
 			if(this.nextCache.length > 0) {
 				cacheResponse();
@@ -71,12 +71,12 @@ Vue.component('annotate-default-int', {
 				this.updateImage(response);
 				return
 			}
-			$.get(this.getLabelsURL(-1), (response) => {
+			myCall('GET', this.getLabelsURL(-1), null, (response) => {
 				this.updateImage(response);
 				for(var j = 0; j < 8; j++) {
 					cacheResponse();
 				}
-			}, 'json');
+			});
 		},
 		prev: function() {
 			if(this.response.Index < 0) {
@@ -101,19 +101,13 @@ Vue.component('annotate-default-int', {
 				slice: this.response.Slice,
 				labels: [val],
 			};
-			$.ajax({
-				type: "POST",
-				url: '/series/int-label',
-				data: JSON.stringify(params),
-				processData: false,
-				success: function() {
-					if(this.response.Index < 0) {
-						this.get(-1);
-					} else {
-						var i = this.response.Index+1;
-						this.get(i);
-					}
-				}.bind(this),
+			myCall('POST', '/series/int-label', JSON.stringify(params), () => {
+				if(this.response.Index < 0) {
+					this.get(-1);
+				} else {
+					var i = this.response.Index+1;
+					this.get(i);
+				}
 			});
 		},
 		labelInput: function() {
@@ -124,7 +118,7 @@ Vue.component('annotate-default-int', {
 				series_id: this.series.ID,
 				annotate_metadata: JSON.stringify(this.settings),
 			};
-			$.post('/series/update', params);
+			myCall('POST', '/series/update', params);
 		},
 	},
 	template: `

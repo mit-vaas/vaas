@@ -26,6 +26,13 @@
 					<a class="nav-link" id="jobs-tab" data-toggle="tab" href="#jobs-panel" role="tab" aria-controls="jobs-panel" aria-selected="true">Jobs</a>
 				</li>
 			</ul>
+			<div v-if="error != ''" class="alert alert-danger alert-dismissible" role="alert">
+				<strong>Error:</strong>
+				{{ error }}
+				<button type="button" class="close" v-on:click="setError('')">
+					<span>&times;</span>
+				</button>
+			</div>
 			<div class="tab-content mx-1 my-tab-content" id="content">
 				<div class="tab-pane fade show active" id="timelines-panel" role="tabpanel" aria-labelledby="timelines-tab">
 					<timelines-tab :tab="tab"></timelines-tab>

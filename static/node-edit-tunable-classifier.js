@@ -23,7 +23,7 @@ Vue.component('node-edit-tunable-classifier', {
 			this.scaleCount = s.ScaleCount;
 			this.depth = s.Depth;
 		} catch(e) {}
-		$.get('/series', function(data) {
+		myCall('GET', '/series', null, (data) => {
 			this.series = [];
 			data.forEach((el) => {
 				if(!el.SrcVectorStr) {
@@ -31,7 +31,7 @@ Vue.component('node-edit-tunable-classifier', {
 				}
 				this.series.push(el);
 			});
-		}.bind(this));
+		});
 	},
 	methods: {
 		save: function() {
@@ -43,7 +43,7 @@ Vue.component('node-edit-tunable-classifier', {
 				ScaleCount: parseInt(this.scaleCount),
 				Depth: parseInt(this.depth),
 			});
-			$.post('/queries/node?id='+this.initNode.ID, {
+			myCall('POST', '/queries/node?id='+this.initNode.ID, {
 				code: code,
 			});
 		},
@@ -52,7 +52,7 @@ Vue.component('node-edit-tunable-classifier', {
 				node_id: this.initNode.ID,
 				series_id: this.selectedSeries,
 			}
-			$.post('/tunable-classifier/train', params);
+			myCall('POST', '/tunable-classifier/train', params);
 		},
 	},
 	template: `

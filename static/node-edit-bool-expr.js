@@ -13,7 +13,7 @@ Vue.component('node-edit-bool-expr', {
 		save: function() {
 			var code = JSON.stringify({
 			});
-			$.post('/queries/node?id='+this.initNode.ID, {
+			myCall('POST', '/queries/node?id='+this.initNode.ID, {
 				code: code,
 			});
 		},

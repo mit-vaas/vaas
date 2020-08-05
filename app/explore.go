@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 )
 
@@ -118,6 +119,9 @@ func init() {
 			stream := NewExecStream(query, vector, sampler, request.Count, vaas.ExecOptions{}, func(slice vaas.Slice, outputs [][]vaas.DataReader, err error) {
 				if err != nil {
 					s.Emit("exec-reject")
+					if !strings.Contains(err.Error(), "selector reject") {
+						s.Emit("exec-error", err.Error())
+					}
 					return
 				}
 
@@ -143,6 +147,12 @@ func init() {
 					Type: t,
 					Vectors: renderVectors,
 				})
+				go func() {
+					err := r.Wait()
+					if err != nil {
+						s.Emit("exec-error", err.Error())
+					}
+				}()
 			})
 			stream.Get(request.Count)
 			if streams[s.ID()] != nil {

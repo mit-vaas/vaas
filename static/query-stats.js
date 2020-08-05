@@ -7,7 +7,7 @@ Vue.component('query-stats', {
 	props: ['query', 'qtab'],
 	methods: {
 		fetchStats: function() {
-			$.get('/stats?query_id='+this.query.ID, (stats) => {
+			myCall('GET', '/stats?query_id='+this.query.ID, null, (stats) => {
 				this.stats = stats;
 			});
 		},

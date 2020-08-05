@@ -16,12 +16,12 @@ Vue.component('annotate-default-detection', {
 	},
 	props: ['series'],
 	created: function() {
-		app.$on('keypress', function(e) {
+		app.$on('keypress', (e) => {
 			if(e.key == 'x') {
 				this.cancelWorking();
 			}
-		}.bind(this));
-		$.get('/series/labels?id='+this.series.ID+'&index=-1', this.updateImage, 'json');
+		});
+		myCall('GET', '/series/labels?id='+this.series.ID+'&index=-1', null, this.updateImage);
 	},
 	methods: {
 		cancelWorking: function() {
@@ -32,15 +32,15 @@ Vue.component('annotate-default-detection', {
 		render: function() {
 			this.context1.clearRect(0, 0, this.$refs.layer1.width, this.$refs.layer1.height);
 			if(this.mode == 'point') {
-				this.labels[0].forEach(function(el) {
+				this.labels[0].forEach((el) => {
 					this.context1.beginPath();
 					this.context1.arc(el.left, el.top, 3, 0, 2*Math.PI,);
 					this.context1.fillStyle = '#ff0000';
 					this.context1.fill();
 					this.context1.closePath();
-				}.bind(this));
+				});
 			} else if(this.mode == 'line') {
-				this.labels[0].forEach(function(el) {
+				this.labels[0].forEach((el) => {
 					this.context1.beginPath();
 					this.context1.moveTo(el.left, el.top);
 					this.context1.lineTo(el.right, el.bottom);
@@ -48,9 +48,9 @@ Vue.component('annotate-default-detection', {
 					this.context1.strokeStyle = '#ff0000';
 					this.context1.stroke();
 					this.context1.closePath();
-				}.bind(this));
+				});
 			} else if(this.mode == 'box') {
-				this.labels[0].forEach(function(el) {
+				this.labels[0].forEach((el) => {
 					this.context1.beginPath();
 					this.context1.moveTo(el.left, el.top);
 					this.context1.lineTo(el.left, el.bottom);
@@ -61,7 +61,7 @@ Vue.component('annotate-default-detection', {
 					this.context1.strokeStyle = '#ff0000';
 					this.context1.stroke();
 					this.context1.closePath();
-				}.bind(this));
+				});
 			}
 		},
 		updateImage: function(response) {
@@ -74,13 +74,13 @@ Vue.component('annotate-default-detection', {
 			this.working = [];
 			this.state = 'idle';
 
-			$.get(this.response.URLs[0]+'&type=meta', (meta) => {
+			myCall('GET', this.response.URLs[0]+'&type=meta', null, (meta) => {
 				this.imMeta = meta;
-				Vue.nextTick(function() {
+				Vue.nextTick(() => {
 					this.context1 = this.$refs.layer1.getContext('2d');
 					this.context2 = this.$refs.layer2.getContext('2d');
 					this.render();
-				}.bind(this));
+				});
 			});
 		},
 		getLabelsURL: function(index) {
@@ -88,13 +88,13 @@ Vue.component('annotate-default-detection', {
 		},
 		get: function(i) {
 			if(i >= 0) {
-				$.get(this.getLabelsURL(i), this.updateImage, 'json');
+				myCall('GET', this.getLabelsURL(i), null, this.updateImage);
 				return;
 			}
 			var cacheResponse = () => {
-				$.get(this.getLabelsURL(-1), (response) => {
+				myCall('GET', this.getLabelsURL(-1), null, (response) => {
 					this.nextCache.push(response);
-				}, 'json');
+				});
 			};
 			if(this.nextCache.length > 0) {
 				cacheResponse();
@@ -102,12 +102,12 @@ Vue.component('annotate-default-detection', {
 				this.updateImage(response);
 				return
 			}
-			$.get(this.getLabelsURL(-1), (response) => {
+			myCall('GET', this.getLabelsURL(-1), null, (response) => {
 				this.updateImage(response);
 				for(var j = 0; j < 8; j++) {
 					cacheResponse();
 				}
-			}, 'json');
+			});
 		},
 		click: function(e) {
 			var rect = e.target.getBoundingClientRect();
@@ -193,19 +193,13 @@ Vue.component('annotate-default-detection', {
 				slice: this.response.Slice,
 				labels: this.labels,
 			};
-			$.ajax({
-				type: "POST",
-				url: '/series/detection-label',
-				data: JSON.stringify(params),
-				processData: false,
-				success: function() {
-					if(this.response.Index < 0) {
-						this.get(-1);
-					} else {
-						var i = this.response.Index+1;
-						this.get(i);
-					}
-				}.bind(this),
+			myCall('POST', '/series/detection-label', JSON.stringify(params), () => {
+				if(this.response.Index < 0) {
+					this.get(-1);
+				} else {
+					var i = this.response.Index+1;
+					this.get(i);
+				}
 			});
 		},
 		clear: function() {

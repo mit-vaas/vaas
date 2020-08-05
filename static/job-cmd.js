@@ -14,14 +14,14 @@ Vue.component('job-cmd', {
 	},
 	methods: {
 		update: function(first) {
-			$.get('/jobs/detail', {job_id: this.job.ID}, (lines) => {
+			myCall('GET', '/jobs/detail', {job_id: this.job.ID}, (lines) => {
 				this.lines = lines;
 				if(first || window.innerHeight + window.scrollY >= document.body.scrollHeight) {
 					Vue.nextTick(() => {
 						window.scrollTo(0, document.body.scrollHeight);
 					});
 				}
-			}, 'json');
+			});
 		},
 	},
 	template: `

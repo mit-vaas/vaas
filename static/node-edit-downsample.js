@@ -16,7 +16,7 @@ Vue.component('node-edit-downsample', {
 			var code = JSON.stringify({
 				Freq: parseInt(this.freq),
 			});
-			$.post('/queries/node?id='+this.initNode.ID, {
+			myCall('POST', '/queries/node?id='+this.initNode.ID, {
 				code: code,
 			});
 		},

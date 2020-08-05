@@ -20,7 +20,7 @@ Vue.component('explore-tab', {
 	created: function() {
 		this.fetch();
 		this.socket = io('/exec');
-		this.socket.on('exec-result', function(resp) {
+		this.socket.on('exec-result', (resp) => {
 			resp.ready = true;
 			resp.clicked = false;
 			resp.selected = false;
@@ -33,25 +33,28 @@ Vue.component('explore-tab', {
 			this.resultRows[i].push(resp);
 			this.resultUUIDMap[resp.UUID] = [i, j];
 			this.resultTotal++;
-		}.bind(this));
-		this.socket.on('exec-progress', function(resp) {
+		});
+		this.socket.on('exec-progress', (resp) => {
 			var i = this.resultUUIDMap[resp.UUID][0];
 			var j = this.resultUUIDMap[resp.UUID][1];
 			this.resultRows[i][j].progress = resp.Percent;
-		}.bind(this));
-		this.socket.on('exec-reject', function() {
+		});
+		this.socket.on('exec-reject', () => {
 			this.resultTotal++;
-		}.bind(this));
+		});
+		this.socket.on('exec-error', (error) => {
+			app.setError(error);
+		});
 	},
 	methods: {
 		fetch: function() {
-			$.get('/queries', (data) => {
+			myCall('GET', '/queries', null, (data) => {
 				this.queries = data;
 				if(!this.query && this.queries.length > 0) {
 					this.query = this.queries[0].ID;
 				}
 			});
-			$.get('/vectors', (data) => {
+			myCall('GET', '/vectors', null, (data) => {
 				this.vectors = data;
 			});
 		},
@@ -85,7 +88,7 @@ Vue.component('explore-tab', {
 				query_id: this.query,
 				vector: this.selectedVector+'',
 			};
-			$.post('/exec/job', params);
+			myCall('POST', '/exec/job', params);
 		},
 		onClick: function(i, j) {
 			this.resultRows[i][j].clicked = true;

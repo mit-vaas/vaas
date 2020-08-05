@@ -18,15 +18,15 @@ Vue.component('timeline-manage', {
 	},
 	methods: {
 		fetch: function() {
-			$.get('/timeline/series?timeline_id='+this.timeline.ID, function(data) {
+			myCall('GET', '/timeline/series?timeline_id='+this.timeline.ID, null, (data) => {
 				this.dataSeries = data.DataSeries;
 				this.labelSeries = data.LabelSeries;
 				this.outputSeries = data.OutputSeries;
 				this.allSeries = this.dataSeries.concat(this.labelSeries).concat(this.outputSeries);
-			}.bind(this));
-			$.get('/timeline/vectors?timeline_id='+this.timeline.ID, function(data) {
+			});
+			myCall('GET', '/timeline/vectors?timeline_id='+this.timeline.ID, null, (data) => {
 				this.vectors = data;
-			}.bind(this));
+			});
 		},
 		showAddTimelineModal: function() {
 			this.addDataSeriesForm = {
@@ -41,13 +41,13 @@ Vue.component('timeline-manage', {
 				name: this.addDataSeriesForm.name,
 				data_type: this.addDataSeriesForm.dataType,
 			};
-			$.post('/series', params, () => {
+			myCall('POST', '/series', params, () => {
 				$(this.$refs.addDataSeriesModal).modal('hide');
 				this.fetch();
 			});
 		},
 		deleteSeries: function(series_id) {
-			$.post('/series/delete', {'series_id': series_id}, () => {
+			myCall('POST', '/series/delete', {'series_id': series_id}, () => {
 				this.fetch();
 			});
 		},
@@ -55,12 +55,12 @@ Vue.component('timeline-manage', {
 			this.selectedSeries = series;
 		},
 		deleteVector: function(vector_id) {
-			$.post('/vectors/delete', {'vector_id': vector_id}, () => {
+			myCall('POST', '/vectors/delete', {'vector_id': vector_id}, () => {
 				this.fetch();
 			});
 		},
 		exportSeries: function(series_id) {
-			$.post('/series/export', {'series_id': series_id});
+			myCall('POST', '/series/export', {'series_id': series_id});
 		},
 
 		// add vector form
@@ -94,7 +94,7 @@ Vue.component('timeline-manage', {
 				timeline_id: this.timeline.ID,
 				series_ids: ids.join(','),
 			};
-			$.post('/timeline/vectors', params, () => {
+			myCall('POST', '/timeline/vectors', params, () => {
 				$(this.$refs.addVectorModal).modal('hide');
 				this.fetch();
 			});

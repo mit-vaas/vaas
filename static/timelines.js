@@ -16,9 +16,9 @@ Vue.component('timelines-tab', {
 			if(!force && this.tab != '#timelines-panel') {
 				return;
 			}
-			$.get('/timelines', function(data) {
+			myCall('GET', '/timelines', null, (data) => {
 				this.timelines = data;
-			}.bind(this));
+			});
 		},
 		showAddTimelineModal: function() {
 			this.addTimelineForm = {
@@ -30,7 +30,7 @@ Vue.component('timelines-tab', {
 			var params = {
 				name: this.addTimelineForm.name,
 			};
-			$.post('/timelines', params, () => {
+			myCall('POST', '/timelines', params, () => {
 				$(this.$refs.modal).modal('hide');
 				this.fetchTimelines(true);
 			});
@@ -39,7 +39,7 @@ Vue.component('timelines-tab', {
 			var params = {
 				timeline_id: timelineID,
 			};
-			$.post('/timelines/delete', params, () => {
+			myCall('POST', '/timelines/delete', params, () => {
 				this.fetchTimelines(true);
 			});
 		},
