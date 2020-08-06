@@ -2,7 +2,7 @@ package app
 
 import (
 	"../vaas"
-	
+
 	"log"
 	"net/http"
 	"sync"
@@ -120,5 +120,13 @@ func init() {
 			return
 		}
 		vaas.JsonResponse(w, job.Detail())
+	})
+
+	http.HandleFunc("/jobs/clear", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+		db.Exec("DELETE FROM jobs")
 	})
 }

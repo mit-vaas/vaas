@@ -22,6 +22,11 @@ Vue.component('jobs-tab', {
 		selectJob: function(job) {
 			this.selectedJob = job;
 		},
+		clearJobs: function() {
+			myCall('POST', '/jobs/clear', null, () => {
+				this.fetchJobs(true);
+			});
+		},
 	},
 	watch: {
 		tab: function() {
@@ -37,6 +42,7 @@ Vue.component('jobs-tab', {
 	<template v-if="selectedJob == null">
 		<div class="my-1">
 			<h3>Jobs</h3>
+			<button type="button" class="btn btn-danger" v-on:click="clearJobs">Clear Jobs</button>
 		</div>
 		<table class="table">
 			<thead>

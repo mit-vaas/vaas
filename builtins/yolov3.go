@@ -64,27 +64,35 @@ func NewYolov3(node vaas.Node) vaas.Executor {
 	}
 }
 
-func (m *Yolov3) start() {
+func CreateYolov3Cfg(fname string, cfg Yolov3Config, dims [2]int, training bool) {
 	// prepare configuration with this width/height
-	bytes, err := ioutil.ReadFile(m.cfg.GetConfigPath())
+	bytes, err := ioutil.ReadFile(cfg.GetConfigPath())
 	if err != nil {
 		panic(err)
 	}
-	m.cfgFname = fmt.Sprintf("%s/%d.cfg", os.TempDir(), rand.Int63())
-	file, err := os.Create(m.cfgFname)
+	file, err := os.Create(fname)
 	if err != nil {
 		panic(err)
 	}
 	for _, line := range strings.Split(string(bytes), "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "width=") {
-			line = fmt.Sprintf("width=%d", m.width)
+			line = fmt.Sprintf("width=%d", dims[0])
 		} else if strings.HasPrefix(line, "height=") {
-			line = fmt.Sprintf("height=%d", m.height)
+			line = fmt.Sprintf("height=%d", dims[1])
+		} else if training && strings.HasPrefix(line, "batch=") {
+			line = "batch=64"
+		} else if training && strings.HasPrefix(line, "subdivisions=") {
+			line = "subdivisions=8"
 		}
 		file.Write([]byte(line+"\n"))
 	}
 	file.Close()
+}
+
+func (m *Yolov3) start() {
+	m.cfgFname = fmt.Sprintf("%s/%d.cfg", os.TempDir(), rand.Int63())
+	CreateYolov3Cfg(m.cfgFname, m.cfg, [2]int{m.width, m.height}, false)
 	m.cmd = vaas.Command(
 		"darknet",
 		vaas.CommandOptions{F: func(cmd *exec.Cmd) {
@@ -210,6 +218,7 @@ func (m *Yolov3) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 func (m *Yolov3) Close() {
 	m.stdin.Close()
 	m.cmd.Wait()
+	os.Remove(m.cfgFname)
 }
 
 func (m *Yolov3) Stats() vaas.StatsSample {

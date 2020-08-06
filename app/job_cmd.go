@@ -12,6 +12,9 @@ type CmdJob struct {
 	cmd string
 	args []string
 
+	// function to edit cmd parameters before running it, e.g. the working dir
+	F func(cmd *exec.Cmd)
+
 	l []string
 	mu sync.Mutex
 }
@@ -35,6 +38,9 @@ func (j *CmdJob) Type() string {
 func (j *CmdJob) Run(statusFunc func(string)) error {
 	statusFunc("Running")
 	cmd := exec.Command(j.cmd, j.args...)
+	if j.F != nil {
+		j.F(cmd)
+	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		panic(err)

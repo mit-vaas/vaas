@@ -203,15 +203,18 @@ func (e *Exporter) Run(statusFunc func(string)) error {
 		if e.opts.Freq != 0 {
 			data = vaas.AdjustDataFreq(data, slice.Length(), freq, e.opts.Freq)
 		}
-		fname := prefix + ".json"
 		var encoded []byte
+		var ext string
 		if e.opts.YOLO && data.Type() == vaas.DetectionType {
 			encoded = encodeDetectionsAsYOLO(data)
+			ext = "txt"
 		} else {
 			encoded = data.Encode()
+			ext = "json"
 		}
+		fname := prefix + "." + ext
 		if err := ioutil.WriteFile(fname, encoded, 0644); err != nil {
-			return fmt.Errorf("error writing json to %s: %v", fname, err)
+			return fmt.Errorf("error writing encoded data to %s: %v", fname, err)
 		}
 		return nil
 	}
@@ -220,8 +223,15 @@ func (e *Exporter) Run(statusFunc func(string)) error {
 		slice := group[0].Slice
 		prefix := fmt.Sprintf("%s/%d_%d_%d", e.opts.Path, slice.Segment.ID, slice.Start, slice.End)
 		for i, ref := range group {
+			// decide whether to name files N_0.abc, N_1.xyz N.abc, N.xyz
+			var curPrefix string
+			if e.opts.YOLO {
+				curPrefix = prefix
+			} else {
+				curPrefix = prefix + fmt.Sprintf("_%d", i)
+			}
+
 			var err error
-			curPrefix := prefix + fmt.Sprintf("_%d", i)
 			if ref.Type() == vaas.VideoType {
 				err = exportVideo(slice, ref, curPrefix)
 			} else {
@@ -304,6 +314,17 @@ func ExportSeries(series *DBSeries, opts ExportOptions) *Exporter {
 	return NewExporter(refs, opts)
 }
 
+func ExportVector(vector []*DBSeries, opts ExportOptions) *Exporter {
+	var refs [][]DataRef
+	for _, series := range vector {
+		s := series.Series
+		refs = append(refs, []DataRef{{
+			Series: &s,
+		}})
+	}
+	return NewExporterDataRefs(refs, opts)
+}
+
 func init() {
 	http.HandleFunc("/series/export", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
@@ -356,14 +377,7 @@ func init() {
 			return
 		}
 		log.Printf("[/series/export] exporting vector %s to %s", vector.Vector.Pretty(), exportPath)
-		var refs [][]DataRef
-		for _, series := range vector.Vector {
-			s := series.Series
-			refs = append(refs, []DataRef{{
-				Series: &s,
-			}})
-		}
-		exporter := NewExporterDataRefs(refs, ExportOptions{
+		exporter := ExportVector(vector.Vector, ExportOptions{
 			Path: exportPath,
 			Name: fmt.Sprintf("Export %s", vector.Vector.Pretty()),
 		})
