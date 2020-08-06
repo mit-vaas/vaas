@@ -53,7 +53,8 @@ func (m IOU) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 			parents, ctx.Slice, buf, vaas.DetectionType,
 			vaas.ReadMultipleOptions{Stats: m.stats},
 			func(idx int, data vaas.Data, buf vaas.DataWriter) error {
-				detections := data.(vaas.DetectionData)[0]
+				df := data.(vaas.DetectionData).D[0]
+				detections := df.Detections
 				var out []vaas.Detection
 
 				matches := hungarianMatcher(activeTracks, detections)
@@ -89,7 +90,14 @@ func (m IOU) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 					delete(activeTracks, track.ID)
 				}
 
-				buf.Write(vaas.TrackData{out})
+				ndata := vaas.DetectionData{
+					T: vaas.TrackType,
+					D: []vaas.DetectionFrame{{
+						Detections: out,
+						CanvasDims: df.CanvasDims,
+					}},
+				}
+				buf.Write(ndata)
 				return nil
 			},
 		)

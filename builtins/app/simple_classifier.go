@@ -26,22 +26,12 @@ func init() {
 			w.WriteHeader(404)
 			return
 		}
-		series.Load()
 		node := app.GetNode(nodeID)
 		if node == nil {
 			w.WriteHeader(404)
 			return
 		}
 
-		var refs [][]app.DataRef
-		for _, s := range series.SrcVector {
-			refs = append(refs, []app.DataRef{app.DataRef{
-				Series: &s,
-			}})
-		}
-		refs = append(refs, []app.DataRef{app.DataRef{
-			Series: &series.Series,
-		}})
 		exportPath := fmt.Sprintf("%s/export-%d-%d/", os.TempDir(), series.ID, rand.Int63())
 		if err := os.Mkdir(exportPath, 0755); err != nil {
 			log.Printf("[simple-classifier] failed to export: could not mkdir %s", exportPath)
@@ -50,7 +40,7 @@ func init() {
 		}
 		modelPath := fmt.Sprintf("models/simple-classifier-%d.h5", node.ID)
 
-		exporter := app.NewExporter(refs, app.ExportOptions{
+		exporter := app.ExportSeries(series, app.ExportOptions{
 			Path: exportPath,
 			Name: fmt.Sprintf("Export %s (for simple-classifier training)", series.Name),
 		})

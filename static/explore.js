@@ -8,6 +8,7 @@ Vue.component('explore-tab', {
 
 			mode: 'random',
 			sequentialSegment: '',
+			unit: '750',
 
 			resultTotal: 0,
 			resultRows: [],
@@ -64,6 +65,7 @@ Vue.component('explore-tab', {
 				QueryID: this.query,
 				Mode: this.mode,
 				Count: 4,
+				Unit: parseInt(this.unit),
 			};
 			if(this.mode == 'sequential') {
 				var parts = this.sequentialSegment.split(']')[0].split('[');
@@ -175,6 +177,12 @@ Vue.component('explore-tab', {
 					<label class="col-sm-4">From Segment</label>
 					<div class="col-sm-8">
 						<input type="text" class="form-control" v-model="sequentialSegment" />
+					</div>
+				</div>
+				<div class="form-group row">
+					<label class="col-sm-4">Unit</label>
+					<div class="col-sm-8">
+						<input type="text" class="form-control" v-model="unit" />
 					</div>
 				</div>
 			</div>

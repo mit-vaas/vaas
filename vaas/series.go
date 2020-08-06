@@ -62,6 +62,10 @@ func (slice Slice) Equals(other Slice) bool {
 	return slice.Segment.ID == other.Segment.ID && slice.Start == other.Start && slice.End == other.End
 }
 
+func (slice Slice) Contains(other Slice) bool {
+	return slice.Segment.ID == other.Segment.ID && slice.Start <= other.Start && slice.End >= other.End
+}
+
 type Item struct {
 	ID int
 	Slice Slice
@@ -91,7 +95,7 @@ func (item Item) Fname(index int) string {
 }
 
 func (item Item) Load(slice Slice) DataBuffer {
-	if slice.Segment.ID != item.Slice.Segment.ID || slice.Start < item.Slice.Start || slice.End > item.Slice.End {
+	if !item.Slice.Contains(slice) {
 		return nil
 	}
 	if item.Series.DataType == VideoType {

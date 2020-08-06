@@ -143,6 +143,14 @@ func (v Vector) List() []vaas.Series {
 	return l
 }
 
+func (v Vector) Pretty() string {
+	var parts []string
+	for _, series := range v {
+		parts = append(parts, series.Name)
+	}
+	return "[" + strings.Join(parts, ",") + "]"
+}
+
 func VectorFromList(l []vaas.Series) Vector {
 	var vector Vector
 	for _, series := range l {
@@ -170,6 +178,16 @@ func vectorListHelper(rows *Rows) []DBVector {
 func ListVectors() []DBVector {
 	rows := db.Query(VectorQuery)
 	return vectorListHelper(rows)
+}
+
+func GetVector(id int) *DBVector {
+	rows := db.Query(VectorQuery + " WHERE id = ?", id)
+	vectors := vectorListHelper(rows)
+	if len(vectors) == 1 {
+		return &vectors[0]
+	} else {
+		return nil
+	}
 }
 
 func (timeline DBTimeline) ListVectors() []DBVector {
@@ -217,54 +235,65 @@ func (timeline DBTimeline) AddSegment(name string, frames int, fps int) *DBSegme
 	return GetSegment(res.LastInsertId())
 }
 
-type TimelineSampler []DBSegment
-func (s TimelineSampler) Uniform(unit int) vaas.Slice {
-	segments := s
-
-	// select a segment
-	segment := func() DBSegment {
+type SliceSampler []vaas.Slice
+func SliceSamplerFromSegments(segments []DBSegment) SliceSampler {
+	var sampler SliceSampler
+	for _, segment := range segments {
+		sampler = append(sampler, segment.ToSlice())
+	}
+	return sampler
+}
+func (slices SliceSampler) Uniform(unit int) vaas.Slice {
+	// select a large slice
+	slice := func() vaas.Slice {
 		if unit == 0 {
-			return segments[rand.Intn(len(segments))]
+			return slices[rand.Intn(len(slices))]
 		}
-		weights := make([]int, len(segments))
+		weights := make([]int, len(slices))
 		sum := 0
-		for i, segment := range segments {
-			weights[i] = (segment.Frames+unit-1) / unit
+		for i, slice := range slices {
+			weights[i] = (slice.Length()+unit-1) / unit
 			if weights[i] < 0 {
 				weights[i] = 0
 			}
 			sum += weights[i]
 		}
+		if sum == 0 {
+			panic(fmt.Errorf("no possible slice"))
+		}
 		r := rand.Intn(sum)
-		for i, segment := range segments {
+		for i, slice := range slices {
 			r -= weights[i]
 			if r <= 0 {
-				return segment
+				return slice
 			}
 		}
-		return segments[len(segments)-1]
+		return slices[len(slices)-1]
 	}()
 
-	// select frame
+	// select small slice from the large slice
 	var start, end int
 	if unit == 0 {
-		start = 0
-		end = segment.Frames
+		start = slice.Start
+		end = slice.End
 	} else {
-		idx := rand.Intn((segment.Frames+unit-1)/unit)
-		start = idx*unit
-		end = (idx+1)*unit
-		if end > segment.Frames {
-			end = segment.Frames
+		// we select the small slice so that, if large slices correspond to entire segments,
+		// then the small slices start/end at multiples of unit
+		// but if the large slices are smaller then there is no guarantee
+		idx := rand.Intn((slice.Length()+unit-1)/unit)
+		start = slice.Start + idx*unit
+		end = slice.Start + (idx+1)*unit
+		if end > slice.End {
+			end = slice.End
 		}
 	}
 
-	return vaas.Slice{segment.Segment, start, end}
+	return vaas.Slice{slice.Segment, start, end}
 }
 
 func (timeline DBTimeline) Uniform(unit int) vaas.Slice {
 	segments := timeline.ListSegments()
-	return TimelineSampler(segments).Uniform(unit)
+	return SliceSamplerFromSegments(segments).Uniform(unit)
 }
 
 func (series DBSeries) Clear() {
@@ -633,48 +662,6 @@ func init() {
 		} else if contentType == "meta" {
 			vaas.JsonResponse(w, item)
 		}
-	})
-
-	http.HandleFunc("/series/export", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			w.WriteHeader(404)
-			return
-		}
-		r.ParseForm()
-		seriesID := vaas.ParseInt(r.PostForm.Get("series_id"))
-		series := GetSeries(seriesID)
-		if series == nil {
-			http.Error(w, "no such series", 404)
-			return
-		}
-		series.Load()
-		var refs [][]DataRef
-		for _, s := range series.SrcVector {
-			refs = append(refs, []DataRef{DataRef{
-				Series: &s,
-			}})
-		}
-		refs = append(refs, []DataRef{DataRef{
-			Series: &series.Series,
-		}})
-		exportPath := fmt.Sprintf("%s/export-%d-%d/", os.TempDir(), series.ID, rand.Int63())
-		if err := os.Mkdir(exportPath, 0755); err != nil {
-			log.Printf("[/series/export] failed to export: could not mkdir %s", exportPath)
-			w.WriteHeader(400)
-			return
-		}
-		log.Printf("[/series/export] exporting series %s to %s", series.Name, exportPath)
-		exporter := NewExporter(refs, ExportOptions{
-			Path: exportPath,
-			Name: fmt.Sprintf("Export %s", series.Name),
-		})
-		go func() {
-			err := RunJob(exporter)
-			if err != nil {
-				log.Printf("[/series/export] export job failed: %v", err)
-				return
-			}
-		}()
 	})
 
 	// called from container

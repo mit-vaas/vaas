@@ -140,15 +140,15 @@ func init() {
 
 			if l.Data.Type() == vaas.DetectionType {
 				detections := l.Data.(vaas.DetectionData)
-				for _, dlist := range detections {
-					for _, d := range dlist {
+				for _, df := range detections.D {
+					for _, d := range df.Detections {
 						center := getCenter(d)
 						im.FillRectangle(center[0]-1, center[1]-1, center[0]+1, center[1]+1, [3]uint8{255, 0, 0})
 					}
 				}
 			} else if l.Data.Type() == vaas.TrackType {
-				detections := l.Data.(vaas.TrackData)
-				for _, track := range vaas.DetectionsToTracks(detections) {
+				detections := l.Data.(vaas.DetectionData)
+				for _, track := range vaas.DetectionsToTracks(detections.D) {
 					for i := 1; i < len(track); i++ {
 						c1 := getCenter(track[i-1].Detection)
 						c2 := getCenter(track[i].Detection)

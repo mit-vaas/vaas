@@ -71,7 +71,9 @@ func (w *VideoWriter) Write(data Data) {
 		w.buf.SetMeta(w.freq, width, height)
 		w.cmd = Command(
 			"ffmpeg-vbuf", CommandOptions{OnlyDebug: true},
-			"ffmpeg", "-f", "rawvideo", "-framerate", fmt.Sprintf("%v", FPS),
+			"ffmpeg",
+			"-threads", "2",
+			"-f", "rawvideo", "-framerate", fmt.Sprintf("%v", FPS),
 			"-s", fmt.Sprintf("%dx%d", width, height),
 			"-pix_fmt", "rgb24", "-i", "-",
 			"-vcodec", "libx264",
@@ -375,6 +377,7 @@ func (rd *VideoBufferReader) start() {
 		cmd := Command(
 			"ffmpeg-vbufrd", CommandOptions{OnlyDebug: true},
 			"ffmpeg",
+			"-threads", "2",
 			"-f", "mp4", "-i", "-",
 			"-c:v", "rawvideo", "-pix_fmt", "rgb24", "-f", "rawvideo",
 			"-vf", fmt.Sprintf("scale=%dx%d,fps=fps=%d/%d:round=up", dims[0], dims[1], FPS, sample),
@@ -602,6 +605,7 @@ func (rd *VideoBufferReader) ReadMP4(w io.Writer) error {
 		cmd := Command(
 			"ffmpeg-vbufrd", CommandOptions{OnlyDebug: true},
 			"ffmpeg",
+			"-threads", "2",
 			"-f", "mp4", "-i", "-",
 			"-vcodec", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-g", fmt.Sprintf("%v", FPS),
 			"-vf", fmt.Sprintf("scale=%dx%d,fps=fps=%d/%d:round=up", dims[0], dims[1], FPS, sample),
@@ -643,6 +647,7 @@ func (rd *VideoBufferReader) ReadMP4(w io.Writer) error {
 		cmd := Command(
 			"ffmpeg-vbufrd", CommandOptions{NoStdin: true, OnlyDebug: true},
 			"ffmpeg",
+			"-threads", "2",
 			"-ss", ffmpegTime(rd.slice.Start - rd.item.Slice.Start),
 			"-i", rd.item.Fname(0),
 			"-vframes", strconv.Itoa(rd.slice.Length()),

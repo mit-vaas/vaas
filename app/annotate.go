@@ -45,7 +45,7 @@ type DetectionLabelRequest struct {
 	ID int `json:"id"`
 	Index int `json:"index"`
 	Slice vaas.Slice `json:"slice"`
-	Labels [][]vaas.Detection `json:"labels"`
+	Labels []vaas.DetectionFrame `json:"labels"`
 }
 
 type IntLabelRequest struct {
@@ -148,9 +148,9 @@ func init() {
 		} else {
 			resp.Index = -1
 			timeline := DBTimeline{Timeline: series.Timeline}
-			timelineSampler := TimelineSampler(timeline.ListSegments())
+			sliceSampler := SliceSamplerFromSegments(timeline.ListSegments())
 			for {
-				resp.Slice = timelineSampler.Uniform(numFrames)
+				resp.Slice = sliceSampler.Uniform(numFrames)
 				err := setURLs()
 				if err != nil {
 					log.Printf("[annotate] warning: error sampling at %v: %v", resp.Slice, err)
@@ -176,10 +176,15 @@ func init() {
 			return
 		}
 
+		data := vaas.DetectionData{
+			T: vaas.DetectionType,
+			D: request.Labels,
+		}
+
 		if request.Index == -1 {
 			segment := GetSegment(request.Slice.Segment.ID)
 			slice := vaas.Slice{segment.Segment, request.Slice.Start, request.Slice.End}
-			series.WriteItem(slice, vaas.DetectionData(request.Labels), 1)
+			series.WriteItem(slice, data, 1)
 			log.Printf("[annotate] add new label item to series %d", series.ID)
 			w.WriteHeader(200)
 			return
@@ -192,7 +197,7 @@ func init() {
 			return
 		}
 		log.Printf("[annotate] update item for %v in series %d", item.Slice, series.ID)
-		item.UpdateData(vaas.DetectionData(request.Labels))
+		item.UpdateData(data)
 	})
 
 	http.HandleFunc("/series/int-label", func(w http.ResponseWriter, r *http.Request) {

@@ -45,9 +45,9 @@ func (m DetectionFilter) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 			parents, ctx.Slice, buf, vaas.DetectionType,
 			vaas.ReadMultipleOptions{Stats: m.stats},
 			func(idx int, data vaas.Data, buf vaas.DataWriter) error {
-				detections := data.(vaas.DetectionData)[0]
+				df := data.(vaas.DetectionData).D[0]
 				var ndetections []vaas.Detection
-				for _, d := range detections {
+				for _, d := range df.Detections {
 					if d.Score < m.score {
 						continue
 					}
@@ -56,7 +56,14 @@ func (m DetectionFilter) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 					}
 					ndetections = append(ndetections, d)
 				}
-				buf.Write(vaas.DetectionData{ndetections}.EnsureLength(data.Length()))
+				ndata := vaas.DetectionData{
+					T: vaas.DetectionType,
+					D: []vaas.DetectionFrame{{
+						Detections: ndetections,
+						CanvasDims: df.CanvasDims,
+					}},
+				}
+				buf.Write(ndata)
 				return nil
 			},
 		)

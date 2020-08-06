@@ -37,8 +37,8 @@ Vue.component('explore-detail-detection', {
 			});
 			var layer = new Konva.Layer();
 			stage.add(layer);
-			if(this.labels[this.index]) {
-				this.labels[this.index].forEach((el, i) => {
+			if(this.labels[this.index].Detections) {
+				this.labels[this.index].Detections.forEach((el, i) => {
 					var cfg = {
 						x: el.left,
 						y: el.top,
@@ -109,15 +109,16 @@ Vue.component('explore-detail-detection', {
 						End: origSlice.Start + this.index + 1,
 						Segment: {ID: origSlice.Segment.ID},
 					},
-					Data: {
-						Type: 'detection',
-						Detections: [[this.labels[this.index][this.selectedID]]],
-					},
+					DataType: 'detection',
+					Data: JSON.stringify([{
+						Detections: [this.labels.D[this.index].Detections[this.selectedID]],
+						CanvasDims: this.labels.D[this.index].CanvasDims,
+					}]),
 				}];
 			} else if(this.mode == 'track') {
 				// collect detections for the segment of video where track is alive
 				var trackID = this.selectedID;
-				var detections = [];
+				var detectionFrames = [];
 				var firstFrame = null;
 				this.labels.forEach(function(dlist, frameIdx) {
 					if(!dlist) {
@@ -130,10 +131,10 @@ Vue.component('explore-detail-detection', {
 						if(firstFrame == null) {
 							firstFrame = frameIdx;
 						}
-						while(detections.length <= (frameIdx-firstFrame)) {
-							detections.push([]);
+						while(detectionFrames.length <= (frameIdx-firstFrame)) {
+							detectionFrames.push({'Detections': []});
 						}
-						detections[frameIdx-firstFrame] = [el];
+						detectionFrames[frameIdx-firstFrame].Detections = [el];
 					});
 				});
 				var origSlice = this.result.Slice;
@@ -141,13 +142,11 @@ Vue.component('explore-detail-detection', {
 					Background: this.result.Vectors[0][0],
 					Slice: {
 						Start: origSlice.Start + firstFrame,
-						End: origSlice.Start + firstFrame + detections.length,
+						End: origSlice.Start + firstFrame + detectionFrames.length,
 						Segment: {ID: origSlice.Segment.ID},
 					},
-					Data: {
-						Type: 'track',
-						Detections: detections,
-					},
+					DataType: 'track',
+					Data: JSON.stringify(detectionFrames),
 				}];
 
 				myCall('POST', '/aggregates/scatter', JSON.stringify(this.selection), (data) => {
@@ -184,7 +183,7 @@ Vue.component('explore-detail-detection', {
 			return this.result.Slice.End - this.result.Slice.Start;
 		},
 		selectionJSON: function() {
-			return JSON.stringify(this.selection[0].Data.Detections);
+			return JSON.stringify(this.selection[0].Data.D);
 		},
 	},
 	template: `

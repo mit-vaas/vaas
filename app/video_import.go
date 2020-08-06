@@ -46,6 +46,7 @@ func Transcode(src string, item *DBItem, initialPercent int) error {
 	cmd := vaas.Command(
 		"ffmpeg-transcode", opts,
 		"ffmpeg",
+		"-threads", "2",
 		"-progress", "pipe:2",
 		"-i", src,
 		"-vcodec", "libx264", "-vf", fmt.Sprintf("fps=%v", vaas.FPS),

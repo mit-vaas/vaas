@@ -5,7 +5,7 @@ Vue.component('annotate-default-detection', {
 			imMeta: null,
 			context1: null,
 			context2: null,
-			labels: [[]],
+			labels: [{'Detections': []}],
 			working: [],
 			mode: 'box',
 			state: 'idle',
@@ -32,7 +32,7 @@ Vue.component('annotate-default-detection', {
 		render: function() {
 			this.context1.clearRect(0, 0, this.$refs.layer1.width, this.$refs.layer1.height);
 			if(this.mode == 'point') {
-				this.labels[0].forEach((el) => {
+				this.labels[0].Detections.forEach((el) => {
 					this.context1.beginPath();
 					this.context1.arc(el.left, el.top, 3, 0, 2*Math.PI,);
 					this.context1.fillStyle = '#ff0000';
@@ -40,7 +40,7 @@ Vue.component('annotate-default-detection', {
 					this.context1.closePath();
 				});
 			} else if(this.mode == 'line') {
-				this.labels[0].forEach((el) => {
+				this.labels[0].Detections.forEach((el) => {
 					this.context1.beginPath();
 					this.context1.moveTo(el.left, el.top);
 					this.context1.lineTo(el.right, el.bottom);
@@ -50,7 +50,7 @@ Vue.component('annotate-default-detection', {
 					this.context1.closePath();
 				});
 			} else if(this.mode == 'box') {
-				this.labels[0].forEach((el) => {
+				this.labels[0].Detections.forEach((el) => {
 					this.context1.beginPath();
 					this.context1.moveTo(el.left, el.top);
 					this.context1.lineTo(el.left, el.bottom);
@@ -69,7 +69,7 @@ Vue.component('annotate-default-detection', {
 			if(response.Labels) {
 				this.labels = response.Labels;
 			} else {
-				this.labels = [[]];
+				this.labels = [{'Detections': []}];
 			}
 			this.working = [];
 			this.state = 'idle';
@@ -138,7 +138,7 @@ Vue.component('annotate-default-detection', {
 					detection.right = Math.max(detection.right, this.working[0][0]);
 					detection.bottom = Math.max(detection.bottom, this.working[0][1]);
 				}
-				this.labels[0].push(detection);
+				this.labels[0].Detections.push(detection);
 				this.cancelWorking();
 				this.render();
 			}
@@ -187,6 +187,7 @@ Vue.component('annotate-default-detection', {
 			}
 		},
 		done: function() {
+			this.labels[0].CanvasDims = [this.imMeta.Width, this.imMeta.Height];
 			var params = {
 				id: this.series.ID,
 				index: this.response.Index,

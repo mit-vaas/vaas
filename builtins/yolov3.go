@@ -18,7 +18,6 @@ import (
 )
 
 type Yolov3Config struct {
-	CanvasSize [2]int
 	InputSize [2]int
 	ConfigPath string
 	ModelPath string
@@ -192,14 +191,14 @@ func (m *Yolov3) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 				m.stats.Add(sample)
 
 				m.mu.Unlock()
-				if m.cfg.CanvasSize[0] != 0 && m.cfg.CanvasSize[1] != 0 {
-					scale := [2]float64{
-						float64(m.cfg.CanvasSize[0]) / float64(im.Width),
-						float64(m.cfg.CanvasSize[1]) / float64(im.Height),
-					}
-					boxes = vaas.ResizeDetections([][]vaas.Detection{boxes}, scale)[0]
+				ndata := vaas.DetectionData{
+					T: vaas.DetectionType,
+					D: []vaas.DetectionFrame{{
+						Detections: boxes,
+						CanvasDims: [2]int{im.Width, im.Height},
+					}},
 				}
-				buf.Write(vaas.DetectionData{boxes})
+				buf.Write(ndata)
 				return nil
 			},
 		)

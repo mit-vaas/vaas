@@ -4,7 +4,6 @@ import (
 	"../vaas"
 
 	"fmt"
-	"sort"
 )
 
 type DataRef struct {
@@ -17,21 +16,30 @@ type DataRef struct {
 	Data string
 }
 
+// References data for a specific slice.
+// If item is available, Item is set.
+// If data is in-memory, Data is set.
+// Series is set if Series.RequireData needs to be called. (item may or may not exist)
 type ConcreteRef struct {
 	Slice vaas.Slice
 
 	Item *vaas.Item
+	Series *vaas.Series
 	Data vaas.Data
 }
 
 func (ref ConcreteRef) Type() vaas.DataType {
 	if ref.Item != nil {
 		return ref.Item.Series.DataType
+	} else if ref.Series != nil {
+		return ref.Series.DataType
 	} else {
 		return ref.Data.Type()
 	}
 }
 
+// Lists items and in-memory data provided in the DataRefs.
+// All ConcreteRefs either have Item or Data set (not Series).
 func ResolveDataRefs(refs []DataRef) ([]ConcreteRef, error) {
 	var out []ConcreteRef
 
@@ -83,109 +91,35 @@ func EnumerateDataRefs(refs [][]DataRef, f func(vaas.Slice, []ConcreteRef) error
 	return EnumerateConcreteRefs(concretes, f)
 }
 
-type ConcreteRefs []ConcreteRef
-func (a ConcreteRefs) Len() int           { return len(a) }
-func (a ConcreteRefs) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ConcreteRefs) Less(i, j int) bool {
-	if a[i].Slice.Segment.ID < a[j].Slice.Segment.ID {
-		return true
-	} else if a[i].Slice.Segment.ID > a[j].Slice.Segment.ID {
-		return false
-	} else if a[i].Slice.Start < a[j].Slice.Start {
-		return true
-	}
-	return false
-}
-
-// Essentially, find the intersection of a bunch of sets of intervals (slices).
+// Group the ConcreteRefs by slices where they overlap.
 func EnumerateConcreteRefs(refs [][]ConcreteRef, f func(vaas.Slice, []ConcreteRef) error) error {
-	// collect segments where all the sets have at least one ConcreteRef
- 	vsize := len(refs)
-	bySegment := make(map[int][][]ConcreteRef)
-	for i := 0; i < vsize; i++ {
-		for _, ref := range refs[i] {
-			segmentID := ref.Slice.Segment.ID
-			if len(bySegment[segmentID]) < i {
-				continue
-			}
-			if len(bySegment[segmentID]) == i {
-				bySegment[segmentID] = append(bySegment[segmentID], []ConcreteRef{})
-			}
-			bySegment[segmentID][i] = append(bySegment[segmentID][i], ref)
+	sets := make([][]vaas.Slice, len(refs))
+	for i := range refs {
+		sets[i] = make([]vaas.Slice, len(refs[i]))
+		for j := range refs[i] {
+			sets[i][j] = refs[i][j].Slice
 		}
 	}
-	for segmentID := range bySegment {
-		if len(bySegment[segmentID]) < len(refs) {
-			delete(bySegment, segmentID)
-			continue
-		}
-	}
+	slices := SliceIntersection(sets)
 
-	// enumerate in each segment
-	for _, cur := range bySegment {
-		for i := 0; i < vsize; i++ {
-			sort.Sort(ConcreteRefs(cur[i]))
-		}
-
-		indexes := make([]int, vsize)
-		t := 0
-
-		iter := func() (bool, error) {
-			// set t to max left index
-			for i := 0; i < vsize; i++ {
-				if cur[i][indexes[i]].Slice.Start > t {
-					t = cur[i][indexes[i]].Slice.Start
+	// collect the ConcreteRef for each slice
+	for _, slice := range slices {
+		var cur []ConcreteRef
+		for i := 0; i < len(refs); i++ {
+			for _, ref := range refs[i] {
+				if !ref.Slice.Contains(slice) {
+					continue
 				}
-			}
-
-			// increment until right index is right of t
-			for i := 0; i < vsize; i++ {
-				for indexes[i] < len(cur[i]) && cur[i][indexes[i]].Slice.End <= t {
-					indexes[i]++
-				}
-				if indexes[i] >= len(cur[i]) {
-					return true, nil
-				}
-			}
-
-			// see if we got an interval
-			var l []ConcreteRef
-			end := -1
-			constrainingIdx := -1
-			for i := 0; i < vsize; i++ {
-				if cur[i][indexes[i]].Slice.Start > t || cur[i][indexes[i]].Slice.End <= t {
-					break
-				}
-				l = append(l, cur[i][indexes[i]])
-				if end == -1 || cur[i][indexes[i]].Slice.End < end {
-					end = cur[i][indexes[i]].Slice.End
-					constrainingIdx = i
-				}
-			}
-			if len(l) < vsize {
-				return false, nil
-			}
-			slice := vaas.Slice{l[0].Slice.Segment, t, end}
-			err := f(slice, l)
-			if err != nil {
-				return true, err
-			}
-
-			// increment the one with smallest right index
-			indexes[constrainingIdx]++
-			if indexes[constrainingIdx] >= len(cur[constrainingIdx]) {
-				return true, nil
-			}
-			return false, nil
-		}
-
-		for {
-			stop, err := iter()
-			if err != nil {
-				return err
-			} else if stop {
+				cur = append(cur, ref)
 				break
 			}
+		}
+		if len(cur) != len(sets) {
+			panic(fmt.Errorf("EnumerateConcreteRefs could not find ref for some intersection slice"))
+		}
+		err := f(slice, cur)
+		if err != nil {
+			return err
 		}
 	}
 

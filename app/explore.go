@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"sync"
 )
@@ -45,6 +46,7 @@ func init() {
 			Mode string // "random" or "sequential"
 			StartSlice vaas.Slice
 			Count int
+			Unit int
 			Continue bool
 		}
 
@@ -57,40 +59,19 @@ func init() {
 		})
 
 		server.OnEvent("/exec", "exec", func(s socketio.Conn, request ExecRequest) {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Println(r)
+					debug.PrintStack()
+				}
+			}()
+
 			query := GetQuery(request.QueryID)
 			if query == nil {
 				s.Emit("error", "no such query")
 				return
 			}
 			vector := ParseVector(request.Vector)
-			var sampler func() *vaas.Slice
-			if request.Mode == "random" {
-				timeline := DBTimeline{Timeline: vector[0].Timeline}
-				timelineSampler := TimelineSampler(timeline.ListSegments())
-				sampler = func() *vaas.Slice {
-					slice := timelineSampler.Uniform(VisualizeMaxFrames)
-					return &slice
-				}
-			} else if request.Mode == "sequential" {
-				segment := GetSegment(request.StartSlice.Segment.ID)
-				if segment == nil || segment.Timeline.ID != vector[0].Timeline.ID {
-					s.Emit("error", "invalid segment for sequential request")
-					return
-				}
-				curIdx := request.StartSlice.Start
-				sampler = func() *vaas.Slice {
-					frameRange := [2]int{curIdx, curIdx+VisualizeMaxFrames}
-					if frameRange[1] > segment.Frames {
-						return nil
-					}
-					curIdx += VisualizeMaxFrames
-					return &vaas.Slice{
-						Segment: segment.Segment,
-						Start: frameRange[0],
-						End: frameRange[1],
-					}
-				}
-			}
 
 			// try to reuse existing task context
 			mu.Lock()
@@ -112,6 +93,43 @@ func init() {
 			}()
 			if ok {
 				return
+			}
+
+			// build sampler
+			var sampler func() *vaas.Slice
+			if request.Mode == "random" {
+				// find slices where all series in vector are available
+				sets := make([][]vaas.Slice, len(vector))
+				for i, series := range vector {
+					for _, item := range series.ListItems() {
+						sets[i] = append(sets[i], item.Slice)
+					}
+				}
+				slices := SliceIntersection(sets)
+				sliceSampler := SliceSampler(slices)
+				sampler = func() *vaas.Slice {
+					slice := sliceSampler.Uniform(request.Unit)
+					return &slice
+				}
+			} else if request.Mode == "sequential" {
+				segment := GetSegment(request.StartSlice.Segment.ID)
+				if segment == nil || segment.Timeline.ID != vector[0].Timeline.ID {
+					s.Emit("error", "invalid segment for sequential request")
+					return
+				}
+				curIdx := request.StartSlice.Start
+				sampler = func() *vaas.Slice {
+					frameRange := [2]int{curIdx, curIdx+request.Unit}
+					if frameRange[1] > segment.Frames {
+						return nil
+					}
+					curIdx += request.Unit
+					return &vaas.Slice{
+						Segment: segment.Segment,
+						Start: frameRange[0],
+						End: frameRange[1],
+					}
+				}
 			}
 
 			log.Printf("[exec (%s) %v] beginning test for client %v", query.Name, vector, s.ID())

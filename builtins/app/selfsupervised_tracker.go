@@ -137,7 +137,7 @@ func init() {
 				log.Printf("[selfsupervised-tracker train] failed to export: could not mkdir %s", exportPath)
 				return
 			}
-			exporter := app.NewExporter(refs, app.ExportOptions{
+			exporter := app.NewExporterDataRefs(refs, app.ExportOptions{
 				Path: exportPath,
 				Name: fmt.Sprintf("Export %s (for selfsupervised-tracker training)", detectionSeries.Name),
 				Freq: exportFreq,

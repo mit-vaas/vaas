@@ -62,6 +62,9 @@ Vue.component('timeline-manage', {
 		exportSeries: function(series_id) {
 			myCall('POST', '/series/export', {'series_id': series_id});
 		},
+		exportVector: function(vector_id) {
+			myCall('POST', '/timelines/vectors/export', {'vector_id': vector_id});
+		},
 
 		// add vector form
 		showAddVectorModal: function() {
@@ -158,6 +161,7 @@ Vue.component('timeline-manage', {
 				<tr v-for="vector in vectors">
 					<td>{{ vector.Vector | prettyVector }}</td>
 					<td>
+						<button v-on:click="exportVector(vector.ID)" class="btn btn-primary">Export</button>
 						<button v-on:click="deleteVector(vector.ID)" class="btn btn-danger">Delete</button>
 					</td>
 				</tr>

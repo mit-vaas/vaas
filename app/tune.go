@@ -197,7 +197,7 @@ func init() {
 					wg.Add(1)
 					opts := vaas.ExecOptions{
 						NoPersist: true,
-						IgnoreItems: true,
+						//IgnoreItems: true,
 					}
 					stream := NewExecStream(&qcopy, vector, sampler, 4, opts, func(slice vaas.Slice, curOutputs [][]vaas.DataReader, err error) {
 						if err != nil {

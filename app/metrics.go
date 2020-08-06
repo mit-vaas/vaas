@@ -37,9 +37,11 @@ func AvgMetricPerFrame(f func(vaas.Data, vaas.Data) float64) MetricFunc {
 }
 
 func DetectionF1(iouThreshold float64) MetricFunc {
-	return AvgMetricPerFrame(func(a vaas.Data, b vaas.Data) float64 {
-		alist := a.(vaas.DetectionData)[0]
-		blist := b.(vaas.DetectionData)[0]
+	return AvgMetricPerFrame(func(a_ vaas.Data, b_ vaas.Data) float64 {
+		a := a_.(vaas.DetectionData)
+		b := b_.(vaas.DetectionData).Resize(a.D[0].CanvasDims)
+		alist := a.D[0].Detections
+		blist := b.D[0].Detections
 		bset := make(map[int]bool)
 		matches := 0
 		for _, adet := range alist {

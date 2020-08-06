@@ -94,8 +94,8 @@ func (m TrackFilter) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 		parents[0].Close()
 
 		t1 := time.Now()
-		detections := data.(vaas.TrackData)
-		tracks := vaas.DetectionsToTracks(detections)
+		data_ := data.(vaas.DetectionData)
+		tracks := vaas.DetectionsToTracks(data_.D)
 		var out [][]vaas.DetectionWithFrame
 		for _, track := range tracks {
 			ok := false
@@ -138,8 +138,15 @@ func (m TrackFilter) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 				out = append(out, track)
 			}
 		}
-		detections = vaas.TracksToDetections(out)
-		buf.Write(vaas.TrackData(detections).EnsureLength(data.Length()))
+		detections := vaas.TracksToDetections(out)
+		ndata := vaas.DetectionData{T: vaas.TrackType}
+		for i := 0; i < len(data_.D) && i < len(detections); i++ {
+			ndata.D = append(ndata.D, vaas.DetectionFrame{
+				Detections: detections[i],
+				CanvasDims: data_.D[i].CanvasDims,
+			})
+		}
+		buf.Write(ndata.EnsureLength(data.Length()))
 		buf.Close()
 
 		t2 := time.Now()

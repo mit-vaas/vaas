@@ -36,15 +36,21 @@ func NewExecJob(query *DBQuery, vector []*DBSeries, nframes int) *ExecJob {
 	}
 
 	// determine which slices we need to apply on
+	sets := make([][]vaas.Slice, len(vector))
+	for i, series := range vector {
+		for _, item := range series.ListItems() {
+			sets[i] = append(sets[i], item.Slice)
+		}
+	}
+	bigSlices := SliceIntersection(sets)
 	j.pending = make(map[int]vaas.Slice)
-	timeline := &DBTimeline{Timeline: vector[0].Timeline}
-	for _, segment := range timeline.ListSegments() {
-		for start := 0; start < segment.Frames; start += nframes {
+	for _, bigSlice := range bigSlices {
+		for start := bigSlice.Start; start < bigSlice.End; start += nframes {
 			end := start + nframes
-			if end > segment.Frames {
-				end = segment.Frames
+			if end > bigSlice.End {
+				end = bigSlice.End
 			}
-			slice := vaas.Slice{segment.Segment, start, end}
+			slice := vaas.Slice{bigSlice.Segment, start, end}
 			haveAll := true
 			for _, series := range outputSeries {
 				if series.GetItem(slice) == nil {

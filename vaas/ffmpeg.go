@@ -51,6 +51,7 @@ func ReadFfmpeg(fname string, start int, end int, opts ReadVideoOptions) FfmpegR
 	cmd := Command(
 		"ffmpeg-read", CommandOptions{NoStdin: true, OnlyDebug: true},
 		"ffmpeg",
+		"-threads", "2",
 		"-ss", ffmpegTime(start),
 		"-i", fname,
 		//"-to", ffmpegTime(end-start),
@@ -138,7 +139,9 @@ func MakeVideo(rd VideoReader, width int, height int) (io.ReadCloser, *Cmd) {
 
 	cmd := Command(
 		"ffmpeg-mkvid", CommandOptions{OnlyDebug: true},
-		"ffmpeg", "-f", "rawvideo",
+		"ffmpeg",
+		"-threads", "2",
+		"-f", "rawvideo",
 		"-s", fmt.Sprintf("%dx%d", width, height),
 		//"-r", fmt.Sprintf("%v", FPS),
 		"-pix_fmt", "rgb24", "-i", "-",

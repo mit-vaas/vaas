@@ -51,13 +51,8 @@ func (r *VideoRenderer) setErr(err error) {
 func RenderFrames(canvas vaas.Image, datas [][]vaas.Data, f func(int)) {
 	renderOne := func(im vaas.Image, data vaas.Data, idx int) {
 		if data.Type() == vaas.DetectionType || data.Type() == vaas.TrackType {
-			var detections [][]vaas.Detection
-			if data.Type() == vaas.DetectionType {
-				detections = [][]vaas.Detection(data.(vaas.DetectionData))
-			} else {
-				detections = [][]vaas.Detection(data.(vaas.TrackData))
-			}
-			for _, detection := range detections[idx] {
+			detections := data.(vaas.DetectionData).Resize([2]int{im.Width, im.Height}).D
+			for _, detection := range detections[idx].Detections {
 				var color [3]uint8
 				if data.Type() == vaas.DetectionType {
 					color = [3]uint8{255, 0, 0}
