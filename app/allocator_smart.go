@@ -39,8 +39,9 @@ func (a *SmartAllocator) flatContainers() []vaas.Container {
 // Returns free resources per machine.
 // Caller must have the lock.
 func (a *SmartAllocator) machineFree() []map[string]int {
-	free := make([]map[string]int, len(Machines))
-	for i, machine := range Machines {
+	machines := Machines.GetList()
+	free := make([]map[string]int, len(machines))
+	for i, machine := range machines {
 		free[i] = make(map[string]int)
 		for k, v := range machine.Resources {
 			free[i][k] = v
@@ -85,6 +86,7 @@ func (a *SmartAllocator) Pick(setID vaas.EnvSetID) []vaas.Container {
 }
 
 func (a *SmartAllocator) Allocate(set vaas.EnvSet) []vaas.Container {
+	machines := Machines.GetList()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.containers[set.ID] != nil {
@@ -93,7 +95,7 @@ func (a *SmartAllocator) Allocate(set vaas.EnvSet) []vaas.Container {
 
 	// find what an even division of the resources between envsets is
 	setResources := make(map[string]int)
-	for _, machine := range Machines {
+	for _, machine := range machines {
 		for k, v := range machine.Resources {
 			setResources[k] += v
 		}
@@ -160,7 +162,7 @@ func (a *SmartAllocator) Allocate(set vaas.EnvSet) []vaas.Container {
 		// perform the allocation
 		log.Printf("[allocator] [set %v] allocating env template=%s on machine %d", set.ID, env.Template, machineIdx)
 		var container vaas.Container
-		err := vaas.JsonPost(Machines[machineIdx].BaseURL, "/allocate", env, &container)
+		err := vaas.JsonPost(machines[machineIdx].BaseURL, "/allocate", env, &container)
 		if err != nil {
 			panic(fmt.Errorf("allocation error: %v", err))
 		}
@@ -182,7 +184,7 @@ func (a *SmartAllocator) Allocate(set vaas.EnvSet) []vaas.Container {
 // caller must have lock
 func (a *SmartAllocator) deallocate(setID vaas.EnvSetID, container vaas.Container) {
 	log.Printf("[allocator] begin de-allocating container %s", container.UUID)
-	resp, err := http.PostForm(Machines[container.MachineIdx].BaseURL + "/deallocate", url.Values{"uuid": {container.UUID}})
+	resp, err := http.PostForm(Machines.GetList()[container.MachineIdx].BaseURL + "/deallocate", url.Values{"uuid": {container.UUID}})
 	if err != nil {
 		panic(fmt.Errorf("de-allocation error: %v", err))
 	} else if resp.StatusCode != 200 {

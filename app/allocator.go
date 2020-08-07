@@ -10,8 +10,27 @@ import (
 	"sync"
 )
 
-var Machines = []vaas.Machine{
-	vaas.Machine{"http://localhost:8081", map[string]int{"gpu": 2, "container": 8}},
+type machines struct {
+	machines []vaas.Machine
+	mu sync.Mutex
+}
+
+var Machines *machines = &machines{}
+
+func (m *machines) GetList() []vaas.Machine {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var machines []vaas.Machine
+	for _, machine := range m.machines {
+		machines = append(machines, machine)
+	}
+	return machines
+}
+
+func (m *machines) Register(machine vaas.Machine) {
+	m.mu.Lock()
+	m.machines = append(m.machines, machine)
+	m.mu.Unlock()
 }
 
 // An Allocator allocates environments onto containers, and assigns containers
@@ -82,9 +101,10 @@ func (a *MinimalAllocator) Allocate(set vaas.EnvSet) []vaas.Container {
 func (a *MinimalAllocator) tryAllocate(set vaas.EnvSet) bool {
 	// try to fit the envset, return false if it's not possible
 	// greedily prefer machines where we've already allocated other containers in this set
+	machines := Machines.GetList()
 	machineHits := make(map[int]int)
-	machineUsage := make([]map[string]int, len(Machines))
-	for i, machine := range Machines {
+	machineUsage := make([]map[string]int, len(machines))
+	for i, machine := range machines {
 		machineUsage[i] = make(map[string]int)
 		for k, v := range machine.Resources {
 			machineUsage[i][k] = v
@@ -125,7 +145,7 @@ func (a *MinimalAllocator) tryAllocate(set vaas.EnvSet) bool {
 	// we were able to fit it, so now we need to actually allocate on each machine and collect the Containers
 	var containers []vaas.Container
 	for envIdx, env := range set.Environments {
-		machine := Machines[allocation[envIdx]]
+		machine := machines[allocation[envIdx]]
 		var container vaas.Container
 		err := vaas.JsonPost(machine.BaseURL, "/allocate", env, &container)
 		if err != nil {
@@ -149,7 +169,7 @@ func (a *MinimalAllocator) Deallocate(setID vaas.EnvSetID) {
 	}
 	for _, container := range a.containers[setID] {
 		log.Printf("[allocator] begin de-allocating container %s", container.UUID)
-		resp, err := http.PostForm(Machines[container.MachineIdx].BaseURL + "/deallocate", url.Values{"uuid": {container.UUID}})
+		resp, err := http.PostForm(Machines.GetList()[container.MachineIdx].BaseURL + "/deallocate", url.Values{"uuid": {container.UUID}})
 		if err != nil {
 			panic(fmt.Errorf("de-allocation error: %v", err))
 		} else if resp.StatusCode != 200 {
@@ -189,67 +209,16 @@ func init() {
 	QueryChangeListeners = append(QueryChangeListeners, func(query *DBQuery) {
 		allocator.Deallocate(vaas.EnvSetID{"query", query.ID})
 	})
+
+	http.HandleFunc("/register-machine", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+		var machine vaas.Machine
+		if err := vaas.ParseJsonRequest(w, r, &machine); err != nil {
+			return
+		}
+		Machines.Register(machine)
+	})
 }
-
-/*
-Transformer:
-- Inputs a query graph and outputs another
-- Each query specifies a sequence of transformers that should be applied one after another
-- Some transformers may take a long time to apply
-	e.g. they need to train an approximate model
-	in this case the transformer should first return the graph unchanged
-	start a job to train approximate model in the background
-	and when that finishes it can notify the system to de-allocate the query graph so that the transformers are re-applied
-- Transformer has per-vector configuration stored in a vtransformers table (like vnodes)
-
-Distributed execution:
-- The coordinator maintains a map: envID -> set of containers/executors where that env is allocated
-- Nodes in query graph are annotated with environment IDs
-	All nodes in the default env are allocated together
-		So if we allocate one of them on container X => put the rest on X too
-		This means their executor sets will be identical
-	Other nodes are always allocated separately (different envs)
-
-Allocation strategy:
-- There is Allocator object that handles allocation of nodes/envs
-	and I guess it notifies machines when they should create/destroy a container and which nodes should run in the container
-type Allocator interface {
-	// allocator maintains the executor map
-	// this returns an executor for each node in the specified query graph in round-robin order
-	// if it returns a specific container X for a node in default container, it returns X for all the rest too
-	//GetExecutors(query *Query) map[int]Executor
-	GetExecutor(env Environment) Executor
-
-	// also need a function for jobs that require a constant amount of resources
-}
-- Allocator also keeps track of the idle percentage time, like if it is 20% of the time not doing any tasks
-	maybe there are two numbers for interactive case, since otherwise it'd be dominated by the idle time due to nothing being requested
-	or maybe the second number can be one used for long-term allocation strategy
-		like it should be weighted by the # of containers that the node has been allocated on
-	I guess these stats are stored per unique container in the query
-		(all containers except default are unique)
-- what to do if query isn't already allocated?
-	(1) if there is an allocated query that has not been used for 10 sec, then de-allocate it
-	(2) try to allocate on unallocated machines
-	(3) if that doesn't work, try to replace extra containers with highest idle time
-		extra meaning it's not first in the list of containers for the env
-	(4) if that doesn't work, should we replace any idle container? or wait until a query becomes idle for 10 sec?
-		depends on whether this is interactive I guess
-		interactive should have priority
-- rebalancing
-	should be somehow based on the idle times
-	for now the rebalancing can divide the resources evenly
-		one resource is "container" which specifies maximum # containers a machine is willing to host
-		another is "gpu" the # GPUs that machine has
-		need to take this into account when allocating too
-
-Query execution
-- Get list of containers corresponding to the different environments in the query
-	The Allocator should greedily assign environments on the same machine as envs that were assigned earlier in the query
-		this overrides the round-robin part
-- Assign all containers in the query, but have run function like we do now but nodes should also be able to call run function
-	This run function determines which buffers we should actually initialize
-	So a node should have a Run function or something where it decides what parents to run and in what order
-- Basically this should support the implementation of reference nodes and short-circuit AND/OR nodes
-	also MIRIS where it conditionally runs a sequence like video->detector->filter detections-> on a subset of frames, potentially repeatedly...
-*/

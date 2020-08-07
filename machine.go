@@ -11,19 +11,21 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 )
 
 func main() {
 	if len(os.Args) < 4 {
-		fmt.Println("usage: ./machine [external IP] [coordinator URL] [num gpus]")
-		fmt.Println("example: ./machine localhost http://localhost:8080 2")
+		fmt.Println("usage: ./machine [external IP] [port] [coordinator URL] [num gpus]")
+		fmt.Println("example: ./machine localhost 8081 http://localhost:8080 2")
 		return
 	}
 	myIP := os.Args[1]
-	coordinatorURL := os.Args[2]
-	gpus := vaas.ParseInt(os.Args[3])
+	port := vaas.ParseInt(os.Args[2])
+	coordinatorURL := os.Args[3]
+	gpus := vaas.ParseInt(os.Args[4])
 
 	type Cmd struct {
 		cmd *exec.Cmd
@@ -155,8 +157,21 @@ func main() {
 		log.Printf("[machine] container %s stopped", uuid)
 	})
 
-	log.Printf("starting on :8081")
-	if err := http.ListenAndServe(":8081", nil); err != nil {
+	// register with the coordinator
+	machine := vaas.Machine{
+		BaseURL: fmt.Sprintf("http://%s:%d", myIP, port),
+		Resources: map[string]int{
+			"gpu": gpus,
+			"container": runtime.NumCPU() / 4,
+		},
+	}
+	err := vaas.JsonPost(coordinatorURL, "/register-machine", machine, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	log.Printf("starting on :%d", port)
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil); err != nil {
 		panic(err)
 	}
 }
