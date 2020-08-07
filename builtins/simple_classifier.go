@@ -5,6 +5,7 @@ import (
 
 	"bufio"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -27,7 +28,10 @@ type SimpleClassifier struct {
 
 func NewSimpleClassifier(node vaas.Node) vaas.Executor {
 	var cfg SimpleClassifierConfig
-	vaas.JsonUnmarshal([]byte(node.Code), &cfg)
+	err := json.Unmarshal([]byte(node.Code), &cfg)
+	if err != nil {
+		return vaas.ErrorExecutor{node.DataType, fmt.Errorf("error decoding node configuration: %v", err)}
+	}
 	return &SimpleClassifier{
 		node: node,
 		cfg: cfg,

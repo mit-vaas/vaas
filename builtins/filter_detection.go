@@ -2,6 +2,7 @@ package builtins
 
 import (
 	"../vaas"
+	"encoding/json"
 	"fmt"
 )
 
@@ -19,7 +20,10 @@ type DetectionFilter struct {
 
 func NewDetectionFilter(node vaas.Node) vaas.Executor {
 	var cfg DetectionFilterConfig
-	vaas.JsonUnmarshal([]byte(node.Code), &cfg)
+	err := json.Unmarshal([]byte(node.Code), &cfg)
+	if err != nil {
+		return vaas.ErrorExecutor{node.DataType, fmt.Errorf("error decoding node configuration: %v", err)}
+	}
 	m := DetectionFilter{
 		node: node,
 		score: cfg.Score,

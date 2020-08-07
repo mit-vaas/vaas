@@ -2,6 +2,8 @@ package builtins
 
 import (
 	"../vaas"
+
+	"encoding/json"
 	"fmt"
 )
 
@@ -20,7 +22,10 @@ type Crop struct {
 
 func NewCrop(node vaas.Node) vaas.Executor {
 	var cfg CropConfig
-	vaas.JsonUnmarshal([]byte(node.Code), &cfg)
+	err := json.Unmarshal([]byte(node.Code), &cfg)
+	if err != nil {
+		return vaas.ErrorExecutor{node.DataType, fmt.Errorf("error decoding node configuration: %v", err)}
+	}
 	return Crop{
 		node: node,
 		cfg: cfg,

@@ -6,6 +6,7 @@ import (
 	"../vaas"
 	goslgraph "github.com/cpmech/gosl/graph"
 
+	"encoding/json"
 	"fmt"
 )
 
@@ -29,7 +30,10 @@ func NewIOU(node vaas.Node) vaas.Executor {
 		MaxAge int `json:"maxAge"`
 	}
 	var cfg Config
-	vaas.JsonUnmarshal([]byte(node.Code), &cfg)
+	err := json.Unmarshal([]byte(node.Code), &cfg)
+	if err != nil {
+		return vaas.ErrorExecutor{node.DataType, fmt.Errorf("error decoding node configuration: %v", err)}
+	}
 	return IOU{
 		node: node,
 		maxAge: cfg.MaxAge,

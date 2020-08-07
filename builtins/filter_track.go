@@ -3,6 +3,7 @@ package builtins
 import (
 	"../vaas"
 	"github.com/mitroadmaps/gomapinfer/common"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -58,7 +59,10 @@ type TrackFilter struct {
 
 func NewTrackFilter(node vaas.Node) vaas.Executor {
 	var cfg TrackFilterConfig
-	vaas.JsonUnmarshal([]byte(node.Code), &cfg)
+	err := json.Unmarshal([]byte(node.Code), &cfg)
+	if err != nil {
+		return vaas.ErrorExecutor{node.DataType, fmt.Errorf("error decoding node configuration: %v", err)}
+	}
 	for i := range cfg.Shapes {
 		for j := range cfg.Shapes[i] {
 			for k, p := range cfg.Shapes[i][j] {

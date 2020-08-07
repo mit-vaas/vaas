@@ -4,6 +4,7 @@ import (
 	"../vaas"
 
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -56,7 +57,10 @@ type Yolov3 struct {
 
 func NewYolov3(node vaas.Node) vaas.Executor {
 	var cfg Yolov3Config
-	vaas.JsonUnmarshal([]byte(node.Code), &cfg)
+	err := json.Unmarshal([]byte(node.Code), &cfg)
+	if err != nil {
+		return vaas.ErrorExecutor{node.DataType, fmt.Errorf("error decoding node configuration: %v", err)}
+	}
 	return &Yolov3{
 		node: node,
 		cfg: cfg,

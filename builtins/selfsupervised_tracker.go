@@ -2,6 +2,9 @@ package builtins
 
 import (
 	"../vaas"
+
+	"encoding/json"
+	"fmt"
 )
 
 type SelfSupervisedTrackerConfig struct {
@@ -10,7 +13,10 @@ type SelfSupervisedTrackerConfig struct {
 
 func NewSelfSupervisedTracker(node vaas.Node) vaas.Executor {
 	var cfg SelfSupervisedTrackerConfig
-	vaas.JsonUnmarshal([]byte(node.Code), &cfg)
+	err := json.Unmarshal([]byte(node.Code), &cfg)
+	if err != nil {
+		return vaas.ErrorExecutor{node.DataType, fmt.Errorf("error decoding node configuration: %v", err)}
+	}
 
 	cmd := vaas.Command(
 		"selfsupervised-tracker-run", vaas.CommandOptions{},

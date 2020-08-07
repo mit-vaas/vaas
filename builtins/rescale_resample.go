@@ -3,6 +3,7 @@ package builtins
 import (
 	"../vaas"
 
+	"encoding/json"
 	"fmt"
 )
 
@@ -23,7 +24,10 @@ type RescaleResample struct {
 
 func NewRescaleResample(node vaas.Node) vaas.Executor {
 	var cfg RescaleResampleConfig
-	vaas.JsonUnmarshal([]byte(node.Code), &cfg)
+	err := json.Unmarshal([]byte(node.Code), &cfg)
+	if err != nil {
+		return vaas.ErrorExecutor{node.DataType, fmt.Errorf("error decoding node configuration: %v", err)}
+	}
 	if cfg.Freq == 0 {
 		cfg.Freq = 1
 	}

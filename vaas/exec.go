@@ -120,6 +120,13 @@ type Executor interface {
 	Close()
 }
 
+type ErrorExecutor struct {
+	DataType DataType
+	Error error
+}
+func (e ErrorExecutor) Run(context ExecContext) DataBuffer { return GetErrorBuffer(e.DataType, e.Error) }
+func (e ErrorExecutor) Close() {}
+
 type ExecutorMeta struct {
 	New func(Node) Executor
 

@@ -5,6 +5,7 @@ import (
 
 	"bufio"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -44,7 +45,10 @@ type TunableClassifier struct {
 
 func NewTunableClassifier(node vaas.Node) vaas.Executor {
 	var cfg TunableClassifierConfig
-	vaas.JsonUnmarshal([]byte(node.Code), &cfg)
+	err := json.Unmarshal([]byte(node.Code), &cfg)
+	if err != nil {
+		return vaas.ErrorExecutor{node.DataType, fmt.Errorf("error decoding node configuration: %v", err)}
+	}
 	return &TunableClassifier{
 		node: node,
 		cfg: cfg,
