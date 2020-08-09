@@ -56,16 +56,21 @@ type Yolov3 struct {
 }
 
 func NewYolov3(node vaas.Node) vaas.Executor {
-	var cfg Yolov3Config
-	err := json.Unmarshal([]byte(node.Code), &cfg)
+	var cfgs []Yolov3Config
+	err := json.Unmarshal([]byte(node.Code), &cfgs)
 	if err != nil {
 		return vaas.ErrorExecutor{node.DataType, fmt.Errorf("error decoding node configuration: %v", err)}
 	}
-	return &Yolov3{
+	m := &Yolov3{
 		node: node,
-		cfg: cfg,
+		cfg: cfgs[0],
 		stats: new(vaas.StatsHolder),
 	}
+	if m.cfg.InputSize[0] != 0 && m.cfg.InputSize[1] != 0 {
+		m.width = m.cfg.InputSize[0]
+		m.height = m.cfg.InputSize[1]
+	}
+	return m
 }
 
 func CreateYolov3Cfg(fname string, cfg Yolov3Config, dims [2]int, training bool) {
@@ -169,7 +174,16 @@ func (m *Yolov3) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 	}
 
 	go func() {
-		buf.SetMeta(parents[0].Freq())
+		parent := parents[0]
+		m.mu.Lock()
+		if m.width != 0 && m.height != 0 {
+			if vbufReader, ok := parent.(*vaas.VideoBufferReader); ok {
+				vbufReader.Rescale([2]int{m.width, m.height})
+			}
+		}
+		m.mu.Unlock()
+
+		buf.SetMeta(parent.Freq())
 		fname := fmt.Sprintf("%s/%d.jpg", os.TempDir(), rand.Int63())
 		defer os.Remove(fname)
 		PerFrame(
@@ -182,12 +196,9 @@ func (m *Yolov3) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 				}
 				m.mu.Lock()
 				if m.stdin == nil {
-					if m.cfg.InputSize[0] == 0 || m.cfg.InputSize[1] == 0 {
+					if m.width == 0 || m.height == 0 {
 						m.width = (im.Width + 31) / 32 * 32
 						m.height = (im.Height + 31) / 32 * 32
-					} else {
-						m.width = m.cfg.InputSize[0]
-						m.height = m.cfg.InputSize[1]
 					}
 					log.Printf("[yolo] convert input %dx%d to %dx%d", im.Width, im.Height, m.width, m.height)
 					m.start()
@@ -238,6 +249,20 @@ func init() {
 				"container": 1,
 				"gpu": 1,
 			},
+		},
+		Tune: func(node vaas.Node, gtlist []vaas.Data) [][2]string {
+			var cfgs []Yolov3Config
+			vaas.JsonUnmarshal([]byte(node.Code), &cfgs)
+
+			var descs [][2]string
+			for _, cfg := range cfgs {
+				encoded := vaas.JsonMarshal([]Yolov3Config{cfg})
+				descs = append(descs, [2]string{
+					string(encoded),
+					fmt.Sprintf("%dx%d", cfg.InputSize[0], cfg.InputSize[1]),
+				})
+			}
+			return descs
 		},
 	}
 }
