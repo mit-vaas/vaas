@@ -24,6 +24,9 @@ type FfmpegReader struct {
 	Width int
 	Height int
 	Buf []byte
+	ExpectedFrames int
+	count int
+	last Image
 }
 
 func ffmpegTime(index int) string {
@@ -45,9 +48,10 @@ func ParseFfmpegTime(str string) int {
 	}
 }
 
-func ReadFfmpeg(fname string, start int, end int, opts ReadVideoOptions) FfmpegReader {
+func ReadFfmpeg(fname string, start int, end int, opts ReadVideoOptions) *FfmpegReader {
 	log.Printf("[ffmpeg] from %s extract frames [%d:%d) %dx%d", fname, start, end, opts.Scale[0], opts.Scale[1])
 
+	nframes := (end-start+opts.Sample-1)/opts.Sample
 	cmd := Command(
 		"ffmpeg-read", CommandOptions{NoStdin: true, OnlyDebug: true},
 		"ffmpeg",
@@ -55,32 +59,43 @@ func ReadFfmpeg(fname string, start int, end int, opts ReadVideoOptions) FfmpegR
 		"-ss", ffmpegTime(start),
 		"-i", fname,
 		//"-to", ffmpegTime(end-start),
-		"-vframes", fmt.Sprintf("%d", end-start),
+		"-vframes", fmt.Sprintf("%d", nframes),
 		"-c:v", "rawvideo", "-pix_fmt", "rgb24", "-f", "rawvideo",
 		"-vf", fmt.Sprintf("scale=%dx%d,fps=fps=%d/%d:round=up", opts.Scale[0], opts.Scale[1], FPS, opts.Sample),
 		"-",
 	)
 
-	return FfmpegReader{
+	return &FfmpegReader{
 		Cmd: cmd,
 		Stdout: cmd.Stdout(),
 		Width: opts.Scale[0],
 		Height: opts.Scale[1],
 		Buf: make([]byte, opts.Scale[0]*opts.Scale[1]*3),
+		ExpectedFrames: nframes,
 	}
 }
 
-func (rd FfmpegReader) Read() (Image, error) {
+func (rd *FfmpegReader) Read() (Image, error) {
 	_, err := io.ReadFull(rd.Stdout, rd.Buf)
-	if err != nil {
+	if err == io.EOF {
+		if rd.count == 0 || rd.count >= rd.ExpectedFrames {
+			return Image{}, err
+		} else {
+			rd.count++
+			return rd.last, nil
+		}
+	} else if err != nil {
 		return Image{}, err
 	}
 	buf := make([]byte, len(rd.Buf))
 	copy(buf, rd.Buf)
-	return ImageFromBytes(rd.Width, rd.Height, buf), nil
+	im := ImageFromBytes(rd.Width, rd.Height, buf)
+	rd.last = im
+	rd.count++
+	return im, nil
 }
 
-func (rd FfmpegReader) Close() {
+func (rd *FfmpegReader) Close() {
 	rd.Stdout.Close()
 	rd.Cmd.Wait()
 }

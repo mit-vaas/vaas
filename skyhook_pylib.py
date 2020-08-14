@@ -94,6 +94,7 @@ def all_decorate(f):
 	return wrap
 
 stdin = None
+stdout = None
 meta = None
 
 def input_packet():
@@ -125,13 +126,19 @@ def output_packet(slice_idx, frame_range, data):
 				encoded_data += bin
 	else:
 		encoded_data = json.dumps(data).encode('utf-8')
-	sys.stdout.buffer.write(struct.pack('>IIII', slice_idx, frame_range[0], frame_range[1], len(encoded_data)))
-	sys.stdout.buffer.write(encoded_data)
-	sys.stdout.buffer.flush()
+	stdout.write(struct.pack('>IIII', slice_idx, frame_range[0], frame_range[1], len(encoded_data)))
+	stdout.write(encoded_data)
+	stdout.flush()
 
 def run(callback_func):
-	global stdin, meta
-	stdin = sys.stdin.detach()
+	global stdin, stdout, meta
+
+	if sys.version_info[0] >= 3:
+		stdin = sys.stdin.detach()
+		stdout = sys.stdout.buffer
+	else:
+		stdin = sys.stdin
+		stdout = sys.stdout
 	meta = input_packet()
 
 	states = {}
@@ -162,5 +169,5 @@ def run(callback_func):
 			inputs.extend([None]*meta['Parents'])
 			callback_func(*inputs)
 			del states[packet['ID']]
-			sys.stdout.buffer.write(struct.pack('>IIII', packet['ID'], 0, 0, 0))
-			sys.stdout.buffer.flush()
+			stdout.write(struct.pack('>IIII', packet['ID'], 0, 0, 0))
+			stdout.flush()

@@ -390,7 +390,7 @@ func (rd *VideoBufferReader) start() {
 			stdin.Close()
 		}()
 
-		rd.rd = FfmpegReader{
+		rd.rd = &FfmpegReader{
 			Cmd: cmd,
 			Stdout: cmd.Stdout(),
 			Width: dims[0],
