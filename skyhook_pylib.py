@@ -38,9 +38,9 @@ def get_succ_time(track, idx, frames):
 def get_tracks(detections):
 	track_dict = {}
 	for frame_idx in range(len(detections)):
-		if detections[frame_idx] is None:
+		if detections[frame_idx].get('Detections', None) is None:
 			continue
-		for detection in detections[frame_idx]:
+		for detection in detections[frame_idx]['Detections']:
 			detection['frame_idx'] = frame_idx
 			track_id = detection['track_id']
 			if track_id not in track_dict:
@@ -48,11 +48,11 @@ def get_tracks(detections):
 			track_dict[track_id].append(detection)
 	return track_dict.values()
 
-def tracks_to_detections(tracks, n):
-	detections = [[] for _ in range(n)]
+def tracks_to_detections(tracks, orig_detections):
+	detections = [{'Detections': [], 'CanvasDims': d['CanvasDims']} for d in orig_detections]
 	for track in tracks:
 		for d in track:
-			detections[d['frame_idx']].append(d)
+			detections[d['frame_idx']]['Detections'].append(d)
 	return detections
 
 def per_frame_decorate(f):
