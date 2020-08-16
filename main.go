@@ -2,20 +2,19 @@ package main
 
 import (
 	"./app"
+	"./vaas"
 	_ "./builtins"
 	_ "./builtins/app"
 
 	"github.com/googollee/go-socket.io"
 
 	"log"
-	"math/rand"
 	"net/http"
-	"time"
 )
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-	rand.Seed(time.Now().UnixNano())
+	vaas.SeedRand()
 	server, err := socketio.NewServer(nil)
 	if err != nil {
 		log.Fatal(err)

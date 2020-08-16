@@ -16,6 +16,8 @@ import (
 func main() {
 	coordinatorURL := os.Args[1]
 
+	vaas.SeedRand()
+
 	executors := make(map[int]vaas.Executor)
 	buffers := make(map[string]map[int]vaas.DataBuffer)
 	var mu sync.Mutex

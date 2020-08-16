@@ -1,13 +1,16 @@
 package vaas
 
 import (
+	crypto_rand "crypto/rand"
 	"bytes"
 	"bufio"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"os/exec"
 	"strconv"
@@ -237,4 +240,13 @@ func Mod(a, b int) int {
 		x = x+b
 	}
 	return x
+}
+
+func SeedRand() {
+	var b [8]byte
+	_, err := crypto_rand.Read(b[:])
+	if err != nil {
+		panic(err)
+	}
+	rand.Seed(int64(binary.BigEndian.Uint64(b[:])))
 }
