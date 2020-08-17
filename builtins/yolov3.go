@@ -4,15 +4,13 @@ import (
 	"../vaas"
 
 	"bufio"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"os"
-	"os/exec"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,11 +20,12 @@ type Yolov3Config struct {
 	InputSize [2]int
 	ConfigPath string
 	ModelPath string
+	MetaPath string
 }
 
 func (cfg Yolov3Config) GetConfigPath() string {
 	if cfg.ConfigPath == "" {
-		return "darknet/cfg/yolov3.cfg"
+		return "cfg/yolov3.cfg"
 	} else {
 		return cfg.ConfigPath
 	}
@@ -40,40 +39,15 @@ func (cfg Yolov3Config) GetModelPath() string {
 	}
 }
 
-type Yolov3 struct {
-	cfg Yolov3Config
-	node vaas.Node
-
-	cfgFname string
-	stdin io.WriteCloser
-	rd *bufio.Reader
-	cmd *vaas.Cmd
-	width int
-	height int
-	mu sync.Mutex
-
-	stats *vaas.StatsHolder
+func (cfg Yolov3Config) GetMetaPath() string {
+	if cfg.ModelPath == "" {
+		return "cfg/coco.data"
+	} else {
+		return cfg.ModelPath
+	}
 }
 
-func NewYolov3(node vaas.Node) vaas.Executor {
-	var cfgs []Yolov3Config
-	err := json.Unmarshal([]byte(node.Code), &cfgs)
-	if err != nil {
-		return vaas.ErrorExecutor{node.DataType, fmt.Errorf("error decoding node configuration: %v", err)}
-	}
-	m := &Yolov3{
-		node: node,
-		cfg: cfgs[0],
-		stats: new(vaas.StatsHolder),
-	}
-	if m.cfg.InputSize[0] != 0 && m.cfg.InputSize[1] != 0 {
-		m.width = m.cfg.InputSize[0]
-		m.height = m.cfg.InputSize[1]
-	}
-	return m
-}
-
-func CreateYolov3Cfg(fname string, cfg Yolov3Config, dims [2]int, training bool) {
+func CreateYolov3Cfg(fname string, cfg Yolov3Config, training bool) {
 	// prepare configuration with this width/height
 	bytes, err := ioutil.ReadFile(cfg.GetConfigPath())
 	if err != nil {
@@ -85,10 +59,10 @@ func CreateYolov3Cfg(fname string, cfg Yolov3Config, dims [2]int, training bool)
 	}
 	for _, line := range strings.Split(string(bytes), "\n") {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "width=") {
-			line = fmt.Sprintf("width=%d", dims[0])
-		} else if strings.HasPrefix(line, "height=") {
-			line = fmt.Sprintf("height=%d", dims[1])
+		if strings.HasPrefix(line, "width=") && cfg.InputSize[0] > 0 {
+			line = fmt.Sprintf("width=%d", cfg.InputSize[0])
+		} else if strings.HasPrefix(line, "height=") && cfg.InputSize[1] > 0 {
+			line = fmt.Sprintf("height=%d", cfg.InputSize[1])
 		} else if training && strings.HasPrefix(line, "batch=") {
 			line = "batch=64"
 		} else if training && strings.HasPrefix(line, "subdivisions=") {
@@ -99,34 +73,43 @@ func CreateYolov3Cfg(fname string, cfg Yolov3Config, dims [2]int, training bool)
 	file.Close()
 }
 
-func (m *Yolov3) start() {
-	m.cfgFname = fmt.Sprintf("%s/%d.cfg", os.TempDir(), rand.Int63())
-	CreateYolov3Cfg(m.cfgFname, m.cfg, [2]int{m.width, m.height}, false)
-	m.cmd = vaas.Command(
-		"darknet",
-		vaas.CommandOptions{F: func(cmd *exec.Cmd) {
-			cmd.Dir = "darknet/"
-		}},
-		"./darknet", "detect", m.cfgFname, m.cfg.GetModelPath(), "-thresh", "0.1",
-	)
-	m.stdin = m.cmd.Stdin()
-	m.rd = bufio.NewReader(m.cmd.Stdout())
-	m.getLines()
+type Yolov3 struct {
+	node vaas.Node
+	cmd *vaas.Cmd
+	stdin io.WriteCloser
+	rd *bufio.Reader
+	cfgFname string
+	mu sync.Mutex
+	stats *vaas.StatsHolder
 }
 
-func (m *Yolov3) getLines() []string {
-	var output string
-	for {
-		line, err := m.rd.ReadString(':')
-		if err != nil {
-			panic(err)
-		}
-		output += line
-		if strings.Contains(line, "Enter") {
-			break
-		}
+func NewYolov3(node vaas.Node) vaas.Executor {
+	fmt.Println("new yolov3 on PID", os.Getpid())
+
+	var cfgs []Yolov3Config
+	err := json.Unmarshal([]byte(node.Code), &cfgs)
+	if err != nil {
+		return vaas.ErrorExecutor{node.DataType, fmt.Errorf("error decoding node configuration: %v", err)}
 	}
-	return strings.Split(output, "\n")
+	cfg := cfgs[0]
+
+	cfgFname := fmt.Sprintf("%s/%d.cfg", os.TempDir(), rand.Int63())
+	CreateYolov3Cfg(cfgFname, cfg, false)
+
+	cmd := vaas.Command(
+		"yolov3-run", vaas.CommandOptions{},
+		"python3", "models/yolov3/run.py",
+		cfg.ConfigPath, cfg.ModelPath, cfg.MetaPath,
+	)
+
+	return &Yolov3{
+		node: node,
+		cmd: cmd,
+		stdin: cmd.Stdin(),
+		rd: bufio.NewReader(cmd.Stdout()),
+		cfgFname: cfgFname,
+		stats: new(vaas.StatsHolder),
+	}
 }
 
 func (m *Yolov3) Run(ctx vaas.ExecContext) vaas.DataBuffer {
@@ -136,77 +119,31 @@ func (m *Yolov3) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 	}
 	buf := vaas.NewSimpleBuffer(vaas.DetectionType)
 
-	parseLines := func(lines []string) []vaas.Detection {
-		var boxes []vaas.Detection
-		for i := 0; i < len(lines); i++ {
-			if !strings.Contains(lines[i], "%") {
-				continue
-			}
-			var box vaas.Detection
-			parts := strings.Split(lines[i], ": ")
-			box.Class = parts[0]
-			score, _ := strconv.Atoi(strings.Trim(parts[1], "%"))
-			box.Score = float64(score)/100
-			for !strings.Contains(lines[i], "Bounding Box:") {
-				i++
-			}
-			parts = strings.Split(strings.Split(lines[i], ": ")[1], ", ")
-			if len(parts) != 4 {
-				panic(fmt.Errorf("bad bbox line %s", lines[i]))
-			}
-			for _, part := range parts {
-				kvsplit := strings.Split(part, "=")
-				k := kvsplit[0]
-				v, _ := strconv.Atoi(kvsplit[1])
-				if k == "Left" {
-					box.Left = v
-				} else if k == "Top" {
-					box.Top = v
-				} else if k == "Right" {
-					box.Right = v
-				} else if k == "Bottom" {
-					box.Bottom = v
-				}
-			}
-			boxes = append(boxes, box)
-		}
-		return boxes
-	}
-
 	go func() {
-		parent := parents[0]
-		m.mu.Lock()
-		if m.width != 0 && m.height != 0 {
-			if vbufReader, ok := parent.(*vaas.VideoBufferReader); ok {
-				vbufReader.Rescale([2]int{m.width, m.height})
-			}
-		}
-		m.mu.Unlock()
-
-		buf.SetMeta(parent.Freq())
-		fname := fmt.Sprintf("%s/%d.jpg", os.TempDir(), rand.Int63())
-		defer os.Remove(fname)
+		buf.SetMeta(parents[0].Freq())
 		PerFrame(
 			parents, ctx.Slice, buf, vaas.VideoType,
 			vaas.ReadMultipleOptions{Stats: m.stats},
 			func(idx int, data vaas.Data, buf vaas.DataWriter) error {
 				im := data.(vaas.VideoData)[0]
-				if err := ioutil.WriteFile(fname, im.AsJPG(), 0644); err != nil {
-					return err
-				}
 				m.mu.Lock()
-				if m.stdin == nil {
-					if m.width == 0 || m.height == 0 {
-						m.width = (im.Width + 31) / 32 * 32
-						m.height = (im.Height + 31) / 32 * 32
-					}
-					log.Printf("[yolo] convert input %dx%d to %dx%d", im.Width, im.Height, m.width, m.height)
-					m.start()
-				}
 				t0 := time.Now()
-				m.stdin.Write([]byte(fname + "\n"))
-				lines := m.getLines()
-				boxes := parseLines(lines)
+				header := make([]byte, 8)
+				binary.BigEndian.PutUint32(header[0:4], uint32(im.Width))
+				binary.BigEndian.PutUint32(header[4:8], uint32(im.Height))
+				m.stdin.Write(header)
+				m.stdin.Write(im.Bytes)
+
+				// ignore lines that don't start with "skyhook-yolov3"
+				signature := "skyhook-yolov3"
+				var line string
+				var err error
+				for {
+					line, err = m.rd.ReadString('\n')
+					if err != nil || strings.Contains(line, signature) {
+						break
+					}
+				}
 
 				sample := vaas.StatsSample{}
 				sample.Time.T = time.Now().Sub(t0)
@@ -214,14 +151,18 @@ func (m *Yolov3) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 				m.stats.Add(sample)
 
 				m.mu.Unlock()
-				ndata := vaas.DetectionData{
-					T: vaas.DetectionType,
-					D: []vaas.DetectionFrame{{
-						Detections: boxes,
-						CanvasDims: [2]int{im.Width, im.Height},
-					}},
+
+				if err != nil {
+					return fmt.Errorf("error reading from yolov3 model: %v", err)
 				}
-				buf.Write(ndata)
+
+				line = strings.TrimSpace(line[len(signature):])
+				var detections vaas.DetectionFrame
+				vaas.JsonUnmarshal([]byte(line), &detections)
+				buf.Write(vaas.DetectionData{
+					T: vaas.DetectionType,
+					D: []vaas.DetectionFrame{detections},
+				})
 				return nil
 			},
 		)
@@ -231,8 +172,13 @@ func (m *Yolov3) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 }
 
 func (m *Yolov3) Close() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.stdin.Close()
-	m.cmd.Wait()
+	if m.cmd != nil {
+		m.cmd.Wait()
+		m.cmd = nil
+	}
 	os.Remove(m.cfgFname)
 }
 

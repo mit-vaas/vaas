@@ -36,6 +36,7 @@ Vue.component('node-edit-yolov3', {
 					InputSize: [parseInt(cfg.InputSize[0]), parseInt(cfg.InputSize[1])],
 					ConfigPath: cfg.ConfigPath,
 					ModelPath: cfg.ModelPath,
+					MetaPath: cfg.MetaPath,
 				});
 			});
 			let code = JSON.stringify(configs);
@@ -45,9 +46,10 @@ Vue.component('node-edit-yolov3', {
 		},
 		addConfig: function() {
 			this.configs.push({
-				'InputSize': ['0', '0'],
+				InputSize: ['0', '0'],
 				ConfigPath: '',
 				ModelPath: '',
+				MetaPath: '',
 			});
 		},
 		removeConfig: function(i) {
@@ -97,6 +99,15 @@ Vue.component('node-edit-yolov3', {
 			<label class="col-sm-5 col-form-label">Model Path</label>
 			<div class="col-sm-7">
 				<input v-model="cfg.ModelPath" type="text" class="form-control">
+				<small class="form-text text-muted">
+					If blank, defaults to YOLOv3 model trained on COCO.
+				</small>
+			</div>
+		</div>
+		<div class="form-group row">
+			<label class="col-sm-5 col-form-label">Meta Path</label>
+			<div class="col-sm-7">
+				<input v-model="cfg.MetaPath" type="text" class="form-control">
 				<small class="form-text text-muted">
 					If blank, defaults to YOLOv3 model trained on COCO.
 				</small>

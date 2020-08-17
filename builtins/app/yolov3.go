@@ -25,7 +25,7 @@ func init() {
 		}
 
 		// yolov3.cfg
-		builtins.CreateYolov3Cfg(filepath.Join(cfgDir, "yolov3.cfg"), cfg, cfg.InputSize, true)
+		builtins.CreateYolov3Cfg(filepath.Join(cfgDir, "yolov3.cfg"), cfg, true)
 
 		// {train,valid,test}.txt
 		dsPaths := [3]string{
@@ -116,8 +116,9 @@ backup=%s
 			YOLO: true,
 		})
 
-		var cfg builtins.Yolov3Config
-		vaas.JsonUnmarshal([]byte(node.Code), &cfg)
+		var cfgs []builtins.Yolov3Config
+		vaas.JsonUnmarshal([]byte(node.Code), &cfgs)
+		cfgIdx := len(cfgs)-1
 
 		go func() {
 			err := app.RunJob(exporter)
@@ -126,7 +127,7 @@ backup=%s
 				return
 			}
 
-			cfgDir, err := prepareConfigs(cfg, exportPath)
+			cfgDir, err := prepareConfigs(cfgs[cfgIdx], exportPath)
 			if err != nil {
 				log.Printf("[yolov3] failed to prepare configs: %v", err)
 				return
