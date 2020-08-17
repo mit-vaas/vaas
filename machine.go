@@ -81,7 +81,8 @@ func main() {
 			return
 		}
 
-		cmd := exec.Command("./container", coordinatorURL)
+		uuid := gouuid.New().String()
+		cmd := exec.Command("./container", uuid, coordinatorURL)
 
 		// assign GPUs if needed
 		var gpus []int
@@ -112,7 +113,6 @@ func main() {
 		if err := cmd.Start(); err != nil {
 			panic(err)
 		}
-		uuid := gouuid.New().String()
 		log.Printf("[machine] container %s started (gpus=%v)", uuid, gpus)
 		mu.Lock()
 		containers[uuid] = Cmd{

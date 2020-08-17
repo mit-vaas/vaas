@@ -14,7 +14,10 @@ import (
 )
 
 func main() {
-	coordinatorURL := os.Args[1]
+	myUUID := os.Args[1]
+	coordinatorURL := os.Args[2]
+
+	log.Println("new container", myUUID, os.Getpid())
 
 	vaas.SeedRand()
 
