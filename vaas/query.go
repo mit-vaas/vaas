@@ -1,6 +1,7 @@
 package vaas
 
 import (
+	"strconv"
 	"strings"
 )
 
@@ -33,6 +34,19 @@ func ParseParents(str string) []Parent {
 		parents = append(parents, parent)
 	}
 	return parents
+}
+
+type Parents []Parent
+func (parents Parents) String() string {
+	var parts []string
+	for _, parent := range parents {
+		if parent.Type == NodeParent {
+			parts = append(parts, string(parent.Type) + strconv.Itoa(parent.NodeID))
+		} else if parent.Type == SeriesParent {
+			parts = append(parts, string(parent.Type) + strconv.Itoa(parent.SeriesIdx))
+		}
+	}
+	return strings.Join(parts, ",")
 }
 
 type Node struct {

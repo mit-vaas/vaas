@@ -73,7 +73,8 @@ func (node *DBNode) Update(code *string, parents *string) {
 	if parents != nil {
 		db.Exec("UPDATE nodes SET parents = ? WHERE id = ?", *parents, node.ID)
 	}
-	node.OnChange()
+	OnQueryChanged(GetQuery(node.QueryID))
+	node.ClearDescendants()
 }
 
 func (node DBNode) encodeParents() string {
@@ -97,14 +98,16 @@ func (node DBNode) encodeParentTypes() string {
 }
 
 func (node DBNode) Save() {
+	// update node, then make sure query is de-allocated, then clear any saved outputs
 	db.Exec(
 		"UPDATE nodes SET name = ?, parent_types = ?, parents = ?, type = ?, data_type = ?, code = ? WHERE id = ?",
 		node.Name, node.encodeParentTypes(), node.encodeParents(), node.Type, node.DataType, node.Code, node.ID,
 	)
-	node.OnChange()
+
+	node.ClearDescendants()
 }
 
-func (node *DBNode) OnChange() {
+func (node *DBNode) ClearDescendants() {
 	// delete all saved labels at the vnodes for this node
 	// and recursively delete for vnodes that depend on that vnode
 
@@ -332,11 +335,11 @@ func (query *DBQuery) AddNode(name string, t string, dataType vaas.DataType) *DB
 	return node
 }
 
-func (query *DBQuery) RemoveNode(node *DBNode) {
+func (query *DBQuery) RemoveNode(target *DBNode) {
 	query.Load()
 
 	// delete all vnode series
-	for _, vnode := range node.ListVNodes() {
+	for _, vnode := range target.ListVNodes() {
 		vnode.Load()
 		db.Exec("DELETE FROM vnodes WHERE id = ?", vnode.ID)
 		if vnode.Series != nil {
@@ -345,24 +348,59 @@ func (query *DBQuery) RemoveNode(node *DBNode) {
 		}
 	}
 
-	node.OnChange()
-	db.Exec("DELETE FROM nodes WHERE id = ?", node.ID)
-	for _, n := range query.Nodes {
+	// delete the node
+	// need to fix up children, query selector, and query outputs
+	fixParents := func(parents []vaas.Parent) ([]vaas.Parent, bool) {
 		idx := -1
-		for i, parent := range n.Parents {
-			if parent.Type != vaas.NodeParent || parent.NodeID != node.ID {
+		for i, parent := range parents {
+			if parent.Type != vaas.NodeParent || parent.NodeID != target.ID {
 				continue
 			}
 			idx = i
 			break
 		}
 		if idx == -1 {
+			return parents, false
+		}
+		copy(parents[idx:], parents[idx+1:])
+		parents = parents[0:len(parents)-1]
+		return parents, true
+	}
+	db.Exec("DELETE FROM nodes WHERE id = ?", target.ID)
+	var affectedNodes []DBNode
+	for _, n := range query.Nodes {
+		node := DBNode{Node: *n}
+		node.Parents, _ = fixParents(node.Parents)
+		node.Save()
+		affectedNodes = append(affectedNodes, node)
+	}
+	if query.Selector != nil && query.Selector.ID == target.ID {
+		db.Exec("UPDATE queries SET selector = NULL WHERE id = ?", query.ID)
+	}
+	var newOutputParts []string
+	updatedOutputs := false
+	for _, outputs := range query.Outputs {
+		outputs, changed := fixParents(outputs)
+		newOutputParts = append(newOutputParts, vaas.Parents(outputs).String())
+		if !changed {
 			continue
 		}
-		copy(n.Parents[idx:], n.Parents[idx+1:])
-		n.Parents = n.Parents[0:len(n.Parents)-1]
-		DBNode{Node: *n}.Save()
+		updatedOutputs = true
 	}
+	if updatedOutputs {
+		db.Exec("UPDATE queries SET outputs = ? WHERE id = ?", strings.Join(newOutputParts, ";"), query.ID)
+	}
+
+	OnQueryChanged(query)
+
+	// delete items from descendants
+	// we do this only after OnQueryChanged so that the query is de-allocated first
+	// otherwise containers running the query could save more outputs
+	for _, node := range affectedNodes {
+		node.ClearDescendants()
+	}
+
+	query.Reload()
 }
 
 func init() {
@@ -413,7 +451,6 @@ func init() {
 			*parents = r.PostForm.Get("parents")
 		}
 		node.Update(code, parents)
-		OnQueryChanged(GetQuery(node.QueryID))
 	})
 
 	http.HandleFunc("/queries/node/remove", func(w http.ResponseWriter, r *http.Request) {
@@ -430,7 +467,6 @@ func init() {
 		}
 		query := GetQuery(node.QueryID)
 		query.RemoveNode(node)
-		OnQueryChanged(query)
 	})
 
 	http.HandleFunc("/queries", func(w http.ResponseWriter, r *http.Request) {
