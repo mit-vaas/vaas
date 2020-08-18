@@ -25,3 +25,5 @@ def f(im):
 	pred = m.predict(numpy.expand_dims(im, axis=0))[0]
 	cls = int(pred.argmax())
 	return cls
+
+lib.run(f)
