@@ -1,7 +1,7 @@
-Vue.component('node-edit-downsample', {
+Vue.component('node-edit-resample', {
 	data: function() {
 		return {
-			freq: '',
+			freq: '1',
 		};
 	},
 	props: ['initNode'],
@@ -24,8 +24,8 @@ Vue.component('node-edit-downsample', {
 	template: `
 <div class="small-container m-2">
 	<div class="form-group row">
-		<label class="col-sm-2 col-form-label">Output Downsampling Rate</label>
-		<div class="col-sm-10">
+		<label class="col-sm-5 col-form-label">Re-sample Rate</label>
+		<div class="col-sm-7">
 			<input v-model="freq" type="text" class="form-control">
 			<small id="emailHelp" class="form-text text-muted">
 				This rate is measured relative to the query input rate (not the parent).

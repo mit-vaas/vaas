@@ -110,14 +110,14 @@ Vue.component('new-node-modal', {
 					Name: "Miscellaneous",
 					Types: [
 						{
-							ID: "downsample",
-							Name: "Downsample",
-							Description: "Downsample inputs to lower framerate",
+							ID: "rescale",
+							Name: "Rescale",
+							Description: "Rescale",
 						},
 						{
-							ID: "rescale-resample",
-							Name: "Rescale/Resample",
-							Description: "Rescale/Resample",
+							ID: "resample",
+							Name: "Resample",
+							Description: "Resample data at a different framerate",
 						},
 						{
 							ID: "bool-expr",
