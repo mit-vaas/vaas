@@ -194,16 +194,13 @@ func init() {
 					var mu sync.Mutex
 					outputs := make([]vaas.Data, len(gtlist))
 					var wg sync.WaitGroup
-					wg.Add(1)
 					opts := vaas.ExecOptions{
 						NoPersist: true,
 						//IgnoreItems: true,
 					}
 					stream := NewExecStream(&qcopy, vector, sampler, 4, opts, func(slice vaas.Slice, curOutputs [][]vaas.DataReader, err error) {
 						if err != nil {
-							if strings.Contains(err.Error(), "sample error") {
-								wg.Done()
-							} else if err != nil {
+							if !strings.Contains(err.Error(), "sample error") {
 								log.Printf("[test] warning: got callback error: %v", err)
 							}
 							return
@@ -223,7 +220,8 @@ func init() {
 							wg.Done()
 						}()
 					})
-					stream.Get(len(metricItems)+1)
+					stream.Get(len(metricItems))
+					stream.Wait()
 					wg.Wait()
 
 					// compute score

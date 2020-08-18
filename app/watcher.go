@@ -58,7 +58,7 @@ func (w *WatchManager) iter() {
 	defer w.mu.Unlock()
 
 	for _, setID := range GetAllocator().GetEnvSets() {
-		if setID.Type != "query" {
+		if setID.Type != "query" || setID.RefID < 0 { // < 0 is fake virtual query used by tuner
 			continue
 		}
 		queryID := setID.RefID

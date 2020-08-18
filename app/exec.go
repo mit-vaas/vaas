@@ -268,7 +268,12 @@ func (ctx *ExecStream) backgroundThread() {
 			break
 		}
 		if slice == nil {
-			ctx.setErr(fmt.Errorf("sample error"))
+			// set error if we are the last thread
+			// setting error will notify the callback that all the ctx.remaining have failed
+			// so if we aren't the last thread, we must not set error since callback expects response for running threads
+			if ctx.running == 1 {
+				ctx.setErr(fmt.Errorf("sample error"))
+			}
 			break
 		}
 

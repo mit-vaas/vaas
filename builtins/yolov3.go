@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -40,16 +41,20 @@ func (cfg Yolov3Config) GetModelPath() string {
 }
 
 func (cfg Yolov3Config) GetMetaPath() string {
-	if cfg.ModelPath == "" {
+	if cfg.MetaPath == "" {
 		return "cfg/coco.data"
 	} else {
-		return cfg.ModelPath
+		return cfg.MetaPath
 	}
 }
 
 func CreateYolov3Cfg(fname string, cfg Yolov3Config, training bool) {
 	// prepare configuration with this width/height
-	bytes, err := ioutil.ReadFile(cfg.GetConfigPath())
+	configPath := cfg.GetConfigPath()
+	if !filepath.IsAbs(configPath) {
+		configPath = filepath.Join("darknet/", configPath)
+	}
+	bytes, err := ioutil.ReadFile(configPath)
 	if err != nil {
 		panic(err)
 	}
@@ -99,7 +104,7 @@ func NewYolov3(node vaas.Node) vaas.Executor {
 	cmd := vaas.Command(
 		"yolov3-run", vaas.CommandOptions{},
 		"python3", "models/yolov3/run.py",
-		cfg.ConfigPath, cfg.ModelPath, cfg.MetaPath,
+		cfgFname, cfg.GetModelPath(), cfg.GetMetaPath(),
 	)
 
 	return &Yolov3{
