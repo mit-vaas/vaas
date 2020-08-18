@@ -34,12 +34,11 @@ func (query *DBQuery) Allocate(vector []*DBSeries, slice vaas.Slice) vaas.ExecCo
 	query.Load()
 	uuid := gouuid.New().String()
 
-	env := query.GetEnvSet()
-	containers := allocator.Pick(env.ID)
+	containers := allocator.Pick(query.GetEnvSet().ID)
 	if containers == nil {
 		// make sure query is fresh since we need to allocate
 		query.Reload()
-		containers = allocator.Allocate(env)
+		containers = allocator.Allocate(query.GetEnvSet())
 	}
 
 	// figure out which nodes should be on which containers
@@ -200,6 +199,7 @@ type ExecStream struct {
 }
 
 func NewExecStream(query *DBQuery, vector []*DBSeries, sampler func() *vaas.Slice, perIter int, opts vaas.ExecOptions, callback func(vaas.Slice, [][]vaas.DataReader, error)) *ExecStream {
+	query.Load()
 	stream := &ExecStream{
 		query: query,
 		vector: vector,
@@ -221,8 +221,8 @@ func (ctx *ExecStream) setErr(err error) {
 	ctx.remaining = 0
 }
 
-func (ctx *ExecStream) tryOne(slice vaas.Slice) {
-	outputs, err := ctx.query.Run(ctx.vector, slice, ctx.opts)
+func (ctx *ExecStream) tryOne(query *DBQuery, slice vaas.Slice) {
+	outputs, err := query.Run(ctx.vector, slice, ctx.opts)
 	if err != nil && strings.Contains(err.Error(), "selector reject") {
 		log.Printf("[task context] selector reject on slice %v, we will retry", slice)
 		ctx.callback(slice, outputs, err)
@@ -246,6 +246,10 @@ func (ctx *ExecStream) tryOne(slice vaas.Slice) {
 }
 
 func (ctx *ExecStream) backgroundThread() {
+	// create local copy of DBQuery since it's not thread safe
+	query := new(DBQuery)
+	*query = *ctx.query
+
 	ctx.mu.Lock()
 	for !ctx.closed && ctx.remaining > 0 {
 		if len(ctx.extras) > 0 {
@@ -278,7 +282,7 @@ func (ctx *ExecStream) backgroundThread() {
 		}
 
 		ctx.mu.Unlock()
-		ctx.tryOne(*slice)
+		ctx.tryOne(query, *slice)
 		ctx.mu.Lock()
 	}
 

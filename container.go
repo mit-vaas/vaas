@@ -63,6 +63,7 @@ func main() {
 
 			// init the executor if it's not already present
 			if executors[node.ID] == nil {
+				log.Printf("container %s starting node %s", myUUID, node.Name)
 				executors[node.ID] = vaas.Executors[node.Type].New(*node)
 			}
 			e := executors[node.ID]

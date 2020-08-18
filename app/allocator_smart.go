@@ -90,7 +90,7 @@ func (a *SmartAllocator) Allocate(set vaas.EnvSet) []vaas.Container {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.containers[set.ID] != nil {
-		return a.pick(set)
+		return a.pick(a.envSets[set.ID])
 	}
 
 	// find what an even division of the resources between envsets is
