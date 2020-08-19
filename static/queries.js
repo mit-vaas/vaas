@@ -82,6 +82,11 @@ Vue.component('queries-tab', {
 				} else {
 					this.selectedNode = null;
 				}
+
+				if(this.editor != '') {
+					// don't render if this.$refs.view is not visible
+					return;
+				}
 				this.render();
 			});
 		},
