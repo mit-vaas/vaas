@@ -4,7 +4,12 @@ Vue.component('node-edit-yolov3', {
 			configs: [],
 
 			vectors: [],
-			selectedVector: '',
+			trainForm: {
+				vector: '',
+				width: '',
+				height: '',
+				configPath: '',
+			},
 		};
 	},
 	props: ['initNode'],
@@ -58,7 +63,10 @@ Vue.component('node-edit-yolov3', {
 		train: function() {
 			var params = {
 				node_id: this.initNode.ID,
-				vector_id: this.selectedVector,
+				vector_id: this.trainForm.vector,
+				width: this.trainForm.width,
+				height: this.trainForm.height,
+				config_path: this.trainForm.configPath,
 			}
 			myCall('POST', '/yolov3/train', params);
 		},
@@ -116,11 +124,33 @@ Vue.component('node-edit-yolov3', {
 	</div>
 	<button v-on:click="addConfig" type="button" class="btn btn-primary">Add Config</button>
 	<button v-on:click="save" type="button" class="btn btn-primary">Save</button>
-	<form v-on:submit.prevent="train" class="form-inline my-2">
-		<label>Train on:</label>
-		<select v-model="selectedVector" class="form-control mx-2">
-			<option v-for="vector in vectors" :key="vector.ID" :value="vector.ID">{{ vector.Vector | prettyVector }}</option>
-		</select>
+	<form v-on:submit.prevent="train">
+		<div class="form-group row">
+			<label class="col-sm-5 col-form-label">Train on:</label>
+			<div class="col-sm-7">
+				<select v-model="trainForm.vector" class="form-control">
+					<option v-for="vector in vectors" :key="vector.ID" :value="vector.ID">{{ vector.Vector | prettyVector }}</option>
+				</select>
+			</div>
+		</div>
+		<div class="form-group row">
+			<label class="col-sm-5 col-form-label">Input Width</label>
+			<div class="col-sm-7">
+				<input v-model="trainForm.width" type="text" class="form-control">
+			</div>
+		</div>
+		<div class="form-group row">
+			<label class="col-sm-5 col-form-label">Input Height</label>
+			<div class="col-sm-7">
+				<input v-model="trainForm.height" type="text" class="form-control">
+			</div>
+		</div>
+		<div class="form-group row">
+			<label class="col-sm-5 col-form-label">Config Path</label>
+			<div class="col-sm-7">
+				<input v-model="trainForm.configPath" type="text" class="form-control">
+			</div>
+		</div>
 		<button type="submit" class="btn btn-primary mx-2">Train</button>
 	</form>
 </div>
