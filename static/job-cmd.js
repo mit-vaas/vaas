@@ -7,7 +7,7 @@ Vue.component('job-cmd', {
 	props: ['job'],
 	created: function() {
 		this.update(true);
-		setInterval(this.update, 1000);
+		this.interval = setInterval(this.update, 1000);
 	},
 	destroyed: function() {
 		clearInterval(this.interval);
