@@ -116,7 +116,11 @@ func ParseVector(str string) Vector {
 	var vector Vector
 	for _, part := range strings.Split(str, ",") {
 		id := vaas.ParseInt(part)
-		vector = append(vector, GetSeries(id))
+		series := GetSeries(id)
+		if series == nil {
+			panic(fmt.Errorf("no series with id=%d", id))
+		}
+		vector = append(vector, series)
 	}
 	if len(vector) == 0 {
 		panic(fmt.Errorf("vector cannot be empty"))
