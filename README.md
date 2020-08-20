@@ -19,7 +19,7 @@ The fastest way to get started is with Docker. First, install [nvidia-docker](ht
 Then:
 
 	git clone https://github.com/mit-vaas/vaas.git
-	cd vaas/docker
+	cd vaas
 	docker build -t mit-vaas/vaas .
 	docker run -p 8080:8080 mit-vaas/vaas
 

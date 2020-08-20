@@ -1,0 +1,17 @@
+# ignore everything
+**
+
+# allow certain directories
+# wildcards don't work properly in exceptions (https://github.com/moby/moby/issues/30018)
+!/app/
+!/vaas/
+!/builtins/
+!/main.go
+!/machine.go
+!/container.go
+!/skyhook_pylib.py
+!/static/
+!/docker/
+
+!/models/
+/models/*.h5

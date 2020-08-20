@@ -17,24 +17,6 @@ RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
 
 WORKDIR /usr/src/app
 
-# clone, install dependencies, and build
-RUN git clone https://github.com/mit-vaas/vaas.git
-WORKDIR vaas
-RUN ln -s /usr/lib/go-1.13/bin/go /usr/bin/go && \
-	go get github.com/cpmech/gosl/graph && \
-	go get github.com/google/uuid && \
-	go get github.com/googollee/go-socket.io && \
-	go get github.com/mattn/go-sqlite3 && \
-	go get github.com/mitroadmaps/gomapinfer/common && \
-	go get github.com/sasha-s/go-deadlock && \
-	go get golang.org/x/image/font && \
-	go get golang.org/x/image/font/basicfont && \
-	go get golang.org/x/image/math/fixed && \
-	curl -L https://yt-dl.org/downloads/latest/youtube-dl -o /usr/local/bin/youtube-dl && \
-	go build main.go && \
-	go build machine.go && \
-	go build container.go
-
 # yolov3
 RUN git clone https://github.com/AlexeyAB/darknet.git
 WORKDIR darknet
@@ -45,10 +27,30 @@ RUN git checkout b918bf0329c06ae67d9e00c8bcaf845f292b9d62 && \
 	make
 RUN wget https://pjreddie.com/media/files/yolov3.weights
 RUN wget https://pjreddie.com/media/files/darknet53.conv.74
+WORKDIR /usr/src/app
 
-WORKDIR /usr/src/app/vaas
-RUN mkdir items
-COPY ./entrypoint.sh ./entrypoint.sh
+# golang and youtube-dl dependencies
+RUN ln -s /usr/lib/go-1.13/bin/go /usr/bin/go && \
+	go get github.com/cpmech/gosl/graph && \
+	go get github.com/google/uuid && \
+	go get github.com/googollee/go-socket.io && \
+	go get github.com/mattn/go-sqlite3 && \
+	go get github.com/mitroadmaps/gomapinfer/common && \
+	go get github.com/sasha-s/go-deadlock && \
+	go get golang.org/x/image/font && \
+	go get golang.org/x/image/font/basicfont && \
+	go get golang.org/x/image/math/fixed && \
+	curl -L https://yt-dl.org/downloads/latest/youtube-dl -o /usr/local/bin/youtube-dl
+
+# clone and build, we version the image here
+RUN mkdir vaas vaas/items
+WORKDIR vaas
+RUN ln -s /usr/src/app/darknet darknet
+
+COPY ./ ./
+RUN go build main.go && \
+	go build machine.go && \
+	go build container.go
 
 EXPOSE 8080
-CMD ./entrypoint.sh
+CMD ./docker/entrypoint.sh
