@@ -2,8 +2,8 @@ Vue.component('video-import-local', {
 	data: function() {
 		return {
 			path: '',
-			optSymlink: false,
-			optTranscode: true,
+			optSymlink: true,
+			optTranscode: false,
 		};
 	},
 	props: ['series'],
@@ -15,8 +15,8 @@ Vue.component('video-import-local', {
 	methods: {
 		click: function() {
 			this.path = '';
-			this.optSymlink = false;
-			this.optTranscode = true;
+			this.optSymlink = true;
+			this.optTranscode = false;
 			$('#v-local-modal').modal('show');
 		},
 		submit: function() {
@@ -44,6 +44,9 @@ Vue.component('video-import-local', {
 							<label class="col-sm-2 col-form-label">Path</label>
 							<div class="col-sm-10">
 								<input class="form-control" type="text" v-model="path" />
+								<small class="form-text text-muted">
+									Absolute path to a video mp4 file or directory containing mp4 files on local disk.
+								</small>
 							</div>
 						</div>
 						<fieldset class="form-group">

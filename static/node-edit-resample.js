@@ -27,7 +27,7 @@ Vue.component('node-edit-resample', {
 		<label class="col-sm-5 col-form-label">Re-sample Rate</label>
 		<div class="col-sm-7">
 			<input v-model="freq" type="text" class="form-control">
-			<small id="emailHelp" class="form-text text-muted">
+			<small class="form-text text-muted">
 				This rate is measured relative to the query input rate (not the parent).
 				For example, "4" would downsample 4x from the raw data capture rate.
 			</small>
