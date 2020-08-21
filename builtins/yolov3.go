@@ -129,11 +129,12 @@ func (m *Yolov3) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 	go func() {
 		// resize the input if possible
 		// if not it's ok since yolov3 will handle resizing internally
+		parent := parents[0]
 		if vbufReader, ok := parent.(*vaas.VideoBufferReader); ok {
 			vbufReader.Rescale([2]int{m.cfg.InputSize[0], m.cfg.InputSize[1]})
 		}
 
-		buf.SetMeta(parents[0].Freq())
+		buf.SetMeta(parent.Freq())
 		PerFrame(
 			parents, ctx.Slice, buf, vaas.VideoType,
 			vaas.ReadMultipleOptions{Stats: m.stats},
