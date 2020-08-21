@@ -110,11 +110,6 @@ Vue.component('new-node-modal', {
 					Name: "Miscellaneous",
 					Types: [
 						{
-							ID: "rescale",
-							Name: "Rescale",
-							Description: "Rescale",
-						},
-						{
 							ID: "resample",
 							Name: "Resample",
 							Description: "Resample data at a different framerate",
