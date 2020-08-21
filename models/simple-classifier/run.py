@@ -10,6 +10,11 @@ import sys
 sys.path.append('.')
 import skyhook_pylib as lib
 
+import tensorflow as tf
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+keras.backend.tensorflow_backend.set_session(tf.Session(config=config))
+
 model_path = sys.argv[1]
 num_classes = int(sys.argv[2])
 width = int(sys.argv[3])

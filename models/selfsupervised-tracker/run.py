@@ -24,7 +24,9 @@ CROP_SIZE = 64
 
 lib.eprint('initializing model')
 m = model.Model()
-session = tf.Session()
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+session = tf.Session(config=config)
 m.saver.restore(session, model_path)
 
 def get_loc(detection):

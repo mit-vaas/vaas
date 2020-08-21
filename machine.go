@@ -18,56 +18,57 @@ import (
 
 func main() {
 	if len(os.Args) < 4 {
-		fmt.Println("usage: ./machine [external IP] [port] [coordinator URL] [num gpus]")
-		fmt.Println("example: ./machine localhost 8081 http://localhost:8080 2")
+		fmt.Println("usage: ./machine [external IP] [port] [coordinator URL] [CUDA GPU list]")
+		fmt.Println("example: ./machine localhost 8081 http://localhost:8080 0,1")
 		return
 	}
 	myIP := os.Args[1]
 	port := vaas.ParseInt(os.Args[2])
 	coordinatorURL := os.Args[3]
-	gpus := vaas.ParseInt(os.Args[4])
+	gpulist := strings.Split(os.Args[4], ",")
+
+	// set gpulist correctly if it's empty
+	if len(gpulist) == 1 && gpulist[0] == "" {
+		gpulist = nil
+	}
 
 	type Cmd struct {
 		cmd *exec.Cmd
 		stdin io.WriteCloser
-		gpus []int
+		gpuIndexes []int
 	}
 	containers := make(map[string]Cmd)
 	var mu sync.Mutex
 
+	// indexes in gpulist that are in use
 	gpusInUse := make(map[int]bool)
-	for i := 0; i < gpus; i++ {
+	for i := range gpulist {
 		gpusInUse[i] = false
 	}
 
-	getGPUs := func(num int) ([]int, error) {
-		var gpus []int
+	getGPUs := func(num int) ([]int, string, error) {
+		var gpuIndexes []int
 		for i := 0; i < num; i++ {
-			var freeGPU int = -1
+			var freeGPUIdx int = -1
 			for idx, used := range gpusInUse {
 				if used {
 					continue
 				}
-				freeGPU = idx
+				freeGPUIdx = idx
 				break
 			}
-			if freeGPU == -1 {
-				return nil, fmt.Errorf("insufficient idle GPUs")
+			if freeGPUIdx == -1 {
+				return nil, "", fmt.Errorf("insufficient idle GPUs")
 			}
-			gpus = append(gpus, freeGPU)
+			gpuIndexes = append(gpuIndexes, freeGPUIdx)
 		}
-		for _, idx := range gpus {
+		var gpus []string
+		for _, idx := range gpuIndexes {
 			gpusInUse[idx] = true
+			gpus = append(gpus, gpulist[idx])
 		}
-		return gpus, nil
-	}
-
-	cudaStr := func(gpus []int) string {
-		var parts []string
-		for _, idx := range gpus {
-			parts = append(parts, fmt.Sprintf("%d", idx))
-		}
-		return "CUDA_VISIBLE_DEVICES=" + strings.Join(parts, ",")
+		cudaStr := "CUDA_VISIBLE_DEVICES=" + strings.Join(gpus, ",")
+		return gpuIndexes, cudaStr, nil
 	}
 
 	http.HandleFunc("/allocate", func(w http.ResponseWriter, r *http.Request) {
@@ -85,10 +86,11 @@ func main() {
 		cmd := exec.Command("./container", uuid, coordinatorURL)
 
 		// assign GPUs if needed
-		var gpus []int
+		var gpuIndexes []int
 		if request.Requirements["gpu"] > 0 {
+			var cudaStr string
 			var err error
-			gpus, err = getGPUs(request.Requirements["gpu"])
+			gpuIndexes, cudaStr, err = getGPUs(request.Requirements["gpu"])
 			if err != nil {
 				http.Error(w, err.Error(), 400)
 				return
@@ -98,7 +100,7 @@ func main() {
 					cmd.Env = append(cmd.Env, env)
 				}
 			}
-			cmd.Env = append(cmd.Env, cudaStr(gpus))
+			cmd.Env = append(cmd.Env, cudaStr)
 		}
 
 		stdin, err := cmd.StdinPipe()
@@ -113,12 +115,12 @@ func main() {
 		if err := cmd.Start(); err != nil {
 			panic(err)
 		}
-		log.Printf("[machine] container %s started (gpus=%v)", uuid, gpus)
+		log.Printf("[machine] container %s started (gpus=%v)", uuid, gpuIndexes)
 		mu.Lock()
 		containers[uuid] = Cmd{
 			cmd: cmd,
 			stdin: stdin,
-			gpus: gpus,
+			gpuIndexes: gpuIndexes,
 		}
 		mu.Unlock()
 
@@ -148,8 +150,8 @@ func main() {
 			cmd.stdin.Close()
 			cmd.cmd.Wait()
 			delete(containers, uuid)
-			for _, gpuIdx := range cmd.gpus {
-				log.Printf("[machine] ... release GPU %d", gpuIdx)
+			for _, gpuIdx := range cmd.gpuIndexes {
+				log.Printf("[machine] ... release GPU idx=%d gpu=%s", gpuIdx, gpulist[gpuIdx])
 				gpusInUse[gpuIdx] = false
 			}
 		}
@@ -161,7 +163,7 @@ func main() {
 	machine := vaas.Machine{
 		BaseURL: fmt.Sprintf("http://%s:%d", myIP, port),
 		Resources: map[string]int{
-			"gpu": gpus,
+			"gpu": len(gpulist),
 			"container": runtime.NumCPU() / 4,
 		},
 	}
