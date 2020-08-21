@@ -51,8 +51,15 @@ type ExportOptions struct {
 	Freq int
 }
 
+type ExportMetadata struct {
+	// series names and types in this export folder
+	Names []string
+	Types []vaas.DataType
+}
+
 type Exporter struct {
-	refs [][]ConcreteRef
+	vector []*DBSeries
+	slices []vaas.Slice
 	opts ExportOptions
 
 	l []string
@@ -60,20 +67,12 @@ type Exporter struct {
 }
 
 // Exporter from groups of ConcreteRefs that all have the same slice.
-func NewExporter(refs [][]ConcreteRef, opts ExportOptions) *Exporter {
-	return &Exporter{refs: refs, opts: opts}
-}
-
-func NewExporterDataRefs(refs [][]DataRef, opts ExportOptions) *Exporter {
-	var crefs [][]ConcreteRef
-	EnumerateDataRefs(refs, func(slice vaas.Slice, group []ConcreteRef) error {
-		for i := range group {
-			group[i].Slice = slice
-		}
-		crefs = append(crefs, group)
-		return nil
-	})
-	return NewExporter(crefs, opts)
+func NewExporter(vector []*DBSeries, slices []vaas.Slice, opts ExportOptions) *Exporter {
+	return &Exporter{
+		vector: vector,
+		slices: slices,
+		opts: opts,
+	}
 }
 
 func (e *Exporter) Name() string {
@@ -108,22 +107,9 @@ func encodeDetectionsAsYOLO(data vaas.Data) []byte {
 func (e *Exporter) Run(statusFunc func(string)) error {
 	statusFunc("Exporting")
 
-	exportVideo := func(slice vaas.Slice, ref ConcreteRef, prefix string) error {
-		if ref.Item == nil && ref.Series == nil {
-			return fmt.Errorf("error exporting video: video must be from item not encoded")
-		}
-		var series *DBSeries
-		var item *vaas.Item
-		if ref.Item != nil {
-			series = GetSeries(ref.Item.Series.ID)
-			item = ref.Item
-		} else {
-			series = GetSeries(ref.Series.ID)
-			dbitem := series.GetItem(slice)
-			if dbitem != nil {
-				item = &dbitem.Item
-			}
-		}
+	exportVideo := func(slice vaas.Slice, series *DBSeries, prefix string) error {
+		item := series.GetItem(slice)
+
 		if slice.Length() == 1 {
 			buf, err := series.RequireData(slice)
 			if err != nil {
@@ -175,31 +161,17 @@ func (e *Exporter) Run(statusFunc func(string)) error {
 		return nil
 	}
 
-	exportOther := func(slice vaas.Slice, ref ConcreteRef, prefix string) error {
-		var data vaas.Data
-		var freq int
-		if ref.Item != nil || ref.Series != nil {
-			var buf vaas.DataBuffer
-			if ref.Item != nil {
-				buf = ref.Item.Load(slice)
-			} else if ref.Series != nil {
-				var err error
-				series := &DBSeries{Series: *ref.Series}
-				buf, err = series.RequireData(slice)
-				if err != nil {
-					return err
-				}
-			}
-			var err error
-			data, err = buf.Reader().Read(slice.Length())
-			if err != nil {
-				return fmt.Errorf("error reading buffer: %v", err)
-			}
-			freq = ref.Item.Freq
-		} else {
-			data = ref.Data.Slice(slice.Start - ref.Slice.Start, slice.End - ref.Slice.End)
-			freq = 1
+	exportOther := func(slice vaas.Slice, series *DBSeries, prefix string) error {
+		buf, err := series.RequireData(slice)
+		if err != nil {
+			return err
 		}
+		rd := buf.Reader()
+		data, err := rd.Read(slice.Length())
+		if err != nil {
+			return fmt.Errorf("error reading buffer: %v", err)
+		}
+		freq := rd.Freq()
 		if e.opts.Freq != 0 {
 			data = vaas.AdjustDataFreq(data, slice.Length(), freq, e.opts.Freq)
 		}
@@ -219,10 +191,9 @@ func (e *Exporter) Run(statusFunc func(string)) error {
 		return nil
 	}
 
-	exportGroup := func(group []ConcreteRef) error {
-		slice := group[0].Slice
+	exportGroup := func(slice vaas.Slice) error {
 		prefix := fmt.Sprintf("%s/%d_%d_%d", e.opts.Path, slice.Segment.ID, slice.Start, slice.End)
-		for i, ref := range group {
+		for i, series := range e.vector {
 			// decide whether to name files N_0.abc, N_1.xyz N.abc, N.xyz
 			var curPrefix string
 			if e.opts.YOLO {
@@ -232,10 +203,10 @@ func (e *Exporter) Run(statusFunc func(string)) error {
 			}
 
 			var err error
-			if ref.Type() == vaas.VideoType {
-				err = exportVideo(slice, ref, curPrefix)
+			if series.DataType == vaas.VideoType {
+				err = exportVideo(slice, series, curPrefix)
 			} else {
-				err = exportOther(slice, ref, curPrefix)
+				err = exportOther(slice, series, curPrefix)
 			}
 			if err != nil {
 				e.mu.Lock()
@@ -253,21 +224,30 @@ func (e *Exporter) Run(statusFunc func(string)) error {
 	var nextIdx int = 0
 	donech := make(chan error)
 
+	log.Printf("[job %s] exporting %d slices", e.Name(), len(e.slices))
+	meta := ExportMetadata{}
+	for _, series := range e.vector {
+		meta.Names = append(meta.Names, series.Name)
+		meta.Types = append(meta.Types, series.DataType)
+	}
+	if err := ioutil.WriteFile(e.opts.Path+"/meta.json", vaas.JsonMarshal(meta), 0644); err != nil {
+		panic(err)
+	}
+
 	nthreads := runtime.NumCPU()
-	log.Printf("[job %s] exporting %d slices", e.Name(), len(e.refs))
 	for i := 0; i < nthreads; i++ {
 		go func() {
 			var err error
 			for {
 				e.mu.Lock()
-				if nextIdx >= len(e.refs) {
+				if nextIdx >= len(e.slices) {
 					e.mu.Unlock()
 					break
 				}
 				idx := nextIdx
 				nextIdx++
 				e.mu.Unlock()
-				err = exportGroup(e.refs[idx])
+				err = exportGroup(e.slices[idx])
 				if err != nil {
 					break
 				}
@@ -294,35 +274,29 @@ func (e *Exporter) Detail() interface{} {
 // Creates a job to export a series along with series from its SrcVector.
 func ExportSeries(series *DBSeries, opts ExportOptions) *Exporter {
 	series.Load()
-	var refs [][]ConcreteRef
-	for _, item := range series.ListItems() {
-		var cur []ConcreteRef
-		for _, s := range series.SrcVector {
-			s_ := s
-			cur = append(cur, ConcreteRef{
-				Slice: item.Slice,
-				Series: &s_,
-			})
-		}
-		item_ := item.Item
-		cur = append(cur, ConcreteRef{
-			Slice: item.Slice,
-			Item: &item_,
-		})
-		refs = append(refs, cur)
+	var vector []*DBSeries
+	for _, s := range series.SrcVector {
+		vector = append(vector, GetSeries(s.ID))
 	}
-	return NewExporter(refs, opts)
+	vector = append(vector, series)
+
+	var slices []vaas.Slice
+	for _, item := range series.ListItems() {
+		slices = append(slices, item.Slice)
+	}
+	return NewExporter(vector, slices, opts)
 }
 
 func ExportVector(vector []*DBSeries, opts ExportOptions) *Exporter {
-	var refs [][]DataRef
-	for _, series := range vector {
-		s := series.Series
-		refs = append(refs, []DataRef{{
-			Series: &s,
-		}})
+	// only export on slices where the vector elements are all available
+	sets := make([][]vaas.Slice, len(vector))
+	for i, series := range vector {
+		for _, item := range series.ListItems() {
+			sets[i] = append(sets[i], item.Slice)
+		}
 	}
-	return NewExporterDataRefs(refs, opts)
+	slices := SliceIntersection(sets)
+	return NewExporter(vector, slices, opts)
 }
 
 func init() {

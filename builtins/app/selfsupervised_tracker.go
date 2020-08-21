@@ -117,27 +117,22 @@ func init() {
 			}
 
 			// export
-			var refs [][]app.DataRef
-			for _, s := range vector {
-				refs = append(refs, []app.DataRef{app.DataRef{
-					Series: &s.Series,
-				}})
-			}
-			var detectionRefs []app.DataRef
+			trainVector := []*app.DBSeries{}
+			trainVector = append(trainVector, vector...)
+			trainVector = append(trainVector, detectionSeries)
+			var slices []vaas.Slice
 			for _, item := range detectionSeries.ListItems() {
 				if item.Slice.Length() < nframes {
 					continue
 				}
-				item_ := item.Item
-				detectionRefs = append(detectionRefs, app.DataRef{Item: &item_})
+				slices = append(slices, item.Slice)
 			}
-			refs = append(refs, detectionRefs)
 			exportPath := fmt.Sprintf("%s/export-%d-%d/", os.TempDir(), node.ID, rand.Int63())
 			if err := os.Mkdir(exportPath, 0755); err != nil {
 				log.Printf("[selfsupervised-tracker train] failed to export: could not mkdir %s", exportPath)
 				return
 			}
-			exporter := app.NewExporterDataRefs(refs, app.ExportOptions{
+			exporter := app.NewExporter(trainVector, slices, app.ExportOptions{
 				Path: exportPath,
 				Name: fmt.Sprintf("Export %s (for selfsupervised-tracker training)", detectionSeries.Name),
 				Freq: exportFreq,

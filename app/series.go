@@ -432,6 +432,16 @@ func (item DBItem) Delete() {
 	db.Exec("DELETE FROM items WHERE id = ?", item.ID)
 }
 
+func NewTimeline(name string) *DBTimeline {
+	res := db.Exec("INSERT INTO timelines (name) VALUES (?)", name)
+	return GetTimeline(res.LastInsertId())
+}
+
+func NewSeries(timelineID int, name string, dataType vaas.DataType) *DBSeries {
+	res := db.Exec("INSERT INTO series (timeline_id, name, type, data_type) VALUES (?, ?, 'data', ?)", timelineID, name, dataType)
+	return GetSeries(res.LastInsertId())
+}
+
 func init() {
 	http.HandleFunc("/datasets", func(w http.ResponseWriter, r *http.Request) {
 		vaas.JsonResponse(w, ListSeriesByType("data"))
@@ -450,8 +460,7 @@ func init() {
 		timelineID := vaas.ParseInt(r.PostForm.Get("timeline_id"))
 		name := r.PostForm.Get("name")
 		dataType := r.PostForm.Get("data_type")
-		res := db.Exec("INSERT INTO series (timeline_id, name, type, data_type) VALUES (?, ?, 'data', ?)", timelineID, name, dataType)
-		series := GetSeries(res.LastInsertId())
+		series := NewSeries(timelineID, name, vaas.DataType(dataType))
 		vaas.JsonResponse(w, series)
 	})
 
@@ -486,7 +495,7 @@ func init() {
 		// add new timeline
 		r.ParseForm()
 		name := r.PostForm.Get("name")
-		db.Exec("INSERT INTO timelines (name) VALUES (?)", name)
+		NewTimeline(name)
 	})
 
 	http.HandleFunc("/timelines/delete", func(w http.ResponseWriter, r *http.Request) {

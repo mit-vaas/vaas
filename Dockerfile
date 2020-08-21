@@ -4,7 +4,7 @@ RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selectio
 
 RUN apt-get update && \
 	apt-get dist-upgrade -y && \
-	apt-get install -y build-essential git python3-dev wget curl software-properties-common libmetis-dev ffmpeg && \
+	apt-get install -y build-essential git python3-dev wget curl software-properties-common libmetis-dev ffmpeg unzip && \
 	add-apt-repository -y ppa:longsleep/golang-backports && \
 	apt-get update && \
 	apt-get install -y golang-1.13-go
