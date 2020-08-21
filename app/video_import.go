@@ -116,12 +116,12 @@ func ImportLocal(fname string, symlink bool, transcode bool) func(series DBSerie
 		if transcode {
 			err := Transcode(fname, item, 0)
 			if err != nil {
-				return nil, err
+				return item, err
 			}
 		} else if symlink {
 			err := os.Symlink(fname, item.Fname(0))
 			if err != nil {
-				return nil, err
+				return item, err
 			}
 		} else {
 			// copy the file
@@ -142,7 +142,7 @@ func ImportLocal(fname string, symlink bool, transcode bool) func(series DBSerie
 				return nil
 			}()
 			if err != nil {
-				return nil, err
+				return item, err
 			}
 		}
 		ProbeVideo(item)
@@ -175,7 +175,7 @@ func ImportYoutube(url string) func(series DBSeries, segment *DBSegment) (*DBIte
 			if err == io.EOF {
 				break
 			} else if err != nil {
-				return nil, fmt.Errorf("youtube-dl error: %v", err)
+				return item, fmt.Errorf("youtube-dl error: %v", err)
 			}
 			if !strings.HasPrefix(line, "[download] ") || !strings.Contains(line, "% of") {
 				continue
@@ -189,28 +189,26 @@ func ImportYoutube(url string) func(series DBSeries, segment *DBSegment) (*DBIte
 
 		if err := cmd.Wait(); err != nil {
 			log.Printf("[video_import (%s)] youtube: download failed", segment.Name)
-			return nil, err
+			return item, err
 		}
 		log.Printf("[video_import (%s)] youtube: download complete, begin transcode", segment.Name)
 		err := Transcode(tmpFname, item, 50)
 		if err != nil {
-			return nil, err
+			return item, err
 		}
 		ProbeVideo(item)
 		return item, nil
 	}
 }
 
-func ImportVideo(r *http.Request, f func(DBSeries, *DBSegment) (*DBItem, error)) (*DBItem, error) {
-	seriesID := vaas.ParseInt(r.PostForm.Get("series_id"))
+func ImportVideo(seriesID int, segmentID *int, f func(DBSeries, *DBSegment) (*DBItem, error)) (*DBItem, error) {
 	series := GetSeries(seriesID)
 	if series == nil {
 		return nil, fmt.Errorf("no such series")
 	}
 	var segment *DBSegment
-	if r.PostForm["segment_id"] != nil && r.PostForm.Get("segment_id") != "" {
-		segmentID := vaas.ParseInt(r.PostForm.Get("segment_id"))
-		segment = GetSegment(segmentID)
+	if segmentID != nil {
+		segment = GetSegment(*segmentID)
 		if segment == nil {
 			return nil, fmt.Errorf("no such segment")
 		}
@@ -219,46 +217,127 @@ func ImportVideo(r *http.Request, f func(DBSeries, *DBSegment) (*DBItem, error))
 	item, err := f(*series, segment)
 	if err != nil {
 		log.Printf("[video_import] import error: %v", err)
-		series.Delete()
+		if item != nil {
+			item.Delete()
+		}
 		return nil, err
 	}
 	db.Exec("UPDATE items SET percent = 100 WHERE id = ?", item.ID)
 	return item, nil
 }
 
+// import either a video or directory of videos
+// the import operation itself is done asynchronously
+func ImportVideos(seriesID int, segmentID *int, path string, symlink bool, transcode bool) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("%s does not exist", path)
+	}
+	if !info.IsDir() {
+		go ImportVideo(seriesID, segmentID, ImportLocal(path, symlink, transcode))
+		return nil
+	}
+	files, err := ioutil.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("error listing files: %v", err)
+	}
+	go func() {
+		for _, fi := range files {
+			fname := filepath.Join(path, fi.Name())
+			ImportVideo(seriesID, segmentID, ImportLocal(fname, symlink, transcode))
+		}
+	}()
+	return nil
+}
+
+// handle parts of standard upload where we save to a temporary file with same
+// extension as uploaded file
+func HandleUpload(w http.ResponseWriter, r *http.Request, f func(fname string) error) {
+	err := func() error {
+		file, fh, err := r.FormFile("file")
+		if err != nil {
+			return fmt.Errorf("error processing upload: %v", err)
+		}
+		// write file to a temporary file on disk with same extension
+		ext := filepath.Ext(fh.Filename)
+		tmpfile, err := ioutil.TempFile("", fmt.Sprintf("*%s", ext))
+		if err != nil {
+			return fmt.Errorf("error processing upload: %v", err)
+		}
+		defer os.Remove(tmpfile.Name())
+		if _, err := io.Copy(tmpfile, file); err != nil {
+			return fmt.Errorf("error processing upload: %v", err)
+		}
+		if err := tmpfile.Close(); err != nil {
+			return fmt.Errorf("error processing upload: %v", err)
+		}
+		return f(tmpfile.Name())
+	}()
+	if err != nil {
+		log.Printf("[upload %s] error: %v", r.URL.Path, err)
+		http.Error(w, err.Error(), 400)
+	}
+}
+
 func init() {
 	http.HandleFunc("/import/local", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "404", 404)
+			return
+		}
 		r.ParseForm()
 		path := r.PostForm.Get("path")
 		symlink := r.PostForm.Get("symlink") == "yes"
 		transcode := r.PostForm.Get("transcode") == "yes"
 
-		// if it's a directory, we need to list all the files
-		info, err := os.Stat(path)
+		seriesID := vaas.ParseInt(r.PostForm.Get("series_id"))
+		var segmentID *int
+		if r.PostForm["segment_id"] != nil && r.PostForm.Get("segment_id") != "" {
+			segmentID = new(int)
+			*segmentID = vaas.ParseInt(r.PostForm.Get("segment_id"))
+		}
+
+		err := ImportVideos(seriesID, segmentID, path, symlink, transcode)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("%s does not exist", path), 400)
-			return
+			http.Error(w, err.Error(), 400)
 		}
-		if !info.IsDir() {
-			go ImportVideo(r, ImportLocal(path, symlink, transcode))
-			return
-		}
-		files, err := ioutil.ReadDir(path)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("error listing files: %v", err), 400)
-			return
-		}
-		go func() {
-			for _, fi := range files {
-				fname := filepath.Join(path, fi.Name())
-				ImportVideo(r, ImportLocal(fname, symlink, transcode))
-			}
-		}()
 	})
 
 	http.HandleFunc("/import/youtube", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 		url := r.PostForm.Get("url")
-		go ImportVideo(r, ImportYoutube(url))
+
+		seriesID := vaas.ParseInt(r.PostForm.Get("series_id"))
+		var segmentID *int
+		if r.PostForm["segment_id"] != nil && r.PostForm.Get("segment_id") != "" {
+			segmentID = new(int)
+			*segmentID = vaas.ParseInt(r.PostForm.Get("segment_id"))
+		}
+
+		go ImportVideo(seriesID, segmentID, ImportYoutube(url))
+	})
+
+	http.HandleFunc("/import/upload", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		seriesID := vaas.ParseInt(r.Form.Get("series_id"))
+		log.Printf("[/import/upload] handling import from upload request, series %d", seriesID)
+		HandleUpload(w, r, func(fname string) error {
+			log.Printf("[/import/upload] importing from upload request: %s", fname)
+
+			// move the file so it won't get cleaned up by HandleUpload
+			// need to do this since ImportVideos processes the file asynchronously
+			newFname := filepath.Join(os.TempDir(), fmt.Sprintf("%d%s", rand.Int63(), filepath.Ext(fname)))
+			if err := os.Rename(fname, newFname); err != nil {
+				return err
+			}
+
+			if filepath.Ext(newFname) == ".zip" {
+				return UnzipThen(newFname, func(path string) error {
+					return ImportVideos(seriesID, nil, path, false, false)
+				})
+			} else {
+				return ImportVideos(seriesID, nil, newFname, false, false)
+			}
+		})
 	})
 }

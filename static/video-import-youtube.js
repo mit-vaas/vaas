@@ -6,14 +6,14 @@ Vue.component('video-import-youtube', {
 	},
 	props: ['series'],
 	mounted: function() {
-		$('#v-youtube-modal').on('shown.bs.modal', function() {
-			$('#v-youtube-name').focus();
+		$(this.$refs.modal).on('shown.bs.modal', () => {
+			$(this.$refs.modal).focus();
 		});
 	},
 	methods: {
 		click: function() {
 			this.url = '';
-			$('#v-youtube-modal').modal('show');
+			$(this.$refs.modal).modal('show');
 		},
 		submit: function() {
 			var params = {
@@ -21,7 +21,7 @@ Vue.component('video-import-youtube', {
 				url: this.url,
 			};
 			myCall('POST', '/import/youtube', params, () => {
-				$('#v-youtube-modal').modal('hide');
+				$(this.$refs.modal).modal('hide');
 				this.$emit('imported');
 			});
 		},
@@ -29,7 +29,7 @@ Vue.component('video-import-youtube', {
 	template: `
 <span>
 	<button type="button" class="btn btn-primary" v-on:click=click>Import from YouTube</button>
-	<div class="modal" tabindex="-1" role="dialog" id="v-youtube-modal">
+	<div class="modal" tabindex="-1" role="dialog" ref="modal">
 		<div class="modal-dialog" role="document">
 			<div class="modal-content">
 				<div class="modal-body">

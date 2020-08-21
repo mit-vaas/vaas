@@ -8,8 +8,8 @@ Vue.component('video-import-local', {
 	},
 	props: ['series'],
 	mounted: function() {
-		$('#v-local-modal').on('shown.bs.modal', function() {
-			$('#v-local-name').focus();
+		$(this.$refs.modal).on('shown.bs.modal', () => {
+			$(this.$refs.modal).focus();
 		});
 	},
 	methods: {
@@ -17,7 +17,7 @@ Vue.component('video-import-local', {
 			this.path = '';
 			this.optSymlink = true;
 			this.optTranscode = false;
-			$('#v-local-modal').modal('show');
+			$(this.$refs.modal).modal('show');
 		},
 		submit: function() {
 			var params = {
@@ -27,7 +27,7 @@ Vue.component('video-import-local', {
 				transcode: this.optTranscode ? 'yes' : 'no',
 			};
 			myCall('POST', '/import/local', params, () => {
-				$('#v-local-modal').modal('hide');
+				$(this.$refs.modal).modal('hide');
 				this.$emit('imported');
 			});
 		},
@@ -35,7 +35,7 @@ Vue.component('video-import-local', {
 	template: `
 <span>
 	<button type="button" class="btn btn-primary" v-on:click=click>Import from Local</button>
-	<div class="modal" tabindex="-1" role="dialog" id="v-local-modal">
+	<div class="modal" tabindex="-1" role="dialog" ref="modal">
 		<div class="modal-dialog" role="document">
 			<div class="modal-content">
 				<div class="modal-body">

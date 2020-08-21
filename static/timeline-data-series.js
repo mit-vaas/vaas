@@ -35,6 +35,7 @@ Vue.component('timeline-data-series', {
 	<div class="my-1">
 		<video-import-local v-bind:series="series" v-on:imported="fetchItems"></video-import-local>
 		<video-import-youtube v-bind:series="series" v-on:imported="fetchItems"></video-import-youtube>
+		<video-import-upload v-bind:series="series" v-on:imported="fetchItems"></video-import-upload>
 	</div>
 	<table class="table">
 		<thead>
