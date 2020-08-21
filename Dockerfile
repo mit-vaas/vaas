@@ -1,9 +1,6 @@
 FROM docker.io/nvidia/cuda:10.0-cudnn7-devel-ubuntu18.04
 
 RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
-ENV LC_ALL=C.UTF-8
-ENV LANG=C.UTF-8
-ENV LIBRARY_PATH /usr/local/cuda/lib64/stubs
 
 RUN apt-get update && \
 	apt-get dist-upgrade -y && \
@@ -42,7 +39,6 @@ RUN ln -s /usr/lib/go-1.13/bin/go /usr/bin/go && \
 	go get golang.org/x/image/math/fixed && \
 	curl -L https://yt-dl.org/downloads/latest/youtube-dl -o /usr/local/bin/youtube-dl
 
-# clone and build, we version the image here
 RUN mkdir vaas vaas/items
 WORKDIR vaas
 RUN ln -s /usr/src/app/darknet darknet

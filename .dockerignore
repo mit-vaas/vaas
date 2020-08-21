@@ -10,8 +10,10 @@
 !/machine.go
 !/container.go
 !/skyhook_pylib.py
+!/tmpl.py
 !/static/
 !/docker/
+!/scripts/
 
 !/models/
 /models/*.h5
