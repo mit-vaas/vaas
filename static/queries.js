@@ -7,7 +7,7 @@ Vue.component('queries-tab', {
 			selectedQueryID: '',
 			selectedQuery: null,
 			selectedNode: null,
-			showNewNodeModal: false,
+			showingNewNodeModal: false,
 			nodeRects: {},
 			editor: '',
 			prevStage: null,
@@ -346,8 +346,19 @@ Vue.component('queries-tab', {
 
 			layer.draw();
 		},
+		showNewNodeModal: function() {
+			// if we're already showing it, we have to force re-create the component
+			if(this.showingNewNodeModal) {
+				this.showingNewNodeModal = false;
+				Vue.nextTick(() => {
+					this.showingNewNodeModal = true;
+				});
+			} else {
+				this.showingNewNodeModal = true;
+			}
+		},
 		onNewNodeModalClosed: function() {
-			this.showNewNodeModal = false;
+			this.showingNewNodeModal = false;
 			this.update();
 		},
 		selectNode: function(node) {
@@ -479,7 +490,7 @@ Vue.component('queries-tab', {
 				<div v-if="selectedQuery != null">
 					<div class="my-2">
 						<button type="button" class="btn btn-primary" v-on:click="addInput">Add Input</button>
-						<button type="button" class="btn btn-primary" v-on:click="showNewNodeModal = true">New Node</button>
+						<button type="button" class="btn btn-primary" v-on:click="showNewNodeModal">New Node</button>
 						<button type="button" class="btn btn-primary" :disabled="selectedNode == null" v-on:click="editNode">Edit Node</button>
 					</div>
 					<hr />
@@ -499,7 +510,7 @@ Vue.component('queries-tab', {
 						</div>
 					</div>
 				</div>
-				<new-node-modal v-if="showNewNodeModal && selectedQueryID != ''" :query_id="selectedQueryID" v-on:closed="onNewNodeModalClosed"></new-node-modal>
+				<new-node-modal v-if="showingNewNodeModal && selectedQueryID != ''" :query_id="selectedQueryID" v-on:closed="onNewNodeModalClosed"></new-node-modal>
 			</div>
 			<div v-else id="q-node-edit-container">
 				<div>

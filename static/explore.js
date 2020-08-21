@@ -36,6 +36,11 @@ Vue.component('explore-tab', {
 			this.resultTotal++;
 		});
 		this.socket.on('exec-progress', (resp) => {
+			if(!(resp.UUID in this.resultUUIDMap)) {
+				// maybe this is result from earlier execution
+				console.log('ignoring uuid missing from result map', resp.UUID);
+				return;
+			}
 			var i = this.resultUUIDMap[resp.UUID][0];
 			var j = this.resultUUIDMap[resp.UUID][1];
 			this.resultRows[i][j].progress = resp.Percent;
