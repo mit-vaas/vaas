@@ -31,12 +31,12 @@ while True:
 	detections = []
 	for cls, score, (cx, cy, w, h) in outputs:
 		detections.append({
-			'Class': str(cls),
-			'Score': float(score),
-			'Left': int(cx-w/2),
-			'Right': int(cx+w/2),
-			'Top': int(cy-h/2),
-			'Bottom': int(cy+h/2),
+			'class': str(cls).decode('ascii'),
+			'score': float(score),
+			'left': int(cx-w/2),
+			'right': int(cx+w/2),
+			'top': int(cy-h/2),
+			'bottom': int(cy+h/2),
 		})
 	data = {
 		'Detections': detections,

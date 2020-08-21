@@ -83,6 +83,7 @@ type Yolov3 struct {
 	cmd *vaas.Cmd
 	stdin io.WriteCloser
 	rd *bufio.Reader
+	cfg Yolov3Config
 	cfgFname string
 	mu sync.Mutex
 	stats *vaas.StatsHolder
@@ -112,6 +113,7 @@ func NewYolov3(node vaas.Node) vaas.Executor {
 		cmd: cmd,
 		stdin: cmd.Stdin(),
 		rd: bufio.NewReader(cmd.Stdout()),
+		cfg: cfg,
 		cfgFname: cfgFname,
 		stats: new(vaas.StatsHolder),
 	}
@@ -125,6 +127,12 @@ func (m *Yolov3) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 	buf := vaas.NewSimpleBuffer(vaas.DetectionType)
 
 	go func() {
+		// resize the input if possible
+		// if not it's ok since yolov3 will handle resizing internally
+		if vbufReader, ok := parent.(*vaas.VideoBufferReader); ok {
+			vbufReader.Rescale([2]int{m.cfg.InputSize[0], m.cfg.InputSize[1]})
+		}
+
 		buf.SetMeta(parents[0].Freq())
 		PerFrame(
 			parents, ctx.Slice, buf, vaas.VideoType,
