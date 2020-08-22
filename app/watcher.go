@@ -108,6 +108,8 @@ func init() {
 		}
 	}()
 
+	QueryChangeListeners = append(QueryChangeListeners, watchman.OnQueryChanged)
+
 	http.HandleFunc("/suggestions", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 		queryID := vaas.ParseInt(r.Form.Get("query_id"))
