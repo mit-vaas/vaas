@@ -679,6 +679,11 @@ func init() {
 
 	// called from container
 	http.HandleFunc("/series/add-output-item", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+
 		var request vaas.AddOutputItemRequest
 		if err := vaas.ParseJsonRequest(w, r, &request); err != nil {
 			return
@@ -698,8 +703,29 @@ func init() {
 	})
 
 	http.HandleFunc("/vectors/delete", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
 		r.ParseForm()
-		vectorID := vaas.ParseInt(r.Form.Get("vector_id"))
+		vectorID := vaas.ParseInt(r.PostForm.Get("vector_id"))
 		db.Exec("DELETE FROM vectors WHERE id = ?", vectorID)
+	})
+
+	http.HandleFunc("/ensure-output-series", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(404)
+			return
+		}
+		r.ParseForm()
+		nodeID := vaas.ParseInt(r.PostForm.Get("node_id"))
+		vector := ParseVector(r.PostForm.Get("vector"))
+		node := GetNode(nodeID)
+		if node == nil {
+			http.Error(w, "no such node", 404)
+			return
+		}
+		vn := GetOrCreateVNode(node, vector)
+		vn.EnsureSeries()
 	})
 }

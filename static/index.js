@@ -17,6 +17,14 @@ Vue.filter('prettyVector', function (vector) {
 	return '[' + parts.join(', ') + ']';
 });
 
+Vue.filter('strVector', function (vector) {
+	var parts = [];
+	vector.forEach((series) => {
+		parts.push(''+series.ID);
+	});
+	return parts.join(',');
+});
+
 function myCall(method, endpoint, params, successFunc, completeFunc) {
 	var args = {
 		type: method,

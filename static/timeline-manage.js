@@ -6,8 +6,10 @@ Vue.component('timeline-manage', {
 			dataSeries: [],
 			labelSeries: [],
 			outputSeries: [],
+			nodes: [],
 			addDataSeriesForm: {},
 			addVectorForm: {},
+			addOutputSeriesForm: {},
 
 			selectedSeries: null,
 		};
@@ -15,6 +17,9 @@ Vue.component('timeline-manage', {
 	props: ['timeline'],
 	created: function() {
 		this.fetch();
+		myCall('GET', '/nodes', null, (nodes) => {
+			this.nodes = nodes;
+		});
 	},
 	methods: {
 		fetch: function() {
@@ -28,7 +33,7 @@ Vue.component('timeline-manage', {
 				this.vectors = data;
 			});
 		},
-		showAddTimelineModal: function() {
+		showAddDataSeriesModal: function() {
 			this.addDataSeriesForm = {
 				name: '',
 				dataType: '',
@@ -102,6 +107,23 @@ Vue.component('timeline-manage', {
 				this.fetch();
 			});
 		},
+		showAddOutputSeriesModal: function() {
+			this.addOutputSeriesForm = {
+				node: '',
+				vector: '',
+			};
+			$(this.$refs.addOutputSeriesModal).modal('show');
+		},
+		addOutputSeries: function() {
+			var params = {
+				node_id: this.addOutputSeriesForm.node,
+				vector: this.addOutputSeriesForm.vector,
+			};
+			myCall('POST', '/ensure-output-series', params, () => {
+				$(this.$refs.addOutputSeriesModal).modal('hide');
+				this.fetch();
+			});
+		},
 	},
 	template: `
 <div>
@@ -169,7 +191,7 @@ Vue.component('timeline-manage', {
 		</table>
 		<h4>Data Series</h4>
 		<p>
-			<button type="button" class="btn btn-primary" v-on:click="showAddTimelineModal">Add Data Series</button>
+			<button type="button" class="btn btn-primary" v-on:click="showAddDataSeriesModal">Add Data Series</button>
 			<div class="modal" tabindex="-1" role="dialog" ref="addDataSeriesModal">
 				<div class="modal-dialog" role="document">
 					<div class="modal-content">
@@ -246,6 +268,40 @@ Vue.component('timeline-manage', {
 			</tbody>
 		</table>
 		<h4>Output Series</h4>
+		<p>
+			<button type="button" class="btn btn-primary" v-on:click="showAddOutputSeriesModal">Add Output Series</button>
+			<div class="modal" tabindex="-1" role="dialog" ref="addOutputSeriesModal">
+				<div class="modal-dialog" role="document">
+					<div class="modal-content">
+						<div class="modal-body">
+							<form v-on:submit.prevent="addOutputSeries">
+								<div class="form-group row">
+									<label class="col-sm-2 col-form-label">Node</label>
+									<div class="col-sm-10">
+										<select v-model="addOutputSeriesForm.node" class="form-control">
+											<option v-for="node in nodes" :key="node.ID" :value="node.ID">{{ node.Name }}</option>
+										</select>
+									</div>
+								</div>
+								<div class="form-group row">
+									<label class="col-sm-2 col-form-label">Source Vector</label>
+									<div class="col-sm-10">
+										<select v-model="addOutputSeriesForm.vector" class="form-control">
+											<option v-for="vector in vectors" :key="vector.ID" :value="vector.Vector | strVector">{{ vector.Vector | prettyVector }}</option>
+										</select>
+									</div>
+								</div>
+								<div class="form-group row">
+									<div class="col-sm-10">
+										<button type="submit" class="btn btn-primary">Add Output Series</button>
+									</div>
+								</div>
+							</form>
+						</div>
+					</div>
+				</div>
+			</div>
+		</p>
 		<table class="table">
 			<thead>
 				<tr>

@@ -52,6 +52,11 @@ func ListNodesByQuery(query *DBQuery) []*DBNode {
 	return nodeListHelper(rows)
 }
 
+func ListNodes() []*DBNode {
+	rows := db.Query(NodeQuery)
+	return nodeListHelper(rows)
+}
+
 func GetNode(id int) *DBNode {
 	rows := db.Query(NodeQuery + " WHERE id = ?", id)
 	nodes := nodeListHelper(rows)
@@ -422,6 +427,10 @@ func init() {
 		t := r.PostForm.Get("type")
 		dataType := r.PostForm.Get("data_type")
 		query.AddNode(name, t, vaas.DataType(dataType))
+	})
+
+	http.HandleFunc("/nodes", func(w http.ResponseWriter, r *http.Request) {
+		vaas.JsonResponse(w, ListNodes())
 	})
 
 	http.HandleFunc("/queries/node", func(w http.ResponseWriter, r *http.Request) {
