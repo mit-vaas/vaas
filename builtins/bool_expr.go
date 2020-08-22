@@ -4,7 +4,6 @@ import (
 	"../vaas"
 
 	"encoding/json"
-	"fmt"
 )
 
 type BoolExprConfig struct {}
@@ -19,7 +18,7 @@ func NewBoolExpr(node vaas.Node) vaas.Executor {
 	var cfg BoolExprConfig
 	err := json.Unmarshal([]byte(node.Code), &cfg)
 	if err != nil {
-		return vaas.ErrorExecutor{node.DataType, fmt.Errorf("error decoding node configuration: %v", err)}
+		cfg = BoolExprConfig{}
 	}
 	return BoolExpr{
 		node: node,

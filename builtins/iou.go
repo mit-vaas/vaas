@@ -32,7 +32,7 @@ func NewIOU(node vaas.Node) vaas.Executor {
 	var cfg Config
 	err := json.Unmarshal([]byte(node.Code), &cfg)
 	if err != nil {
-		return vaas.ErrorExecutor{node.DataType, fmt.Errorf("error decoding node configuration: %v", err)}
+		cfg = Config{10}
 	}
 	return IOU{
 		node: node,
