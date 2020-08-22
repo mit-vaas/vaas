@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -116,7 +117,7 @@ func UnzipThen(fname string, f func(path string) error) error {
 			NoStdout: true,
 			OnlyDebug: true,
 		},
-		"unzip", fname, "-d", tmpDir,
+		"unzip", "-j", "-d", tmpDir, fname,
 	).Wait()
 	if err != nil {
 		return err
@@ -138,5 +139,27 @@ func init() {
 			}
 			log.Printf("[import-from-export] completed on %s: %v", path, err)
 		}()
+	})
+
+	http.HandleFunc("/import/from-export/upload", func(w http.ResponseWriter, r *http.Request) {
+		// expect a zip file containing a Vaas export
+		log.Printf("[/import/from-export/upload] handling import from upload request")
+		HandleUpload(w, r, func(fname string) error {
+			log.Printf("[/import/from-export/upload] importing from upload request: %s", fname)
+
+			// move the file so it won't get cleaned up by HandleUpload
+			newFname := filepath.Join(os.TempDir(), fmt.Sprintf("%d%s", rand.Int63(), filepath.Ext(fname)))
+			if err := os.Rename(fname, newFname); err != nil {
+				return err
+			}
+
+			go func() {
+				err := UnzipThen(newFname, ImportFromExport)
+				if err != nil {
+					log.Printf("[/import/from-export/upload] error: %v", err)
+				}
+			}()
+			return nil
+		})
 	})
 }

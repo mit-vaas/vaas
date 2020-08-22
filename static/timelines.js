@@ -37,19 +37,6 @@ Vue.component('timelines-tab', {
 				this.fetchTimelines(true);
 			});
 		},
-		showImportTimelineModal: function() {
-			this.importTimelineForm = {
-				path: '',
-			};
-			$(this.$refs.importTimelineModal).modal('show');
-		},
-		importTimeline: function() {
-			var params = {
-				path: this.importTimelineForm.path,
-			};
-			myCall('POST', '/import/from-export/local', params);
-			$(this.$refs.importTimelineModal).modal('hide');
-		},
 		deleteTimeline: function(timelineID) {
 			var params = {
 				timeline_id: timelineID,
@@ -96,29 +83,7 @@ Vue.component('timelines-tab', {
 					</div>
 				</div>
 			</div>
-
-			<button type="button" class="btn btn-primary" v-on:click="showImportTimelineModal">Import Timeline from Export</button>
-			<div class="modal" tabindex="-1" role="dialog" ref="importTimelineModal">
-				<div class="modal-dialog" role="document">
-					<div class="modal-content">
-						<div class="modal-body">
-							<form v-on:submit.prevent="importTimeline">
-								<div class="form-group row">
-									<label class="col-sm-2 col-form-label">Path</label>
-									<div class="col-sm-10">
-										<input class="form-control" type="text" v-model="importTimelineForm.path" />
-									</div>
-								</div>
-								<div class="form-group row">
-									<div class="col-sm-10">
-										<button type="submit" class="btn btn-primary">Import Timeline</button>
-									</div>
-								</div>
-							</form>
-						</div>
-					</div>
-				</div>
-			</div>
+			<import-from-export-modal></import-from-export-modal>
 		</div>
 		<table class="table">
 			<thead>
