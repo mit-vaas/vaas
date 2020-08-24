@@ -2,6 +2,7 @@ package app
 
 import (
 	"../vaas"
+	"math"
 )
 
 // first argument is ground truth, second is outputs
@@ -86,7 +87,20 @@ func ClassAccuracy() MetricFunc {
 	})
 }
 
+func MinOverMax() MetricFunc {
+	return AvgMetricPerFrame(func(data1 vaas.Data, data2 vaas.Data) float64 {
+		x1 := data1.(vaas.IntData)[0]
+		x2 := data2.(vaas.IntData)[0]
+		if x1 == x2 {
+			return 1.0
+		} else {
+			return math.Min(float64(x1), float64(x2)) / math.Max(float64(x1), float64(x2))
+		}
+	})
+}
+
 func init() {
 	Metrics["detectionf1-50"] = DetectionF1(0.5)
 	Metrics["class-accuracy"] = ClassAccuracy()
+	Metrics["min-over-max"] = MinOverMax()
 }
