@@ -1,8 +1,7 @@
 Vue.component('node-edit-filter-track', {
 	data: function() {
 		return {
-			scaleX: 1,
-			scaleY: 1,
+			canvasDims: [0, 0],
 			orderMatters: 'yes',
 			shapes: [[]],
 			dataSeries: [],
@@ -14,8 +13,7 @@ Vue.component('node-edit-filter-track', {
 	created: function() {
 		try {
 			var s = JSON.parse(this.initNode.Code);
-			this.scaleX = s.ScaleX;
-			this.scaleY = s.ScaleY;
+			this.canvasDims = s.CanvasDims;
 			this.orderMatters = (s.Order) ? 'yes' : 'no';
 			this.shapes = s.Shapes;
 		} catch(e) {}
@@ -46,13 +44,13 @@ Vue.component('node-edit-filter-track', {
 			} else {
 				shp = e.points;
 			}
+			this.canvasDims = e.dims;
 			this.shapes[this.curDrawing].push(shp);
 			this.curDrawing = null;
 		},
 		save: function() {
 			var code = JSON.stringify({
-				ScaleX: parseFloat(this.scaleX),
-				ScaleY: parseFloat(this.scaleY),
+				CanvasDims: [parseFloat(this.canvasDims[0]), parseFloat(this.canvasDims[1])],
 				Shapes: this.shapes,
 				Order: this.orderMatters == 'yes',
 			});
@@ -82,15 +80,15 @@ Vue.component('node-edit-filter-track', {
 		</div>
 	</div>
 	<div class="form-group row">
-		<label class="col-sm-2 col-form-label">ScaleX</label>
+		<label class="col-sm-2 col-form-label">Canvas Width</label>
 		<div class="col-sm-10">
-			<input v-model="scaleX" type="text" class="form-control">
+			<input v-model="canvasDims[0]" type="text" class="form-control">
 		</div>
 	</div>
 	<div class="form-group row">
-		<label class="col-sm-2 col-form-label">ScaleY</label>
+		<label class="col-sm-2 col-form-label">Canvas Height</label>
 		<div class="col-sm-10">
-			<input v-model="scaleY" type="text" class="form-control">
+			<input v-model="canvasDims[1]" type="text" class="form-control">
 		</div>
 	</div>
 	<div class="form-group row">

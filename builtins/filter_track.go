@@ -38,8 +38,7 @@ func (shp Shape) Contains(d vaas.Detection) bool {
 }
 
 type TrackFilterConfig struct {
-	ScaleX float64
-	ScaleY float64
+	CanvasDims [2]int
 
 	// list of list of shapes
 	// each shape is specified by a list of points
@@ -62,16 +61,6 @@ func NewTrackFilter(node vaas.Node) vaas.Executor {
 	err := json.Unmarshal([]byte(node.Code), &cfg)
 	if err != nil {
 		return vaas.ErrorExecutor{node.DataType, fmt.Errorf("error decoding node configuration: %v", err)}
-	}
-	for i := range cfg.Shapes {
-		for j := range cfg.Shapes[i] {
-			for k, p := range cfg.Shapes[i][j] {
-				cfg.Shapes[i][j][k] = [2]int{
-					int(float64(p[0])*cfg.ScaleX),
-					int(float64(p[1])*cfg.ScaleY),
-				}
-			}
-		}
 	}
 	return TrackFilter{
 		node: node,
@@ -98,7 +87,7 @@ func (m TrackFilter) Run(ctx vaas.ExecContext) vaas.DataBuffer {
 		parents[0].Close()
 
 		t1 := time.Now()
-		data_ := data.(vaas.DetectionData)
+		data_ := data.(vaas.DetectionData).Resize(m.cfg.CanvasDims)
 		tracks := vaas.DetectionsToTracks(data_.D)
 		var out [][]vaas.DetectionWithFrame
 		for _, track := range tracks {

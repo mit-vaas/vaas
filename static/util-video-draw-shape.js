@@ -75,6 +75,7 @@ Vue.component('util-video-draw-shape', {
 						top: parseInt(curRect.y()),
 						right: parseInt(curRect.x() + curRect.width()),
 						bottom: parseInt(curRect.y() + curRect.height()),
+						dims: [this.item.Width, this.item.Height],
 					};
 					s.desc = `Box(${s.left}, ${s.top}, ${s.right}, ${s.bottom})`;
 					this.curDesc = s.desc + ` (w=${width}, h=${height})`;
@@ -119,6 +120,7 @@ Vue.component('util-video-draw-shape', {
 					var s = {
 						type: 'polygon',
 						points: [],
+						dims: [this.item.Width, this.item.Height],
 					};
 					var descParts = [];
 					points.forEach(function(point) {
