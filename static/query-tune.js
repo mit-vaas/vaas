@@ -22,7 +22,7 @@ Vue.component('query-tune', {
 				return;
 			}
 			resp.done = true;
-			resp.Stats.timeMS = parseInt(resp.Stats.Time/1000000)
+			resp.Stats.timeMS = parseInt(resp.Stats.Time.T/1000000)
 			Vue.set(this.tuneResults, resp.Idx, resp);
 		});
 	},
