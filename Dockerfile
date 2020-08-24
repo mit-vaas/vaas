@@ -39,7 +39,7 @@ RUN ln -s /usr/lib/go-1.13/bin/go /usr/bin/go && \
 	go get golang.org/x/image/math/fixed && \
 	curl -L https://yt-dl.org/downloads/latest/youtube-dl -o /usr/local/bin/youtube-dl
 
-RUN mkdir vaas vaas/items
+RUN mkdir vaas vaas/items vaas/node-data
 WORKDIR vaas
 RUN ln -s /usr/src/app/darknet darknet
 

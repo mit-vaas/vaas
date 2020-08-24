@@ -40,7 +40,7 @@ func init() {
 			w.WriteHeader(400)
 			return
 		}
-		modelPath := fmt.Sprintf("models/tunable-classifier-%d.h5", node.ID)
+		modelPath := fmt.Sprintf("./node-data/tunable-classifier-%d-%d.h5", node.ID, rand.Int63())
 
 		// auto-compute width, height, and number of classes
 		item := &app.DBSeries{Series: series.SrcVector[0]}.ListItems()[0]

@@ -52,7 +52,7 @@ func init() {
 			w.WriteHeader(400)
 			return
 		}
-		modelPath := fmt.Sprintf("models/simple-classifier-%d.h5", node.ID)
+		modelPath := fmt.Sprintf("./node-data/simple-classifier-%d-%d.h5", node.ID, rand.Int63())
 
 		exporter := app.ExportSeries(series, app.ExportOptions{
 			Path: exportPath,

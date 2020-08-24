@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -33,12 +34,20 @@ func NewYolov3TrainJob(label string, node *app.DBNode, cfg builtins.Yolov3Config
 		node: node,
 		cfg: cfg,
 		exportPath: exportPath,
+		lines: new(app.LinesBuffer),
 	}
 }
 
 // create obj.data, obj.names, {train,valid,test}.txt, and yolov3.cfg
 func (j *Yolov3TrainJob) prepareConfigs() (string, error) {
-	cfgDir, err := ioutil.TempDir("", "yolov3-train")
+	// need absolute path to ./node-data/ since we'll be running darknet in a different working directory
+	workingDir, err := os.Getwd()
+	if err != nil {
+		// shouldn't fail
+		panic(err)
+	}
+	nodeDataDir := filepath.Join(workingDir, "node-data/")
+	cfgDir, err := ioutil.TempDir(nodeDataDir, fmt.Sprintf("yolov3-%d-", j.node.ID))
 	if err != nil {
 		return "", err
 	}
@@ -79,22 +88,49 @@ func (j *Yolov3TrainJob) prepareConfigs() (string, error) {
 		return "", err
 	}
 
+	// compute number of classes for obj.data/obj.names
+	// it needs to match yolov3.cfg
+	// TODO: we should actually:
+	// (1) compute the # classes from the provided object detections in series
+	// (2) write the .txt files according to those classes
+	// (3) update yolov3.cfg filters/classes as needed
+	bytes, err := ioutil.ReadFile(filepath.Join(cfgDir, "yolov3.cfg"))
+	if err != nil {
+		return "", err
+	}
+	numClasses := 1
+	for _, line := range strings.Split(string(bytes), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "classes=") && !strings.HasPrefix(line, "classes ") {
+			continue
+		}
+		parts := strings.Split(line, "=")
+		if len(parts) < 2 {
+			continue
+		}
+		numClasses, _ = strconv.Atoi(strings.TrimSpace(parts[len(parts)-1]))
+	}
+
 	// obj.names
+	var names []string
+	for i := 0; i < numClasses; i++ {
+		names = append(names, fmt.Sprintf("class%d", i))
+	}
 	namesPath := filepath.Join(cfgDir, "obj.names")
-	if err := ioutil.WriteFile(namesPath, []byte("object"), 0644); err != nil {
+	if err := ioutil.WriteFile(namesPath, []byte(strings.Join(names, "\n")), 0644); err != nil {
 		return "", err
 	}
 
 	// obj.data
 	objDataTmpl := `
-classes=1
+classes=%d
 train=%s
 valid=%s
 test=%s
 names=%s
 backup=%s
 `
-	objDataStr := fmt.Sprintf(objDataTmpl, dsPaths[0], dsPaths[1], dsPaths[2], namesPath, cfgDir)
+	objDataStr := fmt.Sprintf(objDataTmpl, numClasses, dsPaths[0], dsPaths[1], dsPaths[2], namesPath, cfgDir)
 	if err := ioutil.WriteFile(filepath.Join(cfgDir, "obj.data"), []byte(objDataStr), 0644); err != nil {
 		return "", err
 	}

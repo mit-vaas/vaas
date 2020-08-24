@@ -142,7 +142,7 @@ func init() {
 				log.Printf("[selfsupervised-tracker train] exiting since export job failed: %v", err)
 				return
 			}
-			modelPath := fmt.Sprintf("models/selfsupervised-tracker-%d", node.ID)
+			modelPath := fmt.Sprintf("./node-data/selfsupervised-tracker-%d-%d", node.ID, rand.Int63())
 
 			// train
 			trainJob := app.NewCmdJob(
