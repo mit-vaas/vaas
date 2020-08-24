@@ -27,6 +27,10 @@ Vue.component('annotate-default-int', {
 	},
 	mounted: function() {
 		this.keypressHandler = (e) => {
+			if(document.activeElement.tagName == 'INPUT') {
+				return;
+			}
+
 			// keycode 48 through 57 are 0 through 9
 			if(e.keyCode < 48 || e.keyCode > 57) {
 				return;
