@@ -16,7 +16,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 )
 
 type Yolov3TrainJob struct {
@@ -25,8 +24,7 @@ type Yolov3TrainJob struct {
 	cfg builtins.Yolov3Config
 	exportPath string
 
-	l []string
-	mu sync.Mutex
+	lines *app.LinesBuffer
 }
 
 func NewYolov3TrainJob(label string, node *app.DBNode, cfg builtins.Yolov3Config, exportPath string) *Yolov3TrainJob {
@@ -144,9 +142,7 @@ func (j *Yolov3TrainJob) Run(statusFunc func(string)) error {
 			if err != nil {
 				break
 			}
-			j.mu.Lock()
-			j.l = append(j.l, "[stderr] " + strings.TrimSpace(line))
-			j.mu.Unlock()
+			j.lines.Append("[stderr] " + strings.TrimSpace(line))
 		}
 		stderr.Close()
 	}()
@@ -165,9 +161,7 @@ func (j *Yolov3TrainJob) Run(statusFunc func(string)) error {
 				bestIter = -1
 				break
 			}
-			j.mu.Lock()
-			j.l = append(j.l, "[stdout] " + strings.TrimSpace(line))
-			j.mu.Unlock()
+			j.lines.Append("[stdout] " + strings.TrimSpace(line))
 
 			if strings.Contains(line, "mean average precision (mAP@0.50) = ") {
 				line = strings.Split(line, "mean average precision (mAP@0.50) = ")[1]
@@ -225,9 +219,7 @@ func (j *Yolov3TrainJob) Run(statusFunc func(string)) error {
 }
 
 func (j *Yolov3TrainJob) Detail() interface{} {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	return j.l
+	return j.lines.Get()
 }
 
 func init() {

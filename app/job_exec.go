@@ -13,12 +13,12 @@ type ExecJob struct {
 	pending map[int]vaas.Slice
 	completed int
 
-	l []string
+	lines *LinesBuffer
 	mu sync.Mutex
 }
 
 func NewExecJob(query *DBQuery, vector []*DBSeries, nframes int) *ExecJob {
-	j := &ExecJob{}
+	j := &ExecJob{lines: new(LinesBuffer)}
 
 	// get series for output vnodes
 	var outputSeries []*DBSeries
@@ -94,10 +94,10 @@ func (j *ExecJob) callback(slice vaas.Slice, outputs [][]vaas.DataReader, err er
 		}
 	}
 	if err != nil {
-		j.l = append(j.l, fmt.Sprintf("error applying on slice %v: %v", slice, err))
+		j.lines.Append(fmt.Sprintf("error applying on slice %v: %v", slice, err))
 		return
 	}
-	j.l = append(j.l, fmt.Sprintf("finished slice %v", slice))
+	j.lines.Append(fmt.Sprintf("finished slice %v", slice))
 }
 
 func (j *ExecJob) Name() string {
@@ -117,7 +117,5 @@ func (j *ExecJob) Run(statusFunc func(string)) error {
 }
 
 func (e *ExecJob) Detail() interface{} {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.l
+	return e.lines.Get()
 }

@@ -62,7 +62,7 @@ type Exporter struct {
 	slices []vaas.Slice
 	opts ExportOptions
 
-	l []string
+	lines *LinesBuffer
 	mu sync.Mutex
 }
 
@@ -72,6 +72,7 @@ func NewExporter(vector []*DBSeries, slices []vaas.Slice, opts ExportOptions) *E
 		vector: vector,
 		slices: slices,
 		opts: opts,
+		lines: new(LinesBuffer),
 	}
 }
 
@@ -209,15 +210,11 @@ func (e *Exporter) Run(statusFunc func(string)) error {
 				err = exportOther(slice, series, curPrefix)
 			}
 			if err != nil {
-				e.mu.Lock()
-				e.l = append(e.l, fmt.Sprintf("error exporting %s: %v", prefix, err))
-				e.mu.Unlock()
+				e.lines.Append(fmt.Sprintf("error exporting %s: %v", prefix, err))
 				return err
 			}
 		}
-		e.mu.Lock()
-		e.l = append(e.l, prefix)
-		e.mu.Unlock()
+		e.lines.Append(prefix)
 		return nil
 	}
 
@@ -266,9 +263,7 @@ func (e *Exporter) Run(statusFunc func(string)) error {
 }
 
 func (e *Exporter) Detail() interface{} {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.l
+	return e.lines.Get()
 }
 
 // Creates a job to export a series along with series from its SrcVector.

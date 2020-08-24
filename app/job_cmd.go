@@ -7,6 +7,38 @@ import (
 	"sync"
 )
 
+// keep the last N lines
+type LinesBuffer struct {
+	N int
+	l []string
+	mu sync.Mutex
+}
+
+func (b *LinesBuffer) Append(s string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	// set N if it wasn't set
+	if b.N == 0 {
+		b.N = 2000
+	}
+
+	if len(b.l) < b.N {
+		b.l = append(b.l, s)
+	} else {
+		copy(b.l[0:], b.l[1:])
+		b.l[b.N-1] = s
+	}
+}
+
+func (b *LinesBuffer) Get() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	cp := make([]string, len(b.l))
+	copy(cp, b.l)
+	return cp
+}
+
 type CmdJob struct {
 	label string
 	cmd string
@@ -15,8 +47,7 @@ type CmdJob struct {
 	// function to edit cmd parameters before running it, e.g. the working dir
 	F func(cmd *exec.Cmd)
 
-	l []string
-	mu sync.Mutex
+	lines *LinesBuffer
 }
 
 func NewCmdJob(label string, cmd string, args ...string) *CmdJob {
@@ -24,6 +55,7 @@ func NewCmdJob(label string, cmd string, args ...string) *CmdJob {
 		label: label,
 		cmd: cmd,
 		args: args,
+		lines: new(LinesBuffer),
 	}
 }
 
@@ -59,9 +91,7 @@ func (j *CmdJob) Run(statusFunc func(string)) error {
 			if err != nil {
 				break
 			}
-			j.mu.Lock()
-			j.l = append(j.l, "[stderr] " + strings.TrimSpace(line))
-			j.mu.Unlock()
+			j.lines.Append("[stderr] " + strings.TrimSpace(line))
 		}
 		stderr.Close()
 	}()
@@ -72,9 +102,7 @@ func (j *CmdJob) Run(statusFunc func(string)) error {
 			if err != nil {
 				break
 			}
-			j.mu.Lock()
-			j.l = append(j.l, "[stdout] " + strings.TrimSpace(line))
-			j.mu.Unlock()
+			j.lines.Append("[stdout] " + strings.TrimSpace(line))
 		}
 		stdout.Close()
 	}()
@@ -82,7 +110,5 @@ func (j *CmdJob) Run(statusFunc func(string)) error {
 }
 
 func (j *CmdJob) Detail() interface{} {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	return j.l
+	return j.lines.Get()
 }
