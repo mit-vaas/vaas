@@ -246,7 +246,7 @@ func init() {
 					}
 
 					// add up the stats samples after averaging per node
-					samples := vaas.GetStatsByNode(GetAllocator().GetContainers(vaas.EnvSetID{"query", query.ID}))
+					samples := vaas.GetStatsByNode(GetAllocator().GetContainers(vaas.EnvSetID{"query", virtualQueryID}))
 					var stats vaas.StatsSample
 					for _, sample := range samples {
 						stats = stats.Add(sample)
