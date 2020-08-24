@@ -9,7 +9,6 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
-	"strings"
 	"sync"
 )
 
@@ -110,16 +109,22 @@ func init() {
 			query.Load()
 
 			// load ground truth data
-			metricItems := metricSeries.ListItems()
+			var metricItems []DBItem
 			var gtlist []vaas.Data
 			sliceToIdx := make(map[string]int)
-			for i, item := range metricItems {
+			for _, item := range metricSeries.ListItems() {
+				// if same slice is labeled twice, we need to skip it
+				if _, ok := sliceToIdx[item.Slice.String()]; ok {
+					continue
+				}
+
 				data, err := item.Load(item.Slice).Reader().Read(item.Slice.Length())
 				if err != nil {
 					panic(err)
 				}
+				sliceToIdx[item.Slice.String()] = len(metricItems)
+				metricItems = append(metricItems, item)
 				gtlist = append(gtlist, data)
-				sliceToIdx[item.Slice.String()] = i
 			}
 
 			// enumerate the configurations that we want to test
@@ -200,9 +205,7 @@ func init() {
 					}
 					stream := NewExecStream(&qcopy, vector, sampler, 4, opts, func(slice vaas.Slice, curOutputs [][]vaas.DataReader, err error) {
 						if err != nil {
-							if !strings.Contains(err.Error(), "sample error") {
-								log.Printf("[test] warning: got callback error: %v", err)
-							}
+							log.Printf("[test] warning: got callback error: %v", err)
 							return
 						}
 						wg.Add(1)
