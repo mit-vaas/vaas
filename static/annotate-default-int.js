@@ -103,8 +103,11 @@ Vue.component('annotate-default-int', {
 				id: this.series.ID,
 				index: this.response.Index,
 				slice: this.response.Slice,
-				labels: [val],
+				labels: [],
 			};
+			for(var i = params.slice.Start; i < params.slice.End; i++) {
+				params.labels.push(val);
+			}
 			myCall('POST', '/series/int-label', JSON.stringify(params), () => {
 				if(this.response.Index < 0) {
 					this.get(-1);
