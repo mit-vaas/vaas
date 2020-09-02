@@ -50,6 +50,7 @@ Vue.component('node-edit-crop', {
 	},
 	template: `
 <div class="m-2">
+	<p>The coordinates below specify the crop. To obtain the coordinates, select a video dataset, and then draw a box corresponding to the desired crop window.</p>
 	<table>
 		<tbody>
 			<tr>

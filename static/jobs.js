@@ -42,6 +42,7 @@ Vue.component('jobs-tab', {
 	<template v-if="selectedJob == null">
 		<div class="my-1">
 			<h3>Jobs</h3>
+			<p>Here are background tasks created by Vaas (e.g. for model training).</p>
 			<button type="button" class="btn btn-danger" v-on:click="clearJobs">Clear Jobs</button>
 		</div>
 		<table class="table">

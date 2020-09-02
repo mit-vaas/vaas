@@ -153,6 +153,9 @@ Vue.component('explore-tab', {
 						<select v-model="query" class="form-control">
 							<option v-for="query in queries" :key="query.ID" :value="query.ID">{{ query.Name }}</option>
 						</select>
+						<small class="form-text text-muted">
+							Select the query to execute. To adjust which nodes are rendered, go to Queries and then the Predicate and Rendering sub-tab.
+						</small>
 					</div>
 				</div>
 				<div class="form-group row">
@@ -161,6 +164,10 @@ Vue.component('explore-tab', {
 						<select v-model="selectedVector" class="form-control">
 							<option v-for="vector in vectors" :key="vector.ID" :value="vector.VectorStr">{{ vector.Vector | prettyVector }}</option>
 						</select>
+						<small class="form-text text-muted">
+							Select the vector on which to execute the query. The first element is used as Input 0, the second as Input 1, and so on.
+							If needed, create a new vector from Timelines.
+						</small>
 					</div>
 				</div>
 				<div>

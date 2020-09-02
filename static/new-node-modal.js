@@ -217,6 +217,9 @@ Vue.component('new-node-modal', {
 									<option value="text">Text</option>
 									<option value="float">Float</option>
 								</select>
+								<small class="form-text text-muted">
+									The type of data that this node will output.
+								</small>
 							</template>
 						</div>
 					</div>

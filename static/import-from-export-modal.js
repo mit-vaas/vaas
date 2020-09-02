@@ -78,6 +78,9 @@ Vue.component('import-from-export-modal', {
 									<label class="col-sm-2 col-form-label">Path</label>
 									<div class="col-sm-10">
 										<input class="form-control" type="text" v-model="path" />
+										<small class="form-text text-muted">
+											The path to an export zip file on the local disk where Vaas is running.
+										</small>
 									</div>
 								</div>
 								<div class="form-group row">
@@ -90,9 +93,12 @@ Vue.component('import-from-export-modal', {
 						<div class="tab-pane" id="import-timeline-upload-tab">
 							<form v-on:submit.prevent="submitUpload">
 								<div class="form-group row">
-									<label class="col-sm-2 col-form-label">Path</label>
+									<label class="col-sm-2 col-form-label">File</label>
 									<div class="col-sm-10">
 										<input class="form-control" type="file" @change="onFileChange" />
+										<small class="form-text text-muted">
+											Upload a Vaas export zip file.
+										</small>
 									</div>
 								</div>
 								<div class="form-group row">

@@ -36,6 +36,12 @@ Vue.component('node-edit-selfsupervised-tracker', {
 	},
 	template: `
 <div class="small-container m-2">
+	<p>
+		This is a self-supervised multi-object tracker.
+		It should be configured with a detection parent.
+		To train the model, make sure the parent produces effective object detections, and then train on a video dataset.
+		The detections produced by the parent will be used during training.
+	</p>
 	<div class="form-group row">
 		<label class="col-sm-5 col-form-label">Model Path</label>
 		<div class="col-sm-7">

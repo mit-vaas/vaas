@@ -34,6 +34,9 @@ Vue.component('node-edit-filter-detection', {
 	},
 	template: `
 <div class="small-container m-2">
+	<div>
+		This node filters its detection inputs by score and class.
+	</div>
 	<div class="form-group row">
 		<label class="col-sm-5 col-form-label">Score Threshold</label>
 		<div class="col-sm-7">
@@ -60,6 +63,10 @@ Vue.component('node-edit-filter-detection', {
 					</tr>
 				</tbody>
 			</table>
+			<small id="emailHelp" class="form-text text-muted">
+				If at least one class is configured, only retain detections with class matching one above.
+				For YOLOv3 pre-trained on COCO, valid classes include 'person', 'car', etc.
+			</small>
 		</div>
 	</div>
 	<button v-on:click="save" type="button" class="btn btn-primary">Save</button>

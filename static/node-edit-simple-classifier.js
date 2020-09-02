@@ -69,6 +69,10 @@ Vue.component('node-edit-simple-classifier', {
 	},
 	template: `
 <div class="small-container m-2">
+	<p>
+		This is a simple image classification model that produces an integer class for each input video frame.
+		If training a model, don't worry about the parameters below -- they will be automatically set after training completes.
+	</p>
 	<div v-for="(cfg, i) in configs">
 		<h3>
 			Config {{ i }}
@@ -78,6 +82,9 @@ Vue.component('node-edit-simple-classifier', {
 			<label class="col-sm-5 col-form-label">Model Path</label>
 			<div class="col-sm-7">
 				<input v-model="cfg.ModelPath" type="text" class="form-control">
+				<small class="form-text text-muted">
+					Path on the server's local disk to the model H5 file.
+				</small>
 			</div>
 		</div>
 		<div class="form-group row">
@@ -102,6 +109,8 @@ Vue.component('node-edit-simple-classifier', {
 	<button v-on:click="addConfig" type="button" class="btn btn-primary">Add Config</button>
 	<button v-on:click="save" type="button" class="btn btn-primary">Save</button>
 	<form v-on:submit.prevent="train">
+		<h3>Training</h3>
+		<p>To train a model, select an integer label series below. After pressing Train, monitor progress from Jobs.</p>
 		<div class="form-group row">
 			<label class="col-sm-4 col-form-label">Train on:</label>
 			<div class="col-sm-8">
@@ -114,6 +123,9 @@ Vue.component('node-edit-simple-classifier', {
 			<label class="col-sm-4 col-form-label">Number of Classes</label>
 			<div class="col-sm-8">
 				<input type="text" class="form-control" v-model="trainForm.numClasses" />
+				<small class="form-text text-muted">
+					The number of distinct classes in your dataset.
+				</small>
 			</div>
 		</div>
 		<div class="form-group row">
@@ -126,6 +138,9 @@ Vue.component('node-edit-simple-classifier', {
 			<label class="col-sm-4 col-form-label">Height</label>
 			<div class="col-sm-8">
 				<input type="text" class="form-control" v-model="trainForm.height" />
+				<small class="form-text text-muted">
+					The resolution at which the model should input video frames.
+				</small>
 			</div>
 		</div>
 		<button type="submit" class="btn btn-primary mx-2">Train</button>

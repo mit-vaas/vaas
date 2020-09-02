@@ -131,6 +131,14 @@ Vue.component('annotate-default-int', {
 	template: `
 <div>
 	<div>
+		<p>The tool will display video samples from the configured source vector.</p>
+		<p>Adjust the number of frames to sample video segments instead of individual frames.</p>
+		<p>
+			Enter the appropriate integer label for a sample by clicking the button or pressing 0-9 on keyboard.
+			Set range to control the number of buttons; if range is 0, a text box will be provided for entering any integer.
+		</p>
+	</div>
+	<div>
 		<form class="form-inline" v-on:submit.prevent="saveSettings">
 			<label class="my-1 mx-1"># Frames</label>
 			<input type="text" class="form-control my-1 mx-1" v-model="settings.NumFrames" />

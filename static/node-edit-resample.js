@@ -23,6 +23,7 @@ Vue.component('node-edit-resample', {
 	},
 	template: `
 <div class="small-container m-2">
+	<p>This node re-samples its input at a different framerate.</p>
 	<div class="form-group row">
 		<label class="col-sm-5 col-form-label">Re-sample Rate</label>
 		<div class="col-sm-7">

@@ -215,6 +215,12 @@ Vue.component('annotate-default-detection', {
 	},
 	template: `
 <div>
+	<div>
+		The tool will sample video frames from the configured source vector.
+		Click on the image to draw points, lines, or boxes.
+		After labeling objects in the frame, press Done to save the labels.
+		Press Prev to view and modify previous annotations.
+	</div>
 	<div v-on:click="click($event)" v-on:mousemove="mousemove($event)" class="canvas-container">
 		<template v-if="imMeta != null">
 			<div :style="{

@@ -23,6 +23,9 @@ Vue.component('node-edit-iou', {
 	},
 	template: `
 <div class="small-container m-2">
+	<div>
+		<p>This node requires a detection parent, and produces tracks. Multi-object tracking is performed based on bounding box overlap: overlaping detections are linked together.</p>
+	</div>
 	<div class="form-group row">
 		<label class="col-sm-2 col-form-label">Max Age</label>
 		<div class="col-sm-10">

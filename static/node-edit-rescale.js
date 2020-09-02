@@ -26,6 +26,7 @@ Vue.component('node-edit-rescale', {
 	},
 	template: `
 <div class="small-container m-2">
+	<p>This node re-scales the video parent to a different resolution.</p>
 	<div class="form-group row">
 		<label class="col-sm-2 col-form-label">Output Width</label>
 		<div class="col-sm-10">

@@ -133,6 +133,13 @@ Vue.component('timeline-manage', {
 			/
 			{{ timeline.Name }}
 		</h2>
+		<p>There are three types of series:</p>
+		<ul>
+			<li>Data series: raw data imported into Vaas.</li>
+			<li>Output series: data produced by a node in a query</li>
+			<li>Label series: hand-annotated data.</li>
+		</ul>
+		<p>If you're just getting started, create a new Data Series below with Video type, and then Manage it to import video.</p>
 		<h4>Vectors</h4>
 		<p>
 			<button type="button" class="btn btn-primary" v-on:click="showAddVectorModal">Add Vector</button>
@@ -141,6 +148,7 @@ Vue.component('timeline-manage', {
 					<div class="modal-content">
 						<div class="modal-body">
 							<form v-on:submit.prevent="addVector">
+								<p>A vector is an ordered list of series. Add the desired series below.</p>
 								<table class="table">
 									<tbody>
 										<tr v-for="(series, i) in addVectorForm.series">

@@ -485,6 +485,11 @@ Vue.component('queries-tab', {
 		<div class="tab-pane fade show active" id="q-graph-panel" role="tabpanel" style="height:100%;">
 			<div v-if="editor == ''" id="q-div">
 				<div id="q-view" ref="view">
+					<p>
+						The query composition tool visualizes queries, showing data flowing from inputs down through arrows between operations.
+						The specific data series to use for the query inputs are selected during query execution (in Explore).
+						Parents of a node provide the inputs to that node, and each node produces some output data type.
+					</p>
 					<div ref="layer"></div>
 				</div>
 				<div v-if="selectedQuery != null">
@@ -524,6 +529,12 @@ Vue.component('queries-tab', {
 		<div class="tab-pane fade" id="q-outputs-panel" role="tabpanel">
 			<div v-if="selectedQuery != null" class="small-container">
 				<h3>Rendering</h3>
+				<p>
+					Below, specify how Vaas should render the outputs of a query.
+					The outputs of each configured node will be rendered.
+					In each Output, the first item should be a video type (often Input 0), and the following items will be overlayed on top of that video.
+					When multiple Outputs are configured, they will be stacked vertically.
+				</p>
 				<template v-for="(outputs, i) in selectedQuery.Outputs">
 					Output {{ i }} <button type="button" class="btn btn-danger" v-on:click="removeOutputRow(i)">Remove</button>
 					<queries-parents-table
@@ -537,6 +548,11 @@ Vue.component('queries-tab', {
 				</template>
 				<button type="button" class="btn btn-primary" v-on:click="addOutputRow">Add Output</button>
 				<h3 class="mt-4">Predicate</h3>
+				<p>
+					If a node is configured as the query predicate, Vaas will only display video samples on which that predicate evaluates true.
+					Other samples will be skipped.
+					Truthiness works differently for different data types, e.g. at least one detection in the sample, or non-zero integer.
+				</p>
 				<div>
 					<form class="form-inline" v-on:submit.prevent="setSelector">
 						<label class="ml-1">Selector:</label>

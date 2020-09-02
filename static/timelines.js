@@ -60,6 +60,12 @@ Vue.component('timelines-tab', {
 	template: `
 <div>
 	<template v-if="selectedTimeline == null">
+		<p>
+			A Timeline is a segmented "time" axis shared by several series, each of which associate some data to each timestep.
+			Typically, the time axis is based on a video dataset, where the axis has one segment for each video clip, and within each segment, it has one timestep for each video frame.
+			Then, the dataset itself is a video series that associates an image with each timestep, and derivative series can be produced, e.g., a series associating a set of object detections with each frame.
+		</p>
+		<p>To get started with Vaas, add a Timeline below, and then press Manage on it to add some video data.</p>
 		<div class="my-1">
 			<button type="button" class="btn btn-primary" v-on:click="showAddTimelineModal">Add Timeline</button>
 			<div class="modal" tabindex="-1" role="dialog" ref="addTimelineModal">

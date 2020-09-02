@@ -88,6 +88,10 @@ Vue.component('annotate-tab', {
 	<template v-if="mode == 'list'">
 		<div class="my-1">
 			<h3>Label Series</h3>
+			<p>
+				Label series associate hand-annotated data with each timestep (videoframe) of a dataset.
+				After creating a label series and annotating several examples, a machine learning model such as YOLOv3 or simple classifier can be trained.
+			</p>
 		</div>
 		<div class="my-1">
 			<button v-on:click="showNewLabelSeriesModal" class="btn btn-primary">New Label Series</button>
@@ -142,6 +146,10 @@ Vue.component('annotate-tab', {
 									<select v-model="newSetFields.vector" class="form-control">
 										<option v-for="vector in vectors" :key="vector.ID" :value="vector.VectorStr">{{ vector.Vector | prettyVector }}</option>
 									</select>
+									<small class="form-text text-muted">
+										The source specifies the data on which annotations should be made.
+										The current annotation tools all use a source consisting of a single video series.
+									</small>
 								</div>
 							</div>
 							<div class="form-group row">
@@ -150,6 +158,10 @@ Vue.component('annotate-tab', {
 									<select v-model="newSetFields.tool" class="form-control">
 										<option v-for="tool in availableTools" :key="tool" :value="tool">{{ tool }}</option>
 									</select>
+									<small class="form-text text-muted">
+										Currently there are only two annotation tools.
+										To annotate detections, use default-detection, and to annotate integers (e.g. classes), use default-int.
+									</small>
 								</div>
 							</div>
 							<div class="form-group row">

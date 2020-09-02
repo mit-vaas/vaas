@@ -57,6 +57,7 @@ Vue.component('node-edit-tunable-classifier', {
 	},
 	template: `
 <div class="small-container m-2">
+	<p>This node sucks. Use the simple classifier instead.</p>
 	<div class="form-group row">
 		<label class="col-sm-5 col-form-label">Model Path</label>
 		<div class="col-sm-7">
